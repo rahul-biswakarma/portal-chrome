@@ -219,6 +219,180 @@ Start with a comment block explaining the overall approach.`
   }
 }
 
+// Function to call Gemini API for CSS generation with enhanced context
+async function generateEnhancedCSS(apiKey, prompt, portalClassTree, portalClassStyles, screenshot) {
+  const DEBUG = true;
+
+  // Step 1: Upload the screenshot as a file
+  let fileUri = null;
+  if (screenshot) {
+    try {
+      // Convert base64 to blob
+      const base64Data = screenshot.split(',')[1];
+      const byteCharacters = atob(base64Data);
+      const byteArrays = [];
+
+      for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+        const slice = byteCharacters.slice(offset, offset + 512);
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
+          byteNumbers[i] = slice.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+      }
+
+      const blob = new Blob(byteArrays, {type: 'image/jpeg'});
+
+      // Get upload URL
+      const uploadUrlResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'X-Goog-Upload-Protocol': 'resumable',
+          'X-Goog-Upload-Command': 'start',
+          'X-Goog-Upload-Header-Content-Length': blob.size.toString(),
+          'X-Goog-Upload-Header-Content-Type': 'image/jpeg',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          file: {
+            display_name: 'SCREENSHOT'
+          }
+        })
+      });
+
+      // Extract upload URL from headers
+      const uploadUrl = uploadUrlResponse.headers.get('X-Goog-Upload-URL');
+
+      if (!uploadUrl) {
+        throw new Error('Failed to get upload URL');
+      }
+
+      // Upload the file
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Length': blob.size.toString(),
+          'X-Goog-Upload-Offset': '0',
+          'X-Goog-Upload-Command': 'upload, finalize'
+        },
+        body: blob
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload file');
+      }
+
+      const fileInfo = await uploadResponse.json();
+      fileUri = fileInfo.file.uri;
+
+      if (DEBUG) {
+        console.log('File uploaded successfully, URI:', fileUri);
+      }
+    } catch (error) {
+      console.error('Error uploading screenshot:', error);
+      // Continue without the screenshot
+    }
+  }
+
+  // Step 2: Generate CSS with Gemini 2.0 Flash
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+  // Create a simplified version of the tree for the LLM
+  const simplifiedTree = JSON.stringify(portalClassTree, null, 2);
+
+  // Create a simplified version of the styles
+  const simplifiedStyles = JSON.stringify(portalClassStyles, null, 2);
+
+  // Prepare the payload
+  const payload = {
+    contents: [
+      {
+        parts: [
+          // Add the image if we have a file URI
+          ...(fileUri ? [{
+            file_data: {
+              mime_type: "image/jpeg",
+              file_uri: fileUri
+            }
+          }] : []),
+          {
+            text: `You are a CSS expert specializing in creating styles for web applications.
+
+USER PROMPT: "${prompt}"
+
+DOM STRUCTURE (focusing on portal classes):
+${simplifiedTree}
+
+CURRENT STYLES FOR PORTAL CLASSES:
+${simplifiedStyles}
+
+Your task:
+1. Generate CSS code that fulfills the user's design request
+2. ONLY use selectors that target the portal-prefixed classes shown above
+3. Do not use element selectors, IDs, or non-portal classes
+4. Create clean, efficient CSS that implements the user's design intent
+5. Include !important where necessary to override existing styles
+6. Include comments explaining your styling choices
+
+Format your response as a CSS code block only, without any additional text.
+Start with a comment block explaining the overall approach.`
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 1024
+    }
+  };
+
+  try {
+    if (DEBUG) {
+      console.log('API URL:', url);
+      console.log('API Key (first 3 chars):', apiKey.substring(0, 3) + '...');
+      console.log('Payload preview (text part):', payload.contents[0].parts[payload.contents[0].parts.length - 1].text.substring(0, 100) + '...');
+      console.log('File URI included:', !!fileUri);
+    }
+
+    const response = await fetch(`${url}?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (DEBUG && response) {
+      console.log('API Response status:', response.status, response.statusText);
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Full API error:', errorData);
+      throw new Error(`API Error: ${errorData.error?.message || response.statusText || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    if (DEBUG) {
+      console.log('API Response data preview:', JSON.stringify(data).substring(0, 100) + '...');
+    }
+
+    // Extract the CSS from the response
+    const cssText = data.candidates[0].content.parts[0].text;
+
+    // Extract the CSS part from the response
+    const cssMatch = cssText.match(/```css\n([\s\S]*?)\n```/) ||
+                     cssText.match(/```\n([\s\S]*?)\n```/) ||
+                     { 1: cssText }; // If no code block, use the entire text
+
+    return cssMatch[1] || cssMatch[0];
+  } catch (error) {
+    console.error('Error calling Gemini API for CSS generation:', error);
+    throw error;
+  }
+}
+
 // When popup is opened, request portal class tree from content script
 document.addEventListener('DOMContentLoaded', () => {
   // Set up tab switching
@@ -289,11 +463,56 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('css-code').textContent = 'Generating CSS...';
 
     try {
-      // First LLM call: Analyze DOM and extract relevant information
-      const domAnalysis = await analyzeDOM(apiKey, userPrompt, portalClassTree);
+      // Get portal class styles
+      let portalClassStyles = {};
+      await new Promise((resolve, reject) => {
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+          chrome.tabs.sendMessage(tabs[0].id, {action: 'getPortalClassesWithStyles'}, (response) => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+              return;
+            }
+            if (response && response.success) {
+              portalClassStyles = response.data;
+              resolve();
+            } else {
+              reject(new Error(response?.error || 'Failed to get portal class styles'));
+            }
+          });
+        });
+      });
 
-      // Second LLM call: Generate CSS based on the analysis
-      generatedCSS = await generateCSS(apiKey, userPrompt, domAnalysis, allPortalClasses);
+      // Capture screenshot
+      let screenshot = null;
+      await new Promise((resolve, reject) => {
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+          chrome.tabs.sendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
+            if (chrome.runtime.lastError) {
+              // Screenshot failed but we can continue without it
+              console.warn('Screenshot capture failed:', chrome.runtime.lastError);
+              resolve();
+              return;
+            }
+            if (response && response.success) {
+              screenshot = response.data;
+              resolve();
+            } else {
+              // Screenshot failed but we can continue without it
+              console.warn('Screenshot capture failed:', response?.error);
+              resolve();
+            }
+          });
+        });
+      });
+
+      // Generate CSS with enhanced context
+      generatedCSS = await generateEnhancedCSS(
+        apiKey,
+        userPrompt,
+        portalClassTree,
+        portalClassStyles,
+        screenshot || 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==' // Empty image as fallback
+      );
 
       // Display the generated CSS
       document.getElementById('css-code').textContent = generatedCSS;
