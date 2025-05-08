@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Portal Design Customizer</title>
+  <style>
+    body {
+      width: 600px;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+    }
+    #tree-container {
+      margin-top: 10px;
+      border: 1px solid #eee;
+      padding: 10px;
+      border-radius: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+      background: #f8f9fa;
+    }
+    #prompt-container {
+      margin-top: 10px;
+    }
+    #user-prompt {
+      width: 100%;
+      height: 80px;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      resize: vertical;
+    }
+    #generate-btn {
+      margin-top: 10px;
+      padding: 8px 16px;
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #generate-btn:hover {
+      background-color: #3367d6;
+    }
+    #css-output {
+      margin-top: 10px;
+      border: 1px solid #eee;
+      padding: 10px;
+      border-radius: 4px;
+      background: #f8f9fa;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .tab-container {
+      display: flex;
+      margin-top: 10px;
+    }
+    .tab {
+      padding: 8px 16px;
+      cursor: pointer;
+      background-color: #eee;
+      border-radius: 4px 4px 0 0;
+      margin-right: 2px;
+    }
+    .tab.active {
+      background-color: #4285f4;
+      color: white;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    #api-key-container {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      border: 1px solid #eee;
+    }
+    #api-key {
+      width: 100%;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    #save-key-btn {
+      margin-top: 10px;
+      padding: 6px 12px;
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #status-message {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 4px;
+      display: none;
+    }
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: #4285f4;
+      animation: spin 1s ease-in-out infinite;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    #apply-css-btn {
+      margin-top: 10px;
+      padding: 8px 16px;
+      background-color: #34a853;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #apply-css-btn:hover {
+      background-color: #2e8b57;
+    }
+  </style>
+</head>
+<body>
+  <h3>Portal Design Customizer</h3>
+
+  <div class="tab-container">
+    <div class="tab active" data-tab="customize">Customize Design</div>
+    <div class="tab" data-tab="hierarchy">Class Hierarchy</div>
+    <div class="tab" data-tab="settings">Settings</div>
+  </div>
+
+  <div id="customize-tab" class="tab-content active">
+    <div id="prompt-container">
+      <p>Describe how you want to customize the portal design:</p>
+      <textarea id="user-prompt" placeholder="Example: Make all portal headers blue with rounded corners and add a shadow to portal containers"></textarea>
+      <button id="generate-btn">Generate CSS with AI <span id="loading-spinner" class="loading" style="display: none;"></span></button>
+    </div>
+    <div id="css-output">
+      <pre id="css-code">/* CSS will appear here after generation */</pre>
+    </div>
+    <button id="apply-css-btn">Apply CSS to Page</button>
+    <div id="status-message"></div>
+  </div>
+
+  <div id="hierarchy-tab" class="tab-content">
+    <div id="tree-container"></div>
+  </div>
+
+  <div id="settings-tab" class="tab-content">
+    <div id="api-key-container">
+      <p>Enter your Gemini API Key:</p>
+      <input type="password" id="api-key" placeholder="Enter your Gemini API key here">
+      <button id="save-key-btn">Save API Key</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

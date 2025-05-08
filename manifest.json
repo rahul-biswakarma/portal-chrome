@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Portal Design Customizer",
+  "version": "1.0",
+  "description": "Customize portal design with AI-generated CSS based on natural language prompts",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.googleapis.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ]
+    }
+  ]
+}
