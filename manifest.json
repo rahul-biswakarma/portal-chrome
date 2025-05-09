@@ -25,5 +25,16 @@
         "content.js"
       ]
     }
-  ]
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "libraries/codemirror/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
 }

@@ -2,6 +2,9 @@
 <html>
 <head>
   <title>Portal Design Customizer</title>
+  <!-- CodeMirror CSS -->
+  <link rel="stylesheet" href="libraries/codemirror/codemirror.min.css">
+  <link rel="stylesheet" href="libraries/codemirror/dracula.min.css">
   <style>
     body {
       width: 100%;
@@ -29,6 +32,20 @@
     .tree-line {
       position: relative;
       white-space: nowrap;
+      transition: background-color 0.2s ease;
+      padding: 1px 0;
+      border-radius: 3px;
+    }
+    .tree-line-highlighted {
+      background-color: rgba(66, 133, 244, 0.15);
+      border-left: 3px solid #4285f4;
+      padding-left: 3px;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { background-color: rgba(66, 133, 244, 0.15); }
+      50% { background-color: rgba(66, 133, 244, 0.25); }
+      100% { background-color: rgba(66, 133, 244, 0.15); }
     }
     .tree-line-content {
       display: inline-block;
@@ -44,6 +61,9 @@
     }
     .tree-portal-class:hover {
       text-decoration: underline;
+    }
+    .tree-line-highlighted .tree-portal-class {
+      font-weight: bold;
     }
     #prompt-container {
       margin-top: 10px;
@@ -75,8 +95,18 @@
       padding: 10px;
       border-radius: 4px;
       background: #f8f9fa;
-      max-height: 200px;
-      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      height: 300px;
+    }
+    /* CodeMirror custom styles */
+    .CodeMirror {
+      height: 100% !important;
+      width: 100% !important;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      border-radius: 4px;
     }
     .tab-container {
       display: flex;
@@ -169,7 +199,26 @@
     #apply-css-btn:hover {
       background-color: #2e8b57;
     }
-    /* Removed CSS-based tree line styles as we now use Unicode characters */
+    .reload-btn {
+      padding: 6px 12px;
+      background-color: #f8f9fa;
+      color: #333;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      transition: background-color 0.2s;
+    }
+    .reload-btn:hover {
+      background-color: #e9ecef;
+    }
+    .reload-btn::before {
+      content: "↻";
+      margin-right: 4px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -188,13 +237,17 @@
       <button id="generate-btn">Generate CSS with AI <span id="loading-spinner" class="loading" style="display: none;"></span></button>
     </div>
     <div id="css-output">
-      <pre id="css-code">/* CSS will appear here after generation */</pre>
+      <textarea id="css-code">/* CSS will appear here after generation */</textarea>
     </div>
     <button id="apply-css-btn">Apply CSS to Page</button>
     <div id="status-message"></div>
   </div>
 
   <div id="hierarchy-tab" class="tab-content">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <h4 style="margin: 0;">Portal Class Hierarchy</h4>
+      <button id="reload-tree-btn" class="reload-btn">Reload Hierarchy</button>
+    </div>
     <div id="tree-container"></div>
   </div>
 
@@ -206,6 +259,11 @@
     </div>
   </div>
 
+  <!-- CodeMirror JS -->
+  <script src="libraries/codemirror/codemirror.min.js"></script>
+  <script src="libraries/codemirror/css.min.js"></script>
+  <script src="libraries/codemirror/closebrackets.min.js"></script>
+  <script src="libraries/codemirror/matchbrackets.min.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
