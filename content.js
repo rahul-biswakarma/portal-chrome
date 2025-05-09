@@ -93,6 +93,88 @@ function applyCSS(css) {
   return true;
 }
 
+// Function to highlight elements with a specific class
+function highlightElementsWithClass(className) {
+  // Remove any existing highlights first
+  removeHighlight();
+
+  // Find all elements with the specified class
+  const elements = document.querySelectorAll('.' + className);
+
+  // Add highlight to each element
+  elements.forEach(element => {
+    // Save original styles
+    element.dataset.originalOutline = element.style.outline;
+    element.dataset.originalOutlineOffset = element.style.outlineOffset;
+    element.dataset.originalZIndex = element.style.zIndex;
+    element.dataset.originalPosition = element.style.position;
+
+    // Apply highlight styles
+    element.style.outline = '2px solid #ff5722';
+    element.style.outlineOffset = '2px';
+    element.style.zIndex = '9999';
+
+    // Only change position to relative if it's static
+    if (window.getComputedStyle(element).position === 'static') {
+      element.style.position = 'relative';
+    }
+
+    // Add to highlighted elements
+    element.classList.add('portal-customizer-highlighted');
+  });
+
+  return elements.length;
+}
+
+// Function to remove highlights
+function removeHighlight() {
+  // Find all highlighted elements
+  const elements = document.querySelectorAll('.portal-customizer-highlighted');
+
+  // Restore original styles
+  elements.forEach(element => {
+    element.style.outline = element.dataset.originalOutline || '';
+    element.style.outlineOffset = element.dataset.originalOutlineOffset || '';
+    element.style.zIndex = element.dataset.originalZIndex || '';
+    element.style.position = element.dataset.originalPosition || '';
+
+    // Remove highlight class
+    element.classList.remove('portal-customizer-highlighted');
+
+    // Clean up data attributes
+    delete element.dataset.originalOutline;
+    delete element.dataset.originalOutlineOffset;
+    delete element.dataset.originalZIndex;
+    delete element.dataset.originalPosition;
+  });
+}
+
+// Function to scroll element with class into view
+function scrollElementIntoView(className) {
+  // Find the first element with the specified class
+  const element = document.querySelector('.' + className);
+
+  if (element) {
+    // Scroll the element into view with smooth behavior
+    element.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center'
+    });
+
+    // Highlight the element temporarily
+    highlightElementsWithClass(className);
+
+    // Remove highlight after 2 seconds
+    setTimeout(() => {
+      removeHighlight();
+    }, 2000);
+
+    return true;
+  }
+
+  return false;
+}
+
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'getPortalClassTree') {
@@ -161,6 +243,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         error: error.message
       });
     }
+  } else if (request.action === 'highlightElements') {
+    try {
+      const count = highlightElementsWithClass(request.className);
+      sendResponse({
+        success: true,
+        count: count
+      });
+    } catch (error) {
+      sendResponse({
+        success: false,
+        error: error.message
+      });
+    }
+  } else if (request.action === 'removeHighlight') {
+    try {
+      removeHighlight();
+      sendResponse({
+        success: true
+      });
+    } catch (error) {
+      sendResponse({
+        success: false,
+        error: error.message
+      });
+    }
+  } else if (request.action === 'scrollElementIntoView') {
+    try {
+      const result = scrollElementIntoView(request.className);
+      sendResponse({
+        success: result
+      });
+    } catch (error) {
+      sendResponse({
+        success: false,
+        error: error.message
+      });
+    }
   }
+
   return true; // Keep the message channel open for async response
 });

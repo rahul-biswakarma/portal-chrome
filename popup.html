@@ -9,15 +9,41 @@
       font-family: Arial, sans-serif;
       margin: 0;
       box-sizing: border-box;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
     #tree-container {
       margin-top: 10px;
       border: 1px solid #eee;
       padding: 10px;
       border-radius: 4px;
-      max-height: 300px;
       overflow-y: auto;
       background: #f8f9fa;
+      flex: 1;
+      font-family: monospace;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    /* Tree structure styling */
+    .tree-line {
+      position: relative;
+      white-space: nowrap;
+    }
+    .tree-line-content {
+      display: inline-block;
+    }
+    .tree-element {
+      color: #0066cc;
+    }
+    .tree-portal-class {
+      display: inline-block;
+      margin-left: 4px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .tree-portal-class:hover {
+      text-decoration: underline;
     }
     #prompt-container {
       margin-top: 10px;
@@ -71,7 +97,14 @@
       display: none;
     }
     .tab-content.active {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    #hierarchy-tab {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 150px);
     }
     #api-key-container {
       margin-top: 10px;
@@ -136,6 +169,7 @@
     #apply-css-btn:hover {
       background-color: #2e8b57;
     }
+    /* Removed CSS-based tree line styles as we now use Unicode characters */
   </style>
 </head>
 <body>

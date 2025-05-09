@@ -393,29 +393,202 @@ Start with a comment block explaining the overall approach.`
   }
 }
 
+// Function to create an HTML representation of the tree node with connecting lines
+function createTreeNodeHTML(node, level = 0, isLast = true, parentLineIndices = []) {
+  const container = document.createElement('div');
+  container.className = 'tree-line';
+
+  // Create the line content
+  const content = document.createElement('div');
+  content.className = 'tree-line-content';
+
+  // Create indentation with Unicode characters for better visibility
+  if (level > 0) {
+    // Add connecting lines for previous levels
+    for (let i = 0; i < level - 1; i++) {
+      const lineSpan = document.createElement('span');
+      lineSpan.textContent = parentLineIndices.includes(i) ? '\u2502 ' : '  ';
+      lineSpan.style.color = '#888';
+      content.appendChild(lineSpan);
+    }
+
+    // Add the current level connector
+    const connectorSpan = document.createElement('span');
+    connectorSpan.textContent = isLast ? '\u2514\u2500' : '\u251C\u2500';
+    connectorSpan.style.color = '#888';
+    content.appendChild(connectorSpan);
+  }
+
+  // Add element tag
+  const elementTag = document.createElement('span');
+  elementTag.className = 'tree-element';
+  elementTag.textContent = node.element;
+  elementTag.style.cursor = 'pointer';
+
+  // Make the element tag clickable to scroll into view
+  if (node.portalClasses.length > 0) {
+    elementTag.addEventListener('click', () => {
+      scrollElementIntoView(node.portalClasses[0]);
+    });
+  }
+
+  content.appendChild(elementTag);
+
+  // Add portal classes with color highlighting
+  if (node.portalClasses.length > 0) {
+    const classesContainer = document.createElement('span');
+    classesContainer.textContent = ' [';
+    content.appendChild(classesContainer);
+
+    node.portalClasses.forEach((className, index) => {
+      const classSpan = document.createElement('span');
+      classSpan.className = 'tree-portal-class';
+      classSpan.textContent = className;
+      classSpan.dataset.className = className;
+
+      // Generate a consistent color based on the class name
+      const hue = Math.abs(className.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360);
+      classSpan.style.color = `hsl(${hue}, 70%, 45%)`;
+      classSpan.style.fontWeight = 'bold';
+
+      // Add hover event to highlight elements with this class
+      classSpan.addEventListener('mouseover', () => {
+        highlightElementsWithClass(className);
+      });
+
+      classSpan.addEventListener('mouseout', () => {
+        removeHighlight();
+      });
+
+      // Add click event to scroll element into view
+      classSpan.addEventListener('click', () => {
+        scrollElementIntoView(className);
+      });
+
+      content.appendChild(classSpan);
+
+      // Add comma if not the last class
+      if (index < node.portalClasses.length - 1) {
+        const comma = document.createElement('span');
+        comma.textContent = ', ';
+        content.appendChild(comma);
+      }
+    });
+
+    const closingBracket = document.createElement('span');
+    closingBracket.textContent = ']';
+    content.appendChild(closingBracket);
+  }
+
+  container.appendChild(content);
+
+  // Calculate which levels need connecting lines for children
+  const newParentLineIndices = [...parentLineIndices];
+  if (level > 0 && !isLast) {
+    newParentLineIndices.push(level - 1);
+  }
+
+  // Add child nodes
+  if (node.children.length > 0) {
+    const childrenContainer = document.createElement('div');
+    childrenContainer.className = 'tree-children';
+
+    node.children.forEach((child, index) => {
+      const isLastChild = index === node.children.length - 1;
+      const childNode = createTreeNodeHTML(child, level + 1, isLastChild, newParentLineIndices);
+      childrenContainer.appendChild(childNode);
+    });
+
+    container.appendChild(childrenContainer);
+  }
+
+  return container;
+}
+
+// Function to send message to content script to scroll element into view
+function scrollElementIntoView(className) {
+  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+    chrome.tabs.sendMessage(tabs[0].id, {
+      action: 'scrollElementIntoView',
+      className: className
+    });
+  });
+}
+
+// Function to send message to content script to highlight elements with a class
+function highlightElementsWithClass(className) {
+  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+    chrome.tabs.sendMessage(tabs[0].id, {
+      action: 'highlightElements',
+      className: className
+    });
+  });
+}
+
+// Function to send message to content script to remove highlights
+function removeHighlight() {
+  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+    chrome.tabs.sendMessage(tabs[0].id, {
+      action: 'removeHighlight'
+    });
+  });
+}
+
 // When popup is opened, request portal class tree from content script
 document.addEventListener('DOMContentLoaded', () => {
   // Set up tab switching
   const tabs = document.querySelectorAll('.tab');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  // Initially hide all tab contents except the active one
+  tabContents.forEach(content => {
+    if (!content.classList.contains('active')) {
+      content.style.display = 'none';
+    } else {
+      content.style.display = 'flex';
+    }
+  });
+
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       // Remove active class from all tabs and content
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      tabContents.forEach(c => {
+        c.classList.remove('active');
+        c.style.display = 'none';
+      });
 
       // Add active class to clicked tab and corresponding content
       tab.classList.add('active');
       const tabName = tab.getAttribute('data-tab');
-      document.getElementById(`${tabName}-tab`).classList.add('active');
+      const activeContent = document.getElementById(`${tabName}-tab`);
+      activeContent.classList.add('active');
+      activeContent.style.display = 'flex';
+
+      // Only load the tree data when the hierarchy tab is clicked
+      if (tabName === 'hierarchy' && !document.getElementById('tree-container').hasChildNodes()) {
+        loadTreeData();
+      }
     });
   });
 
-  // Create a pre element for text display
-  const pre = document.createElement('pre');
-  pre.style.whiteSpace = 'pre';
-  pre.style.margin = '0';
-  pre.style.fontFamily = 'monospace';
-  document.getElementById('tree-container').appendChild(pre);
+  // Ensure the correct tab is active on initial load
+  const activeTab = document.querySelector('.tab.active');
+  if (activeTab) {
+    const tabName = activeTab.getAttribute('data-tab');
+    const activeContent = document.getElementById(`${tabName}-tab`);
+    activeContent.classList.add('active');
+    activeContent.style.display = 'flex';
+
+    // Only load the tree data if the hierarchy tab is initially active
+    if (tabName === 'hierarchy') {
+      loadTreeData();
+    }
+  }
+
+  // Create a container for the tree
+  const treeContainer = document.getElementById('tree-container');
 
   // Store all portal classes and tree for CSS generation
   let allPortalClasses = [];
@@ -429,157 +602,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Save API key
-  document.getElementById('save-key-btn').addEventListener('click', () => {
-    const apiKey = document.getElementById('api-key').value.trim();
-    if (apiKey) {
-      chrome.storage.local.set({ geminiApiKey: apiKey }, () => {
-        showStatus('API key saved successfully!', 'success');
-      });
-    } else {
-      showStatus('Please enter a valid API key', 'error');
-    }
-  });
-
-  // Set up CSS generation button
-  const generateBtn = document.getElementById('generate-btn');
-  generateBtn.addEventListener('click', async () => {
-    const userPrompt = document.getElementById('user-prompt').value;
-    if (userPrompt.trim() === '') {
-      showStatus('Please enter a prompt to generate CSS', 'error');
-      return;
-    }
-
-    // Get API key
-    const apiKey = document.getElementById('api-key').value.trim();
-    if (!apiKey) {
-      showStatus('Please enter your Gemini API key in the Settings tab', 'error');
-      return;
-    }
-
-    // Show loading spinner
-    const spinner = document.getElementById('loading-spinner');
-    spinner.style.display = 'inline-block';
-    document.getElementById('css-code').textContent = 'Generating CSS...';
-
-    try {
-      // Get portal class styles
-      let portalClassStyles = {};
-      await new Promise((resolve, reject) => {
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-          chrome.tabs.sendMessage(tabs[0].id, {action: 'getPortalClassesWithStyles'}, (response) => {
-            if (chrome.runtime.lastError) {
-              reject(chrome.runtime.lastError);
-              return;
-            }
-            if (response && response.success) {
-              portalClassStyles = response.data;
-              resolve();
-            } else {
-              reject(new Error(response?.error || 'Failed to get portal class styles'));
-            }
-          });
-        });
-      });
-
-      // Capture screenshot
-      let screenshot = null;
-      await new Promise((resolve, reject) => {
-        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-          chrome.tabs.sendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
-            if (chrome.runtime.lastError) {
-              // Screenshot failed but we can continue without it
-              console.warn('Screenshot capture failed:', chrome.runtime.lastError);
-              resolve();
-              return;
-            }
-            if (response && response.success) {
-              screenshot = response.data;
-              resolve();
-            } else {
-              // Screenshot failed but we can continue without it
-              console.warn('Screenshot capture failed:', response?.error);
-              resolve();
-            }
-          });
-        });
-      });
-
-      // Generate CSS with enhanced context
-      generatedCSS = await generateEnhancedCSS(
-        apiKey,
-        userPrompt,
-        portalClassTree,
-        portalClassStyles,
-        screenshot || 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AfwD/2Q==' // Empty image as fallback
-      );
-
-      // Display the generated CSS
-      document.getElementById('css-code').textContent = generatedCSS;
-      showStatus('CSS generated successfully!', 'success');
-    } catch (error) {
-      document.getElementById('css-code').textContent = '/* Error generating CSS */';
-      showStatus(`Error: ${error.message}`, 'error');
-    } finally {
-      // Hide loading spinner
-      spinner.style.display = 'none';
-    }
-  });
-
-  // Set up Apply CSS button
-  document.getElementById('apply-css-btn').addEventListener('click', () => {
-    const css = document.getElementById('css-code').textContent;
-    if (css && css !== '/* CSS will appear here after generation */' && css !== '/* Error generating CSS */') {
-      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'applyCSS',
-          css: css
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            showStatus('Error applying CSS: ' + chrome.runtime.lastError.message, 'error');
-            return;
-          }
-          if (response && response.success) {
-            showStatus('CSS applied successfully!', 'success');
-          } else {
-            showStatus('Error applying CSS to the page', 'error');
-          }
-        });
-      });
-    } else {
-      showStatus('Please generate CSS first', 'error');
-    }
-  });
-
-  // Request portal class tree from content script
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    if (!tabs[0]) {
-      pre.textContent = 'Unable to access the current tab.';
-      return;
-    }
-    chrome.tabs.sendMessage(tabs[0].id, {action: 'getPortalClassTree'}, (response) => {
-      if (chrome.runtime.lastError) {
-        pre.textContent = 'Could not establish connection with the page. Please refresh and try again.';
+  // Function to load tree data
+  function loadTreeData() {
+    // Request portal class tree from content script
+    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+      if (!tabs[0]) {
+        treeContainer.textContent = 'Unable to access the current tab.';
         return;
       }
-      if (!response) {
-        pre.textContent = 'No response received from the page.';
-        return;
-      }
-      if (!response.success) {
-        pre.textContent = `Error: ${response.error || 'Unknown error occurred'}`;
-        return;
-      }
-      if (response.data) {
-        portalClassTree = response.data;
-        pre.textContent = createTreeNode(response.data);
-        // Extract all portal classes for CSS generation
-        allPortalClasses = extractPortalClasses(response.data);
-        // Remove duplicates
-        allPortalClasses = [...new Set(allPortalClasses)];
-      } else {
-        pre.textContent = 'No portal classes found on this page.';
-      }
+      chrome.tabs.sendMessage(tabs[0].id, {action: 'getPortalClassTree'}, (response) => {
+        if (chrome.runtime.lastError) {
+          treeContainer.textContent = 'Could not establish connection with the page. Please refresh and try again.';
+          return;
+        }
+        if (!response) {
+          treeContainer.textContent = 'No response received from the page.';
+          return;
+        }
+        if (!response.success) {
+          treeContainer.textContent = `Error: ${response.error || 'Unknown error occurred'}`;
+          return;
+        }
+        if (response.data) {
+          portalClassTree = response.data;
+
+          // Use the HTML tree renderer instead of text
+          treeContainer.innerHTML = '';
+          const treeHTML = createTreeNodeHTML(response.data);
+          treeContainer.appendChild(treeHTML);
+
+          // Extract all portal classes for CSS generation
+          allPortalClasses = extractPortalClasses(response.data);
+          // Remove duplicates
+          allPortalClasses = [...new Set(allPortalClasses)];
+        } else {
+          treeContainer.textContent = 'No portal classes found on this page.';
+        }
+      });
     });
-  });
+  }
 });
