@@ -6,13 +6,14 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "sidePanel"
   ],
   "host_permissions": [
     "https://*.googleapis.com/*"
   ],
-  "action": {
-    "default_popup": "popup.html"
+  "side_panel": {
+    "default_path": "popup.html"
   },
   "content_scripts": [
     {
