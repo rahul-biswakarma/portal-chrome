@@ -602,6 +602,110 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Add event listener for the Generate CSS button
+  document.getElementById('generate-btn').addEventListener('click', async () => {
+    const apiKey = document.getElementById('api-key').value;
+    if (!apiKey) {
+      showStatus('Please enter a valid API key in the Settings tab.', 'error');
+      return;
+    }
+
+    const prompt = document.getElementById('user-prompt').value;
+    if (!prompt.trim()) {
+      showStatus('Please enter a design prompt.', 'error');
+      return;
+    }
+
+    // Show loading spinner
+    document.getElementById('loading-spinner').style.display = 'inline-block';
+
+    try {
+      // First, make sure we have the tree data
+      if (!portalClassTree) {
+        // Request portal class tree if not already loaded
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+          chrome.tabs.sendMessage(tabs[0].id, {action: 'getPortalClassTree'}, async (response) => {
+            if (chrome.runtime.lastError || !response || !response.success) {
+              showStatus('Failed to get portal class data. Please try again.', 'error');
+              document.getElementById('loading-spinner').style.display = 'none';
+              return;
+            }
+
+            portalClassTree = response.data;
+            allPortalClasses = [...new Set(extractPortalClasses(response.data))];
+
+            // Now generate the CSS
+            await generateAndApplyCSS(apiKey, prompt);
+          });
+        });
+      } else {
+        // We already have the tree data, so generate CSS directly
+        await generateAndApplyCSS(apiKey, prompt);
+      }
+    } catch (error) {
+      console.error('Error generating CSS:', error);
+      showStatus(`Error: ${error.message}`, 'error');
+      document.getElementById('loading-spinner').style.display = 'none';
+    }
+  });
+
+  // Add event listener for the Apply CSS button
+  document.getElementById('apply-css-btn').addEventListener('click', () => {
+    const css = document.getElementById('css-code').textContent;
+    if (!css || css === '/* CSS will appear here after generation */') {
+      showStatus('No CSS to apply. Generate CSS first.', 'error');
+      return;
+    }
+
+    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: 'applyCSS',
+        css: css
+      }, (response) => {
+        if (chrome.runtime.lastError || !response || !response.success) {
+          showStatus('Failed to apply CSS. Please try again.', 'error');
+          return;
+        }
+        showStatus('CSS applied successfully!', 'success');
+      });
+    });
+  });
+
+  // Add event listener for the Save API Key button
+  document.getElementById('save-key-btn').addEventListener('click', () => {
+    const apiKey = document.getElementById('api-key').value;
+    if (!apiKey) {
+      showStatus('Please enter a valid API key.', 'error');
+      return;
+    }
+
+    chrome.storage.local.set({geminiApiKey: apiKey}, () => {
+      showStatus('API key saved successfully!', 'success');
+    });
+  });
+
+  // Helper function to generate and apply CSS
+  async function generateAndApplyCSS(apiKey, prompt) {
+    try {
+      // First analyze the DOM structure with Gemini
+      const domAnalysis = await analyzeDOM(apiKey, prompt, portalClassTree);
+
+      // Then generate CSS based on the analysis
+      const css = await generateCSS(apiKey, prompt, domAnalysis, allPortalClasses);
+
+      // Display the generated CSS
+      document.getElementById('css-code').textContent = css;
+      generatedCSS = css;
+
+      showStatus('CSS generated successfully!', 'success');
+    } catch (error) {
+      console.error('Error in CSS generation:', error);
+      showStatus(`Error: ${error.message}`, 'error');
+    } finally {
+      document.getElementById('loading-spinner').style.display = 'none';
+    }
+  }
+
   // Function to load tree data
   function loadTreeData() {
     // Request portal class tree from content script
