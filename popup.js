@@ -35,17 +35,221 @@ function extractPortalClasses(node) {
   return classes;
 }
 
-// Function to show status message
+// Function to show status message as a toast
 function showStatus(message, type) {
-  const statusElement = document.getElementById('status-message');
-  statusElement.textContent = message;
-  statusElement.className = type;
-  statusElement.style.display = 'block';
+  // Find or create toast container
+  let toastContainer = document.getElementById('toast-container');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toast-container';
+    toastContainer.style.position = 'fixed';
+    toastContainer.style.bottom = '20px';
+    toastContainer.style.right = '20px';
+    toastContainer.style.zIndex = '9999';
+    document.body.appendChild(toastContainer);
+  }
 
-  // Hide after 5 seconds
+  // Create toast element
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+
+  // Style the toast
+  toast.style.padding = '10px 15px';
+  toast.style.borderRadius = '4px';
+  toast.style.marginTop = '10px';
+  toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+  toast.style.minWidth = '200px';
+  toast.style.animation = 'fadeIn 0.3s, fadeOut 0.3s 2.7s';
+  toast.style.opacity = '0';
+
+  // Add type-specific styles
+  if (type === 'success') {
+    toast.style.backgroundColor = '#d4edda';
+    toast.style.color = '#155724';
+    toast.style.borderLeft = '4px solid #28a745';
+  } else if (type === 'error') {
+    toast.style.backgroundColor = '#f8d7da';
+    toast.style.color = '#721c24';
+    toast.style.borderLeft = '4px solid #dc3545';
+  } else if (type === 'info') {
+    toast.style.backgroundColor = '#d1ecf1';
+    toast.style.color = '#0c5460';
+    toast.style.borderLeft = '4px solid #17a2b8';
+  }
+
+  // Add to container
+  toastContainer.appendChild(toast);
+
+  // Fade in
   setTimeout(() => {
-    statusElement.style.display = 'none';
-  }, 5000);
+    toast.style.opacity = '1';
+  }, 10);
+
+  // Remove after 3 seconds
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 300);
+  }, 3000);
+}
+
+// Store CSS versions
+let cssVersions = [];
+
+// Function to save a CSS version
+function saveCSSVersion(css, description = '') {
+  const timestamp = Date.now(); // Use numeric timestamp instead of Date object
+  const id = `version_${timestamp}`;
+
+  // Create new version object
+  const version = {
+    id,
+    timestamp,
+    description: description || `Version ${cssVersions.length + 1}`,
+    css
+  };
+
+  // Add to versions array
+  cssVersions.push(version);
+
+  // Save to chrome.storage.local
+  chrome.storage.local.set({cssVersions}, () => {
+    console.log('CSS version saved', version);
+    // Update versions tab
+    updateVersionsTab();
+  });
+
+  return version;
+}
+
+// Function to delete a CSS version
+function deleteCSSVersion(versionId) {
+  cssVersions = cssVersions.filter(v => v.id !== versionId);
+
+  // Save updated versions to storage
+  chrome.storage.local.set({cssVersions}, () => {
+    console.log('CSS version deleted', versionId);
+    // Update versions tab
+    updateVersionsTab();
+  });
+}
+
+// Function to update the versions tab with all saved versions
+function updateVersionsTab() {
+  const versionsContainer = document.getElementById('versions-container');
+  if (!versionsContainer) return;
+
+  // Clear current content
+  versionsContainer.innerHTML = '';
+
+  if (cssVersions.length === 0) {
+    versionsContainer.innerHTML = '<div class="no-versions">No saved versions yet. Generate CSS to create a version.</div>';
+    return;
+  }
+
+  // Sort versions by timestamp (newest first)
+  const sortedVersions = [...cssVersions].sort((a, b) => b.timestamp - a.timestamp);
+
+  // Create version cards
+  sortedVersions.forEach(version => {
+    const versionCard = document.createElement('div');
+    versionCard.className = 'version-card';
+    versionCard.dataset.versionId = version.id;
+
+    const header = document.createElement('div');
+    header.className = 'version-header';
+
+    const title = document.createElement('div');
+    title.className = 'version-title';
+    title.textContent = version.description;
+
+    const date = document.createElement('div');
+    date.className = 'version-date';
+    // Format the timestamp (which is a number) to a date string
+    date.textContent = new Date(version.timestamp).toLocaleString();
+
+    header.appendChild(title);
+    header.appendChild(date);
+
+    const actions = document.createElement('div');
+    actions.className = 'version-actions';
+
+    const previewBtn = document.createElement('button');
+    previewBtn.className = 'version-btn preview-btn';
+    previewBtn.textContent = 'Preview';
+    previewBtn.addEventListener('click', () => previewVersion(version.id));
+
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'version-btn apply-btn';
+    restoreBtn.textContent = 'Restore';
+    restoreBtn.addEventListener('click', () => applyVersion(version.id));
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'version-btn delete-btn';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', () => {
+      if (confirm('Are you sure you want to delete this version?')) {
+        deleteCSSVersion(version.id);
+      }
+    });
+
+    actions.appendChild(previewBtn);
+    actions.appendChild(restoreBtn);
+    actions.appendChild(deleteBtn);
+
+    versionCard.appendChild(header);
+    versionCard.appendChild(actions);
+
+    // Add a small preview of the CSS
+    const cssPreview = document.createElement('div');
+    cssPreview.className = 'css-preview';
+    // Show first 100 characters of the CSS
+    cssPreview.textContent = version.css.substring(0, 100) + (version.css.length > 100 ? '...' : '');
+    versionCard.appendChild(cssPreview);
+
+    versionsContainer.appendChild(versionCard);
+  });
+}
+
+// Function to preview a version
+function previewVersion(versionId) {
+  const version = cssVersions.find(v => v.id === versionId);
+  if (!version) return;
+
+  // Apply this CSS to the page but don't change the editor
+  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+    chrome.tabs.sendMessage(tabs[0].id, {
+      action: 'applyCSS',
+      css: version.css
+    }, (response) => {
+      if (chrome.runtime.lastError || !response || !response.success) {
+        showStatus('Failed to preview CSS. Please try again.', 'error');
+        return;
+      }
+      showStatus(`Preview applied: ${version.description}`, 'success');
+    });
+  });
+}
+
+// Function to apply a version to the editor
+function applyVersion(versionId) {
+  const version = cssVersions.find(v => v.id === versionId);
+  if (!version) return;
+
+  // Use the global cssEditor reference
+  if (window.cssEditor) {
+    window.cssEditor.setValue(version.css);
+    window.cssEditor.refresh();
+    window.generatedCSS = version.css;
+
+    showStatus(`Restored version: ${version.description}`, 'success');
+  } else {
+    showStatus('Could not restore version: Editor not found', 'error');
+  }
 }
 
 // Function to generate CSS with Gemini directly from DOM structure and tailwind classes
@@ -547,6 +751,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Wait a moment to ensure DOM is fully loaded
   setTimeout(() => {
+    // Create CodeMirror with improved options to prevent display issues
     const cssEditor = CodeMirror.fromTextArea(cssTextarea, {
       mode: "text/css",
       theme: "dracula",
@@ -556,15 +761,28 @@ document.addEventListener('DOMContentLoaded', () => {
       matchBrackets: true,
       indentUnit: 2,
       tabSize: 2,
-      viewportMargin: Infinity
+      viewportMargin: Infinity,
+      inputStyle: 'contenteditable', // This might help with weird characters
+      specialChars: /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028\u2029\ufeff\ufff9-\ufffc]/g // Filter out special chars
     });
 
-    // Set initial content
+    // Set initial content - make sure it's clean
     cssEditor.setValue("/* CSS will appear here after generation */");
+
+    // Clean any existing content to remove weird characters
+    cssEditor.setValue(cssEditor.getValue().replace(/^[\u0000-\u001F\u007F-\u009F]+|[\u0000-\u001F\u007F-\u009F]+$/g, ""));
+
+    // Make cssEditor available for other functions
+    window.cssEditor = cssEditor;
 
     // Helper function to generate and apply CSS
     window.generateAndApplyCSS = async function(apiKey, prompt, currentCSS) {
       try {
+        // Save current CSS as a version before generating new one if it's not the initial placeholder
+        if (currentCSS && currentCSS !== "/* CSS will appear here after generation */") {
+          saveCSSVersion(currentCSS, `Before: ${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
+        }
+
         // Fetch the latest DOM data before generating CSS
         // This ensures we have the most up-to-date data if the user navigated to a different page
         // Get portal class tree
@@ -610,10 +828,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Generate CSS directly with the new approach
         const css = await generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindClassData, currentCSS);
 
-        // Display the generated CSS in CodeMirror
-        cssEditor.setValue(css);
+        // Display the generated CSS in CodeMirror - make sure it's clean
+        // Remove any unwanted characters that might appear in the generated CSS
+        const cleanedCss = css.replace(/^[\u0000-\u001F\u007F-\u009F]+|[\u0000-\u001F\u007F-\u009F]+$/g, "");
+        cssEditor.setValue(cleanedCss);
         cssEditor.refresh();
-        window.generatedCSS = css;
+        window.generatedCSS = cleanedCss;
+
+        // Save the new CSS as a version
+        saveCSSVersion(cleanedCss, `${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
 
         showStatus('CSS generated successfully!', 'success');
       } catch (error) {
@@ -627,7 +850,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add event listener for the Apply CSS button
     document.getElementById('apply-css-btn').addEventListener('click', () => {
       // Get CSS from CodeMirror editor
-      const css = cssEditor.getValue();
+      const css = window.cssEditor ? window.cssEditor.getValue() : null;
 
       if (!css || css === '/* CSS will appear here after generation */') {
         showStatus('No CSS to apply. Generate CSS first.', 'error');
@@ -687,6 +910,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (tabName === 'customize') {
           cssEditor.refresh();
         }
+
+        // Update versions tab when clicked
+        if (tabName === 'versions') {
+          updateVersionsTab();
+        }
       });
     });
 
@@ -727,8 +955,8 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('loading-spinner').style.display = 'inline-block';
 
       try {
-        // Get current CSS
-        const currentCSS = await getCurrentCSS();
+        // Get current CSS from editor to save as a version
+        const currentCSS = cssEditor.getValue();
 
         // Generate CSS with latest DOM data
         await window.generateAndApplyCSS(apiKey, prompt, currentCSS);
@@ -761,10 +989,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Load API key from storage
-  chrome.storage.local.get(['geminiApiKey'], (result) => {
+  // Load API key and CSS versions from storage
+  chrome.storage.local.get(['geminiApiKey', 'cssVersions'], (result) => {
     if (result.geminiApiKey) {
       document.getElementById('api-key').value = result.geminiApiKey;
+    }
+
+    if (result.cssVersions && Array.isArray(result.cssVersions)) {
+      cssVersions = result.cssVersions;
+
+      // Ensure all versions have numeric timestamps
+      cssVersions = cssVersions.map(version => {
+        // If timestamp is a string or a Date object, convert it to a number
+        if (typeof version.timestamp !== 'number') {
+          // Try to convert to number, if that fails use current time
+          const timestamp = new Date(version.timestamp).getTime();
+          return {
+            ...version,
+            timestamp: isNaN(timestamp) ? Date.now() : timestamp
+          };
+        }
+        return version;
+      });
+
+      // Save the fixed versions back to storage
+      chrome.storage.local.set({cssVersions});
+
+      // Initialize versions tab if it's the active tab
+      const activeTab = document.querySelector('.tab.active');
+      if (activeTab && activeTab.getAttribute('data-tab') === 'versions') {
+        updateVersionsTab();
+      }
     }
   });
 
@@ -780,4 +1035,18 @@ document.addEventListener('DOMContentLoaded', () => {
       showStatus('API key saved successfully!', 'success');
     });
   });
+
+  // Add toast animations to document head
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeOut {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(-20px); }
+    }
+  `;
+  document.head.appendChild(style);
 });
