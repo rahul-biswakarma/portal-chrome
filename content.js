@@ -1,3 +1,38 @@
+// Add safe messaging helper at the top of the file
+function safeSendMessage(message, callback) {
+  try {
+    // Check if Chrome runtime is available
+    if (typeof chrome === 'undefined' || !chrome.runtime) {
+      console.warn('Chrome runtime not available');
+      if (callback) callback({ success: false, error: 'Chrome runtime not available' });
+      return;
+    }
+
+    // First check if we can send a message by pinging the extension
+    chrome.runtime.sendMessage({ action: 'ping' }, function(response) {
+      // If there's an error (like context invalidated), catch it
+      if (chrome.runtime.lastError) {
+        console.warn('Extension context error:', chrome.runtime.lastError.message);
+        if (callback) callback({ success: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+
+      // If we got here, runtime is working, send the actual message
+      chrome.runtime.sendMessage(message, function(actualResponse) {
+        if (chrome.runtime.lastError) {
+          console.warn('Error sending message:', chrome.runtime.lastError.message);
+          if (callback) callback({ success: false, error: chrome.runtime.lastError.message });
+          return;
+        }
+        if (callback) callback(actualResponse);
+      });
+    });
+  } catch (error) {
+    console.error('Exception in safeSendMessage:', error);
+    if (callback) callback({ success: false, error: error.message });
+  }
+}
+
 // Function to traverse DOM and build portal class hierarchy
 function buildPortalClassTree(element) {
   let node = {
@@ -85,27 +120,80 @@ function getCurrentCSS() {
   return styleElement ? styleElement.textContent : '';
 }
 
-// Function to take a screenshot of the page
-async function captureScreenshot() {
+// Function to take a full page screenshot (not just the viewport)
+async function captureFullPageScreenshot() {
   try {
-    // Create a canvas element
+    // First try to use the background script method for best results
+    return new Promise((resolve, reject) => {
+      safeSendMessage({ action: 'captureFullPage' }, (response) => {
+        if (response && response.success && response.data) {
+          resolve(response.data);
+        } else {
+          // If background method fails, try html2canvas as fallback
+          performHtml2CanvasCapture().then(resolve).catch(reject);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error in captureFullPageScreenshot:', error);
+    return performHtml2CanvasCapture();
+  }
+}
+
+// Extract html2canvas capture logic to separate function for better organization
+async function performHtml2CanvasCapture() {
+  try {
+    // Get the full dimensions of the page
+    let fullHeight = Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+      document.body.offsetHeight,
+      document.documentElement.offsetHeight,
+      document.body.clientHeight,
+      document.documentElement.clientHeight
+    );
+
+    let fullWidth = Math.max(
+      document.body.scrollWidth,
+      document.documentElement.scrollWidth,
+      document.body.offsetWidth,
+      document.documentElement.offsetWidth,
+      document.body.clientWidth,
+      document.documentElement.clientWidth
+    );
+
+    // Create a canvas element in memory
     const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
+    canvas.width = fullWidth;
+    canvas.height = fullHeight;
+    const ctx = canvas.getContext('2d');
 
-    // Set canvas dimensions to viewport size
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    canvas.width = width;
-    canvas.height = height;
+    // Save current scroll position
+    const originalScrollTop = window.scrollY;
+    const originalScrollLeft = window.scrollX;
 
-    // Draw the current viewport to the canvas
-    context.drawWindow(window, 0, 0, width, height, 'rgb(255,255,255)');
+    // Configure html2canvas - use simpler settings for better reliability
+    const result = await html2canvas(document.documentElement, {
+      allowTaint: true,
+      useCORS: true,
+      logging: false,
+      width: fullWidth,
+      height: fullHeight,
+      x: 0,
+      y: 0,
+      scrollX: -window.scrollX,
+      scrollY: -window.scrollY,
+      scale: 1
+    });
+
+    // Restore original scroll position
+    window.scrollTo(originalScrollLeft, originalScrollTop);
 
     // Convert canvas to data URL
-    return canvas.toDataURL('image/jpeg', 0.7);
+    return result.toDataURL('image/jpeg', 0.85);
   } catch (error) {
-    console.error('Error capturing screenshot:', error);
-    return null;
+    console.error('HTML2Canvas capture error:', error);
+    throw error;
   }
 }
 
@@ -220,8 +308,8 @@ function setupHoverDetection() {
         .filter(className => /^portal-.*$/.test(className));
 
       if (portalClasses.length > 0) {
-        // Send message to popup
-        chrome.runtime.sendMessage({
+        // Send message to popup using safe method
+        safeSendMessage({
           action: 'hoverPortalElement',
           portalClasses: portalClasses
         });
@@ -230,7 +318,7 @@ function setupHoverDetection() {
 
     // Add mouse leave event
     element.addEventListener('mouseleave', () => {
-      chrome.runtime.sendMessage({
+      safeSendMessage({
         action: 'leavePortalElement'
       });
     });
@@ -285,8 +373,14 @@ observer.observe(document.body, {
   attributeFilter: ['class']
 });
 
-// Listen for messages from popup
+// Message listener - update with better error handling
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Add support for ping message (for connection checking)
+  if (request.action === 'ping') {
+    sendResponse({ success: true, message: 'content script connected' });
+    return;
+  }
+
   if (request.action === 'getPortalClassTree') {
     try {
       const tree = buildPortalClassTree(document.body);
@@ -295,6 +389,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         data: tree
       });
     } catch (error) {
+      console.error('Error getting portal class tree:', error);
       sendResponse({
         success: false,
         error: error.message
@@ -341,27 +436,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   } else if (request.action === 'captureScreenshot') {
     try {
-      // Use html2canvas as a fallback since drawWindow is Firefox-specific
-      if (typeof html2canvas !== 'undefined') {
-        html2canvas(document.body).then(canvas => {
-          const screenshot = canvas.toDataURL('image/jpeg', 0.7);
+      // Best-effort screenshot approach
+      captureFullPageScreenshot().then(screenshot => {
+        if (screenshot) {
           sendResponse({
             success: true,
             data: screenshot
           });
-        });
-        return true; // Keep the message channel open for async response
-      } else {
-        // Try using browser-specific screenshot APIs if available
-        chrome.tabs.captureVisibleTab(null, {format: 'jpeg', quality: 70}, dataUrl => {
+        } else {
+          // If we don't get a screenshot, return an error
           sendResponse({
-            success: true,
-            data: dataUrl
+            success: false,
+            error: 'Failed to capture screenshot with all methods'
           });
+        }
+      }).catch(error => {
+        console.error('Screenshot error:', error);
+        sendResponse({
+          success: false,
+          error: error.message
         });
-        return true; // Keep the message channel open for async response
-      }
+      });
+
+      return true; // Keep the message channel open for async response
     } catch (error) {
+      console.error('Error in screenshot handler:', error);
       sendResponse({
         success: false,
         error: error.message

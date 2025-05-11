@@ -7,11 +7,19 @@
     "activeTab",
     "scripting",
     "storage",
-    "sidePanel"
+    "sidePanel",
+    "tabs"
   ],
   "host_permissions": [
-    "https://*.googleapis.com/*"
+    "https://*.googleapis.com/*",
+    "https://*.devrev-eng.ai/*",
+    "https://*.devrev.ai/*",
+    "<all_urls>"
   ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "side_panel": {
     "default_path": "popup.html"
   },
@@ -23,12 +31,19 @@
       "js": [
         "html2canvas.min.js",
         "content.js"
-      ]
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [
     {
       "resources": [
+        "libraries/monaco-editor/*",
+        "libraries/monaco-editor/min/vs/*",
+        "libraries/monaco-editor/min/vs/editor/*",
+        "libraries/monaco-editor/min/vs/language/css/*",
+        "libraries/monaco-editor/min/vs/base/worker/*",
         "libraries/codemirror/*"
       ],
       "matches": ["<all_urls>"]

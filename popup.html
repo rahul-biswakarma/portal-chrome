@@ -2,9 +2,8 @@
 <html>
 <head>
   <title>Portal Design Customizer</title>
-  <!-- CodeMirror CSS -->
-  <link rel="stylesheet" href="libraries/codemirror/codemirror.min.css">
-  <link rel="stylesheet" href="libraries/codemirror/dracula.min.css">
+  <!-- Monaco Editor CSS -->
+  <link rel="stylesheet" href="libraries/monaco-editor/min/vs/editor/editor.main.css">
   <style>
     body {
       width: 100%;
@@ -99,14 +98,12 @@
       flex-direction: column;
       height: 300px;
     }
-    /* CodeMirror custom styles */
-    .CodeMirror {
-      height: 100% !important;
-      width: 100% !important;
-      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
-      font-size: 14px;
-      line-height: 1.5;
+    /* Monaco Editor container */
+    #monaco-editor-container {
+      height: 100%;
+      width: 100%;
       border-radius: 4px;
+      overflow: hidden;
     }
     .tab-container {
       display: flex;
@@ -364,6 +361,23 @@
       padding: 20px;
       color: #666;
     }
+
+    /* Format CSS button */
+    #format-css-btn {
+      margin-top: 5px;
+      padding: 6px 12px;
+      background-color: #f8f9fa;
+      color: #333;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      align-self: flex-end;
+    }
+
+    #format-css-btn:hover {
+      background-color: #e9ecef;
+    }
   </style>
 </head>
 <body>
@@ -383,7 +397,8 @@
       <button id="generate-btn">Generate CSS with AI <span id="loading-spinner" class="loading" style="display: none;"></span></button>
     </div>
     <div id="css-output">
-      <textarea id="css-code">/* CSS will appear here after generation */</textarea>
+      <div id="monaco-editor-container"></div>
+      <button id="format-css-btn">Format CSS</button>
     </div>
     <button id="apply-css-btn">Apply CSS to Page</button>
     <div id="status-message"></div>
@@ -412,11 +427,8 @@
     </div>
   </div>
 
-  <!-- CodeMirror JS -->
-  <script src="libraries/codemirror/codemirror.min.js"></script>
-  <script src="libraries/codemirror/css.min.js"></script>
-  <script src="libraries/codemirror/closebrackets.min.js"></script>
-  <script src="libraries/codemirror/matchbrackets.min.js"></script>
+  <!-- Monaco Editor JS -->
+  <script src="libraries/monaco-editor/monaco-setup.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

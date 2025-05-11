@@ -26,6 +26,90 @@ function createTreeNode(node, level = 0, isLast = true) {
   return text;
 }
 
+// Function to clean text of problematic characters and format CSS
+function cleanText(text) {
+  if (!text) return '';
+
+  // Remove non-breaking space and other problematic characters
+  let cleaned = text.replace(/\u00A0/g, ' ')  // Replace non-breaking spaces
+              .replace(/\u00C2/g, '')         // Remove the Â character
+              .replace(/[\u0000-\u001F\u007F-\u009F\u00AD\u0600-\u0604\u070F\u17B4\u17B5\u200C-\u200F\u2028-\u202F\u2060-\u206F\uFEFF\uFFF0-\uFFFF]/g, '');
+
+  return cleaned;
+}
+
+// Function to format CSS text with proper indentation
+function formatCSS(css) {
+  if (!css) return '';
+
+  // First clean the text
+  let cleanedCss = cleanText(css);
+
+  // Basic CSS formatter
+  let formatted = '';
+  let indentLevel = 0;
+  let inComment = false;
+  let inSelector = false;
+
+  // Split by characters to process one by one
+  const chars = cleanedCss.split('');
+
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+    const nextChar = i < chars.length - 1 ? chars[i+1] : '';
+
+    // Handle comments
+    if (char === '/' && nextChar === '*') {
+      inComment = true;
+      formatted += '/*';
+      i++; // Skip the next character
+      continue;
+    }
+
+    if (inComment && char === '*' && nextChar === '/') {
+      inComment = false;
+      formatted += '*/';
+      i++; // Skip the next character
+      continue;
+    }
+
+    if (inComment) {
+      formatted += char;
+      continue;
+    }
+
+    // Handle braces and formatting
+    if (char === '{') {
+      inSelector = false;
+      formatted += ' {\n';
+      indentLevel++;
+      formatted += '  '.repeat(indentLevel);
+    } else if (char === '}') {
+      indentLevel--;
+      formatted = formatted.trimEnd() + '\n';
+      formatted += '  '.repeat(indentLevel) + '}';
+      formatted += '\n\n';
+      formatted += '  '.repeat(indentLevel);
+    } else if (char === ';') {
+      formatted += ';\n' + '  '.repeat(indentLevel);
+    } else if (char === '\n') {
+      if (inSelector) {
+        formatted += ' ';
+      } else {
+        formatted += '\n' + '  '.repeat(indentLevel);
+      }
+    } else {
+      // Start of a new selector
+      if (!inSelector && indentLevel === 0 && char !== ' ' && char !== '\t') {
+        inSelector = true;
+      }
+      formatted += char;
+    }
+  }
+
+  return formatted.trim();
+}
+
 // Function to extract all portal classes from the tree
 function extractPortalClasses(node) {
   let classes = [...node.portalClasses];
@@ -207,8 +291,9 @@ function updateVersionsTab() {
     // Add a small preview of the CSS
     const cssPreview = document.createElement('div');
     cssPreview.className = 'css-preview';
-    // Show first 100 characters of the CSS
-    cssPreview.textContent = version.css.substring(0, 100) + (version.css.length > 100 ? '...' : '');
+    // Show first 100 characters of the CSS - clean first to remove any weird characters
+    const cleanedPreview = cleanText(version.css);
+    cssPreview.textContent = cleanedPreview.substring(0, 100) + (cleanedPreview.length > 100 ? '...' : '');
     versionCard.appendChild(cssPreview);
 
     versionsContainer.appendChild(versionCard);
@@ -217,38 +302,140 @@ function updateVersionsTab() {
 
 // Function to preview a version
 function previewVersion(versionId) {
-  const version = cssVersions.find(v => v.id === versionId);
-  if (!version) return;
+  chrome.storage.local.get('cssVersions', (result) => {
+    const versions = result.cssVersions || [];
+    const version = versions.find(v => v.id === versionId);
 
-  // Apply this CSS to the page but don't change the editor
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    chrome.tabs.sendMessage(tabs[0].id, {
-      action: 'applyCSS',
-      css: version.css
-    }, (response) => {
-      if (chrome.runtime.lastError || !response || !response.success) {
-        showStatus('Failed to preview CSS. Please try again.', 'error');
-        return;
+    if (!version) return;
+
+    // Create a modal to show the CSS
+    const modal = document.createElement('div');
+    modal.className = 'css-preview-modal';
+
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+
+    const modalHeader = document.createElement('div');
+    modalHeader.className = 'modal-header';
+    modalHeader.innerHTML = `
+      <span>${version.description || 'CSS Version'} - ${new Date(version.timestamp).toLocaleString()}</span>
+      <span class="close-btn">&times;</span>
+    `;
+
+    const cssContent = document.createElement('div');
+    cssContent.className = 'css-content';
+    cssContent.textContent = version.css;
+
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'apply-preview-btn';
+    applyBtn.textContent = 'Apply this CSS';
+    applyBtn.addEventListener('click', () => {
+      applyVersion(versionId);
+      modal.remove();
+    });
+
+    modalContent.appendChild(modalHeader);
+    modalContent.appendChild(cssContent);
+    modalContent.appendChild(applyBtn);
+    modal.appendChild(modalContent);
+
+    document.body.appendChild(modal);
+
+    // Close modal when clicking the close button
+    modalContent.querySelector('.close-btn').addEventListener('click', () => {
+      modal.remove();
+    });
+
+    // Close modal when clicking outside the content
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
       }
-      showStatus(`Preview applied: ${version.description}`, 'success');
     });
   });
 }
 
 // Function to apply a version to the editor
 function applyVersion(versionId) {
-  const version = cssVersions.find(v => v.id === versionId);
-  if (!version) return;
+  chrome.storage.local.get('cssVersions', (result) => {
+    const versions = result.cssVersions || [];
+    const version = versions.find(v => v.id === versionId);
 
-  // Use the global cssEditor reference
-  if (window.cssEditor) {
+    if (!version) return;
+
+    // Set the CSS in Monaco editor
     window.cssEditor.setValue(version.css);
-    window.cssEditor.refresh();
-    window.generatedCSS = version.css;
 
-    showStatus(`Restored version: ${version.description}`, 'success');
-  } else {
-    showStatus('Could not restore version: Editor not found', 'error');
+    // Also apply the CSS to the page
+    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: 'applyCSS',
+        css: version.css
+      }, (response) => {
+        if (chrome.runtime.lastError || !response || !response.success) {
+          showStatus('Failed to apply CSS version. Please try again.', 'error');
+          return;
+        }
+        showStatus('CSS version applied successfully!', 'success');
+      });
+    });
+  });
+}
+
+// Add safe messaging function to handle extension context errors
+function safeSendMessage(tabId, message, callback) {
+  try {
+    // Verify Chrome APIs are available
+    if (!chrome || !chrome.tabs || !chrome.runtime) {
+      console.error('Chrome APIs not available');
+      if (callback) callback({ success: false, error: 'Chrome APIs not available' });
+      return;
+    }
+
+    // Try to send the message, with error handling
+    chrome.tabs.sendMessage(tabId, message, (response) => {
+      // Check for runtime errors (like extension context invalidated)
+      if (chrome.runtime.lastError) {
+        console.warn('Chrome runtime error:', chrome.runtime.lastError.message);
+
+        // Special handling for common errors
+        if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+          console.warn('Extension context was invalidated. Attempting recovery...');
+
+          // Show a user-friendly error and advice
+          showStatus('Connection to page was lost. Try refreshing the page.', 'error');
+
+          // Attempt to recover basic functionality
+          if (callback) callback({
+            success: false,
+            error: 'Extension context invalidated',
+            recoverable: false
+          });
+          return;
+        }
+
+        // Handle other errors
+        if (callback) callback({
+          success: false,
+          error: chrome.runtime.lastError.message,
+          recoverable: true
+        });
+        return;
+      }
+
+      // Handle empty or undefined response
+      if (!response) {
+        console.warn('Empty response from content script');
+        if (callback) callback({ success: false, error: 'No response from page' });
+        return;
+      }
+
+      // Success - return the response
+      if (callback) callback(response);
+    });
+  } catch (error) {
+    console.error('Error sending message:', error);
+    if (callback) callback({ success: false, error: error.message });
   }
 }
 
@@ -277,26 +464,40 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
 
   // Get the screenshot if possible
   let screenshot = null;
+  showStatus('Capturing page screenshot... This may take a moment.', 'info');
+
   try {
-    const tabResponse = await new Promise((resolve) => {
+    const tabResponse = await new Promise((resolve, reject) => {
       chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        chrome.tabs.sendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
+        if (!tabs || !tabs[0]) {
+          reject(new Error('No active tab found'));
+          return;
+        }
+
+        // Use our safe messaging function
+        safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
+          if (!response || !response.success) {
+            const errorMsg = response && response.error ? response.error : 'Unknown error';
+            reject(new Error(errorMsg));
+            return;
+          }
           resolve(response);
         });
       });
     });
 
-    if (tabResponse && tabResponse.success) {
+    if (tabResponse && tabResponse.success && tabResponse.data) {
       screenshot = tabResponse.data;
-
-      // Save screenshot locally
-      const link = document.createElement('a');
-      link.href = screenshot;
-      link.download = 'portal_screenshot_' + new Date().toISOString().replace(/:/g, '-') + '.jpg';
-      link.click();
+      showStatus('Screenshot captured successfully!', 'success');
     }
   } catch (error) {
     console.warn('Could not capture screenshot:', error);
+    showStatus('Could not capture full page with styling. Using simplified data.', 'error');
+  }
+
+  // Show a new status before uploading
+  if (screenshot) {
+    showStatus('Preparing screenshot for AI analysis...', 'info');
   }
 
   // Prepare for file upload if we have a screenshot
@@ -318,7 +519,7 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
         byteArrays.push(byteArray);
       }
 
-      const blob = new Blob(byteArrays, {type: 'image/jpeg'});
+      const blob = new Blob(byteArrays, {type: 'image/png'});
 
       // Get upload URL
       const uploadUrlResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
@@ -327,7 +528,7 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
           'X-Goog-Upload-Protocol': 'resumable',
           'X-Goog-Upload-Command': 'start',
           'X-Goog-Upload-Header-Content-Length': blob.size.toString(),
-          'X-Goog-Upload-Header-Content-Type': 'image/jpeg',
+          'X-Goog-Upload-Header-Content-Type': 'image/png',
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -345,6 +546,7 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
       }
 
       // Upload the file
+      showStatus('Uploading screenshot to AI...', 'info');
       const uploadResponse = await fetch(uploadUrl, {
         method: 'POST',
         headers: {
@@ -361,10 +563,15 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
 
       const fileInfo = await uploadResponse.json();
       fileUri = fileInfo.file.uri;
+      showStatus('Screenshot uploaded successfully!', 'success');
     } catch (error) {
       console.error('Error uploading screenshot:', error);
+      showStatus('Error uploading screenshot. Proceeding without it.', 'error');
     }
   }
+
+  // Show a status before generating CSS
+  showStatus('Generating CSS based on your request...', 'info');
 
   // Simplify the tailwind data to only show essential information
   const simplifiedTailwindData = {};
@@ -384,7 +591,7 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
           // Add the image if we have a file URI
           ...(fileUri ? [{
             file_data: {
-              mime_type: "image/jpeg",
+              mime_type: "image/png",
               file_uri: fileUri
             }
           }] : []),
@@ -443,7 +650,8 @@ Start with a comment block explaining the overall approach.`
                      cssText.match(/```\n([\s\S]*?)\n```/) ||
                      { 1: cssText }; // If no code block, use the entire text
 
-    return cssMatch[1] || cssMatch[0];
+    // Clean and format the CSS
+    return formatCSS(cssMatch[1] || cssMatch[0]);
   } catch (error) {
     console.error('Error calling Gemini API for CSS generation:', error);
     throw error;
@@ -746,38 +954,30 @@ async function loadTreeData() {
 
 // When popup is opened, request portal class tree from content script
 document.addEventListener('DOMContentLoaded', () => {
-  // Initialize CodeMirror editor for CSS
-  const cssTextarea = document.getElementById('css-code');
+  // Initialize Monaco editor for CSS
+  let monacoEditor;
 
   // Wait a moment to ensure DOM is fully loaded
-  setTimeout(() => {
-    // Create CodeMirror with improved options to prevent display issues
-    const cssEditor = CodeMirror.fromTextArea(cssTextarea, {
-      mode: "text/css",
-      theme: "dracula",
-      lineNumbers: true,
-      lineWrapping: true,
-      autoCloseBrackets: true,
-      matchBrackets: true,
-      indentUnit: 2,
-      tabSize: 2,
-      viewportMargin: Infinity,
-      inputStyle: 'contenteditable', // This might help with weird characters
-      specialChars: /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028\u2029\ufeff\ufff9-\ufffc]/g // Filter out special chars
+  setTimeout(async () => {
+    // Create Monaco editor
+    monacoEditor = await initMonacoEditor('monaco-editor-container', '/* CSS will appear here after generation */', 'css');
+
+    // Make monacoEditor available for other functions
+    window.cssEditor = monacoEditor;
+
+    // Add event listener for the Format CSS button
+    document.getElementById('format-css-btn').addEventListener('click', () => {
+      monacoEditor.formatDocument();
     });
-
-    // Set initial content - make sure it's clean
-    cssEditor.setValue("/* CSS will appear here after generation */");
-
-    // Clean any existing content to remove weird characters
-    cssEditor.setValue(cssEditor.getValue().replace(/^[\u0000-\u001F\u007F-\u009F]+|[\u0000-\u001F\u007F-\u009F]+$/g, ""));
-
-    // Make cssEditor available for other functions
-    window.cssEditor = cssEditor;
 
     // Helper function to generate and apply CSS
     window.generateAndApplyCSS = async function(apiKey, prompt, currentCSS) {
       try {
+        // Clean current CSS before saving as a version
+        if (currentCSS) {
+          currentCSS = cleanText(currentCSS);
+        }
+
         // Save current CSS as a version before generating new one if it's not the initial placeholder
         if (currentCSS && currentCSS !== "/* CSS will appear here after generation */") {
           saveCSSVersion(currentCSS, `Before: ${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
@@ -828,11 +1028,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Generate CSS directly with the new approach
         const css = await generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindClassData, currentCSS);
 
-        // Display the generated CSS in CodeMirror - make sure it's clean
+        // Display the generated CSS in Monaco Editor - make sure it's clean
         // Remove any unwanted characters that might appear in the generated CSS
-        const cleanedCss = css.replace(/^[\u0000-\u001F\u007F-\u009F]+|[\u0000-\u001F\u007F-\u009F]+$/g, "");
-        cssEditor.setValue(cleanedCss);
-        cssEditor.refresh();
+        const cleanedCss = cleanText(css);
+        monacoEditor.setValue(cleanedCss);
         window.generatedCSS = cleanedCss;
 
         // Save the new CSS as a version
@@ -849,7 +1048,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add event listener for the Apply CSS button
     document.getElementById('apply-css-btn').addEventListener('click', () => {
-      // Get CSS from CodeMirror editor
+      // Get CSS from Monaco editor
       const css = window.cssEditor ? window.cssEditor.getValue() : null;
 
       if (!css || css === '/* CSS will appear here after generation */') {
@@ -857,10 +1056,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      // Clean the CSS before applying
+      const cleanedCss = cleanText(css);
+
       chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
         chrome.tabs.sendMessage(tabs[0].id, {
           action: 'applyCSS',
-          css: css
+          css: cleanedCss
         }, (response) => {
           if (chrome.runtime.lastError || !response || !response.success) {
             showStatus('Failed to apply CSS. Please try again.', 'error');
@@ -906,9 +1108,12 @@ document.addEventListener('DOMContentLoaded', () => {
           loadTreeData();
         }
 
-        // Refresh CodeMirror when customize tab is displayed
-        if (tabName === 'customize') {
-          cssEditor.refresh();
+        // Refresh Monaco editor when customize tab is displayed
+        if (tabName === 'customize' && monacoEditor) {
+          // Give Monaco editor a moment to adjust to the new size
+          setTimeout(() => {
+            monacoEditor.layout();
+          }, 10);
         }
 
         // Update versions tab when clicked
@@ -956,7 +1161,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         // Get current CSS from editor to save as a version
-        const currentCSS = cssEditor.getValue();
+        const currentCSS = monacoEditor.getValue();
 
         // Generate CSS with latest DOM data
         await window.generateAndApplyCSS(apiKey, prompt, currentCSS);
@@ -966,6 +1171,21 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('loading-spinner').style.display = 'none';
       }
     });
+
+    // Add a format CSS button to the UI
+    const formatButton = document.createElement('button');
+    formatButton.id = 'format-css-btn';
+    formatButton.className = 'action-btn';
+    formatButton.textContent = 'Format CSS';
+    formatButton.addEventListener('click', () => {
+      monacoEditor.formatDocument();
+    });
+
+    // Add button after the apply CSS button
+    const applyButton = document.getElementById('apply-css-btn');
+    if (applyButton && applyButton.parentNode) {
+      applyButton.parentNode.insertBefore(formatButton, applyButton.nextSibling);
+    }
 
   }, 100); // Small delay to ensure DOM is ready
 
