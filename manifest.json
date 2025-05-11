@@ -43,8 +43,7 @@
         "libraries/monaco-editor/min/vs/*",
         "libraries/monaco-editor/min/vs/editor/*",
         "libraries/monaco-editor/min/vs/language/css/*",
-        "libraries/monaco-editor/min/vs/base/worker/*",
-        "libraries/codemirror/*"
+        "libraries/monaco-editor/min/vs/base/worker/*"
       ],
       "matches": ["<all_urls>"]
     }

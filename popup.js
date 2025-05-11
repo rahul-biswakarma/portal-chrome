@@ -26,88 +26,16 @@ function createTreeNode(node, level = 0, isLast = true) {
   return text;
 }
 
-// Function to clean text of problematic characters and format CSS
+// Function to clean text of problematic characters
 function cleanText(text) {
   if (!text) return '';
-
-  // Remove non-breaking space and other problematic characters
-  let cleaned = text.replace(/\u00A0/g, ' ')  // Replace non-breaking spaces
-              .replace(/\u00C2/g, '')         // Remove the Â character
-              .replace(/[\u0000-\u001F\u007F-\u009F\u00AD\u0600-\u0604\u070F\u17B4\u17B5\u200C-\u200F\u2028-\u202F\u2060-\u206F\uFEFF\uFFF0-\uFFFF]/g, '');
-
-  return cleaned;
+  return text;
 }
 
-// Function to format CSS text with proper indentation
+// Function to format CSS text (simplified)
 function formatCSS(css) {
   if (!css) return '';
-
-  // First clean the text
-  let cleanedCss = cleanText(css);
-
-  // Basic CSS formatter
-  let formatted = '';
-  let indentLevel = 0;
-  let inComment = false;
-  let inSelector = false;
-
-  // Split by characters to process one by one
-  const chars = cleanedCss.split('');
-
-  for (let i = 0; i < chars.length; i++) {
-    const char = chars[i];
-    const nextChar = i < chars.length - 1 ? chars[i+1] : '';
-
-    // Handle comments
-    if (char === '/' && nextChar === '*') {
-      inComment = true;
-      formatted += '/*';
-      i++; // Skip the next character
-      continue;
-    }
-
-    if (inComment && char === '*' && nextChar === '/') {
-      inComment = false;
-      formatted += '*/';
-      i++; // Skip the next character
-      continue;
-    }
-
-    if (inComment) {
-      formatted += char;
-      continue;
-    }
-
-    // Handle braces and formatting
-    if (char === '{') {
-      inSelector = false;
-      formatted += ' {\n';
-      indentLevel++;
-      formatted += '  '.repeat(indentLevel);
-    } else if (char === '}') {
-      indentLevel--;
-      formatted = formatted.trimEnd() + '\n';
-      formatted += '  '.repeat(indentLevel) + '}';
-      formatted += '\n\n';
-      formatted += '  '.repeat(indentLevel);
-    } else if (char === ';') {
-      formatted += ';\n' + '  '.repeat(indentLevel);
-    } else if (char === '\n') {
-      if (inSelector) {
-        formatted += ' ';
-      } else {
-        formatted += '\n' + '  '.repeat(indentLevel);
-      }
-    } else {
-      // Start of a new selector
-      if (!inSelector && indentLevel === 0 && char !== ' ' && char !== '\t') {
-        inSelector = true;
-      }
-      formatted += char;
-    }
-  }
-
-  return formatted.trim();
+  return css;
 }
 
 // Function to extract all portal classes from the tree
@@ -383,64 +311,93 @@ function applyVersion(versionId) {
 }
 
 // Add safe messaging function to handle extension context errors
-function safeSendMessage(tabId, message, callback) {
-  try {
-    // Verify Chrome APIs are available
-    if (!chrome || !chrome.tabs || !chrome.runtime) {
-      console.error('Chrome APIs not available');
-      if (callback) callback({ success: false, error: 'Chrome APIs not available' });
-      return;
-    }
+function safeSendMessage(tabId, message, callback, timeout = 30000) {
+  return new Promise((resolve) => {
+    let timeoutId = null;
+    let hasResponded = false;
 
-    // Try to send the message, with error handling
-    chrome.tabs.sendMessage(tabId, message, (response) => {
-      // Check for runtime errors (like extension context invalidated)
-      if (chrome.runtime.lastError) {
-        console.warn('Chrome runtime error:', chrome.runtime.lastError.message);
+    // Create a wrapper for the callback that ensures we only call it once
+    const safeCallback = (response) => {
+      if (hasResponded) return;
+      hasResponded = true;
 
-        // Special handling for common errors
-        if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
-          console.warn('Extension context was invalidated. Attempting recovery...');
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
 
-          // Show a user-friendly error and advice
-          showStatus('Connection to page was lost. Try refreshing the page.', 'error');
+      if (callback) callback(response);
+      resolve(response);
+    };
 
-          // Attempt to recover basic functionality
-          if (callback) callback({
+    try {
+      // Verify Chrome APIs are available
+      if (!chrome || !chrome.tabs || !chrome.runtime) {
+        console.error('Chrome APIs not available');
+        safeCallback({ success: false, error: 'Chrome APIs not available' });
+        return;
+      }
+
+      // Set timeout to handle cases where a response might never come
+      if (timeout > 0) {
+        timeoutId = setTimeout(() => {
+          console.warn('Message timed out after', timeout, 'ms');
+          safeCallback({ success: false, error: 'Message sending timed out' });
+        }, timeout);
+      }
+
+      // Try to send the message, with error handling
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        // Check for runtime errors (like extension context invalidated)
+        if (chrome.runtime.lastError) {
+          console.warn('Chrome runtime error:', chrome.runtime.lastError.message);
+
+          // Special handling for common errors
+          if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            console.warn('Extension context was invalidated. Attempting recovery...');
+
+            // Show a user-friendly error and advice
+            showStatus('Connection to page was lost. Try refreshing the page.', 'error');
+
+            // Attempt to recover basic functionality
+            safeCallback({
+              success: false,
+              error: 'Extension context invalidated',
+              recoverable: false
+            });
+            return;
+          }
+
+          // Handle other errors
+          safeCallback({
             success: false,
-            error: 'Extension context invalidated',
-            recoverable: false
+            error: chrome.runtime.lastError.message,
+            recoverable: true
           });
           return;
         }
 
-        // Handle other errors
-        if (callback) callback({
-          success: false,
-          error: chrome.runtime.lastError.message,
-          recoverable: true
-        });
-        return;
-      }
+        // Handle empty or undefined response
+        if (!response) {
+          console.warn('Empty response from content script');
+          safeCallback({ success: false, error: 'No response from page' });
+          return;
+        }
 
-      // Handle empty or undefined response
-      if (!response) {
-        console.warn('Empty response from content script');
-        if (callback) callback({ success: false, error: 'No response from page' });
-        return;
-      }
-
-      // Success - return the response
-      if (callback) callback(response);
-    });
-  } catch (error) {
-    console.error('Error sending message:', error);
-    if (callback) callback({ success: false, error: error.message });
-  }
+        // Success - return the response
+        safeCallback(response);
+      });
+    } catch (error) {
+      console.error('Error sending message:', error);
+      safeCallback({ success: false, error: error.message });
+    }
+  });
 }
 
 // Function to generate CSS with Gemini directly from DOM structure and tailwind classes
-async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS = "") {
+async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS = "", retryCount = 0) {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 2000; // 2 seconds
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
   // Create a simplified version of the tree for the LLM
@@ -474,8 +431,13 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
           return;
         }
 
-        // Use our safe messaging function
+        // Use our safe messaging function with a timeout
+        let messageTimeout = setTimeout(() => {
+          reject(new Error('Screenshot capture timed out'));
+        }, 10000); // 10 seconds timeout
+
         safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
+          clearTimeout(messageTimeout);
           if (!response || !response.success) {
             const errorMsg = response && response.error ? response.error : 'Unknown error';
             reject(new Error(errorMsg));
@@ -492,7 +454,7 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
     }
   } catch (error) {
     console.warn('Could not capture screenshot:', error);
-    showStatus('Could not capture full page with styling. Using simplified data.', 'error');
+    showStatus('Could not capture full page with styling. Using simplified data.', 'info');
   }
 
   // Show a new status before uploading
@@ -566,7 +528,7 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
       showStatus('Screenshot uploaded successfully!', 'success');
     } catch (error) {
       console.error('Error uploading screenshot:', error);
-      showStatus('Error uploading screenshot. Proceeding without it.', 'error');
+      showStatus('Error uploading screenshot. Proceeding without it.', 'info');
     }
   }
 
@@ -583,13 +545,13 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
     });
   }
 
-  // Prepare the payload
+  // Prepare the payload with reduced size if needed for retry
   const payload = {
     contents: [
       {
         parts: [
-          // Add the image if we have a file URI
-          ...(fileUri ? [{
+          // Add the image if we have a file URI (only for first attempt)
+          ...(fileUri && retryCount === 0 ? [{
             file_data: {
               mime_type: "image/png",
               file_uri: fileUri
@@ -601,7 +563,7 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
 USER PROMPT: "${prompt}"
 
 DOM STRUCTURE (focusing on classes matching pattern ^portal-.*$):
-${JSON.stringify(simplifiedTree, null, 2)}
+${retryCount === 0 ? JSON.stringify(simplifiedTree, null, 2) : JSON.stringify(simplifiedTree)}
 
 CURRENT CSS FILE:
 ${currentCSS}
@@ -639,10 +601,27 @@ Start with a comment block explaining the overall approach.`
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(`API Error: ${errorData.error?.message || response.statusText || 'Unknown error'}`);
+      const errorMessage = errorData.error?.message || response.statusText || 'Unknown error';
+
+      // Check for "model is overloaded" error and retry
+      if ((errorMessage.includes('overloaded') || errorMessage.includes('rate limit')) && retryCount < MAX_RETRIES) {
+        showStatus(`API busy (attempt ${retryCount + 1}/${MAX_RETRIES + 1}). Retrying in ${RETRY_DELAY/1000} seconds...`, 'info');
+
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+
+        // Retry with simplified payload
+        return generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS, retryCount + 1);
+      }
+
+      throw new Error(`API Error: ${errorMessage}`);
     }
 
     const data = await response.json();
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+      throw new Error('Invalid response format from API');
+    }
+
     const cssText = data.candidates[0].content.parts[0].text;
 
     // Extract the CSS part from the response
@@ -650,50 +629,73 @@ Start with a comment block explaining the overall approach.`
                      cssText.match(/```\n([\s\S]*?)\n```/) ||
                      { 1: cssText }; // If no code block, use the entire text
 
-    // Clean and format the CSS
-    return formatCSS(cssMatch[1] || cssMatch[0]);
+    // Just return the CSS without formatting
+    return cssMatch[1] || cssMatch[0];
   } catch (error) {
     console.error('Error calling Gemini API for CSS generation:', error);
+
+    // Retry logic for network errors
+    if (retryCount < MAX_RETRIES && !(error.message.includes('API Error'))) {
+      showStatus(`Network error (attempt ${retryCount + 1}/${MAX_RETRIES + 1}). Retrying...`, 'info');
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      return generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS, retryCount + 1);
+    }
+
     throw error;
   }
 }
 
 // Function to collect tailwind classes for each portal element
 async function collectTailwindClasses() {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-      chrome.tabs.sendMessage(tabs[0].id, {action: 'getTailwindClasses'}, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
+  try {
+    const tabs = await new Promise((resolve, reject) => {
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        if (!tabs || !tabs.length === 0) {
+          reject(new Error('No active tab found'));
           return;
         }
-        if (!response || !response.success) {
-          reject(new Error('Failed to collect tailwind classes'));
-          return;
-        }
-        resolve(response.data);
+        resolve(tabs);
       });
     });
-  });
+
+    const response = await safeSendMessage(tabs[0].id, {action: 'getTailwindClasses'});
+
+    if (!response || !response.success) {
+      throw new Error('Failed to collect tailwind classes');
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error('Error collecting tailwind classes:', error);
+    // Return empty object as fallback
+    return {};
+  }
 }
 
 // Function to get current CSS from the page
 async function getCurrentCSS() {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-      chrome.tabs.sendMessage(tabs[0].id, {action: 'getCurrentCSS'}, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
+  try {
+    const tabs = await new Promise((resolve, reject) => {
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        if (!tabs || !tabs.length === 0) {
+          reject(new Error('No active tab found'));
           return;
         }
-        if (!response || !response.success) {
-          reject(new Error('Failed to get current CSS'));
-          return;
-        }
-        resolve(response.data || "");
+        resolve(tabs);
       });
     });
-  });
+
+    const response = await safeSendMessage(tabs[0].id, {action: 'getCurrentCSS'});
+
+    if (!response || !response.success) {
+      throw new Error('Failed to get current CSS');
+    }
+
+    return response.data || "";
+  } catch (error) {
+    console.error('Error getting current CSS:', error);
+    return "";
+  }
 }
 
 // Function to highlight tree nodes with specific classes
@@ -850,9 +852,18 @@ function createTreeNodeHTML(node, level = 0, isLast = true, parentLineIndices = 
 // Function to send message to content script to scroll element into view
 function scrollElementIntoView(className) {
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    chrome.tabs.sendMessage(tabs[0].id, {
+    if (!tabs || !tabs[0]) {
+      console.error('No active tab found');
+      return;
+    }
+
+    safeSendMessage(tabs[0].id, {
       action: 'scrollElementIntoView',
       className: className
+    }, (response) => {
+      if (!response || !response.success) {
+        console.warn('Failed to scroll element into view:', response?.error || 'unknown error');
+      }
     });
   });
 }
@@ -860,9 +871,18 @@ function scrollElementIntoView(className) {
 // Function to send message to content script to highlight elements with a class
 function highlightElementsWithClass(className) {
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    chrome.tabs.sendMessage(tabs[0].id, {
+    if (!tabs || !tabs[0]) {
+      console.error('No active tab found');
+      return;
+    }
+
+    safeSendMessage(tabs[0].id, {
       action: 'highlightElements',
       className: className
+    }, (response) => {
+      if (!response || !response.success) {
+        console.warn('Failed to highlight elements:', response?.error || 'unknown error');
+      }
     });
   });
 }
@@ -870,8 +890,17 @@ function highlightElementsWithClass(className) {
 // Function to send message to content script to remove highlights
 function removeHighlight() {
   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    chrome.tabs.sendMessage(tabs[0].id, {
+    if (!tabs || !tabs[0]) {
+      console.error('No active tab found');
+      return;
+    }
+
+    safeSendMessage(tabs[0].id, {
       action: 'removeHighlight'
+    }, (response) => {
+      if (!response || !response.success) {
+        console.warn('Failed to remove highlights:', response?.error || 'unknown error');
+      }
     });
   });
 }
@@ -883,57 +912,55 @@ async function loadTreeData() {
   treeContainer.innerHTML = '<div style="text-align: center; padding: 20px;">Loading class hierarchy...</div>';
 
   try {
-    // Get portal class tree
-    const response = await new Promise((resolve, reject) => {
+    // Get active tab
+    const tabs = await new Promise((resolve, reject) => {
       chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        if (!tabs[0]) {
+        if (!tabs || !tabs[0]) {
           reject(new Error('Unable to access the current tab.'));
           return;
         }
-        chrome.tabs.sendMessage(tabs[0].id, {action: 'getPortalClassTree'}, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error('Could not establish connection with the page. Please refresh and try again.'));
-            return;
-          }
-          if (!response) {
-            reject(new Error('No response received from the page.'));
-            return;
-          }
-          if (!response.success) {
-            reject(new Error(response.error || 'Unknown error occurred'));
-            return;
-          }
-          resolve(response);
-        });
+        resolve(tabs);
       });
     });
+
+    // Get portal class tree with timeout handling
+    const response = await safeSendMessage(tabs[0].id, {action: 'getPortalClassTree'}, null, 15000);
+
+    if (!response || !response.success) {
+      throw new Error(response.error || 'Failed to get portal class data');
+    }
 
     if (response.data) {
       portalClassTree = response.data;
 
-      // Get tailwind classes
-      tailwindClassData = await collectTailwindClasses();
+      try {
+        // Get tailwind classes
+        tailwindClassData = await collectTailwindClasses();
 
-      // Attach tailwind classes to the portal class tree
-      const attachTailwindClasses = (node) => {
-        if (node.portalClasses && node.portalClasses.length > 0) {
-          // Find matching tailwind data for this node
-          const tailwindClasses = [];
-          node.portalClasses.forEach(className => {
-            if (tailwindClassData[className]) {
-              tailwindClasses.push(...tailwindClassData[className]);
-            }
-          });
-          node.tailwindClasses = [...new Set(tailwindClasses)]; // Remove duplicates
-        }
+        // Attach tailwind classes to the portal class tree
+        const attachTailwindClasses = (node) => {
+          if (node.portalClasses && node.portalClasses.length > 0) {
+            // Find matching tailwind data for this node
+            const tailwindClasses = [];
+            node.portalClasses.forEach(className => {
+              if (tailwindClassData[className]) {
+                tailwindClasses.push(...tailwindClassData[className]);
+              }
+            });
+            node.tailwindClasses = [...new Set(tailwindClasses)]; // Remove duplicates
+          }
 
-        // Process children
-        if (node.children) {
-          node.children.forEach(child => attachTailwindClasses(child));
-        }
-      };
+          // Process children
+          if (node.children) {
+            node.children.forEach(child => attachTailwindClasses(child));
+          }
+        };
 
-      attachTailwindClasses(portalClassTree);
+        attachTailwindClasses(portalClassTree);
+      } catch (error) {
+        console.warn('Error loading tailwind classes:', error);
+        // Continue even if tailwind classes fail to load
+      }
 
       // Use the HTML tree renderer
       treeContainer.innerHTML = '';
@@ -948,7 +975,20 @@ async function loadTreeData() {
       treeContainer.innerHTML = '<div style="text-align: center; padding: 20px;">No portal classes found on this page.</div>';
     }
   } catch (error) {
-    treeContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: #721c24;">${error.message}</div>`;
+    console.error('Error loading tree data:', error);
+    let errorMessage = error.message;
+
+    if (errorMessage.includes('Extension context invalidated')) {
+      errorMessage = 'Connection to page was lost. Please refresh the page and try again.';
+    } else if (errorMessage.includes('timed out')) {
+      errorMessage = 'Loading data timed out. Please refresh the page and try again.';
+    }
+
+    treeContainer.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: #721c24; background-color: #f8d7da; border-radius: 4px; border: 1px solid #f5c6cb;">
+        <p><strong>Error:</strong> ${errorMessage}</p>
+        <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Refresh Page</button>
+      </div>`;
   }
 }
 
@@ -973,74 +1013,101 @@ document.addEventListener('DOMContentLoaded', () => {
     // Helper function to generate and apply CSS
     window.generateAndApplyCSS = async function(apiKey, prompt, currentCSS) {
       try {
-        // Clean current CSS before saving as a version
-        if (currentCSS) {
-          currentCSS = cleanText(currentCSS);
-        }
+        // Show loading spinner
+        document.getElementById('loading-spinner').style.display = 'inline-block';
 
         // Save current CSS as a version before generating new one if it's not the initial placeholder
         if (currentCSS && currentCSS !== "/* CSS will appear here after generation */") {
           saveCSSVersion(currentCSS, `Before: ${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
         }
 
+        showStatus('Fetching page data...', 'info');
+
         // Fetch the latest DOM data before generating CSS
         // This ensures we have the most up-to-date data if the user navigated to a different page
-        // Get portal class tree
-        const treeResponse = await new Promise((resolve, reject) => {
-          chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            chrome.tabs.sendMessage(tabs[0].id, {action: 'getPortalClassTree'}, (response) => {
-              if (chrome.runtime.lastError || !response || !response.success) {
-                reject(new Error('Failed to get portal class data'));
+        try {
+          // Get portal class tree
+          const treeResponse = await new Promise((resolve, reject) => {
+            chrome.tabs.query({active: true, currentWindow: true}, async (tabs) => {
+              if (!tabs || !tabs[0]) {
+                reject(new Error('No active tab found'));
                 return;
               }
-              resolve(response);
-            });
-          });
-        });
 
-        portalClassTree = treeResponse.data;
-        allPortalClasses = [...new Set(extractPortalClasses(portalClassTree))];
-
-        // Get tailwind classes
-        tailwindClassData = await collectTailwindClasses();
-
-        // Attach tailwind classes to the portal class tree
-        const attachTailwindClasses = (node) => {
-          if (node.portalClasses && node.portalClasses.length > 0) {
-            // Find matching tailwind data for this node
-            const tailwindClasses = [];
-            node.portalClasses.forEach(className => {
-              if (tailwindClassData[className]) {
-                tailwindClasses.push(...tailwindClassData[className]);
+              try {
+                const response = await safeSendMessage(tabs[0].id, {action: 'getPortalClassTree'});
+                if (!response || !response.success) {
+                  reject(new Error('Failed to get portal class data'));
+                  return;
+                }
+                resolve(response);
+              } catch (err) {
+                reject(err);
               }
             });
-            node.tailwindClasses = [...new Set(tailwindClasses)]; // Remove duplicates
+          });
+
+          portalClassTree = treeResponse.data;
+          allPortalClasses = [...new Set(extractPortalClasses(portalClassTree))];
+
+          // Get tailwind classes
+          showStatus('Analyzing page styles...', 'info');
+          tailwindClassData = await collectTailwindClasses();
+
+          // Attach tailwind classes to the portal class tree
+          const attachTailwindClasses = (node) => {
+            if (node.portalClasses && node.portalClasses.length > 0) {
+              // Find matching tailwind data for this node
+              const tailwindClasses = [];
+              node.portalClasses.forEach(className => {
+                if (tailwindClassData[className]) {
+                  tailwindClasses.push(...tailwindClassData[className]);
+                }
+              });
+              node.tailwindClasses = [...new Set(tailwindClasses)]; // Remove duplicates
+            }
+
+            // Process children
+            if (node.children) {
+              node.children.forEach(child => attachTailwindClasses(child));
+            }
+          };
+
+          attachTailwindClasses(portalClassTree);
+
+          // Generate CSS directly with the new approach
+          const css = await generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindClassData, currentCSS);
+
+          // Display the generated CSS in Monaco Editor
+          window.cssEditor.setValue(css);
+          window.generatedCSS = css;
+
+          // Save the new CSS as a version
+          saveCSSVersion(css, `${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
+
+          showStatus('CSS generated successfully!', 'success');
+        } catch (error) {
+          console.error('Error fetching page data:', error);
+          if (error.message.includes('Extension context invalidated')) {
+            showStatus('Connection to page lost. Please refresh the page and try again.', 'error');
+          } else {
+            showStatus(`Error accessing page data: ${error.message}. Try refreshing the page.`, 'error');
           }
-
-          // Process children
-          if (node.children) {
-            node.children.forEach(child => attachTailwindClasses(child));
-          }
-        };
-
-        attachTailwindClasses(portalClassTree);
-
-        // Generate CSS directly with the new approach
-        const css = await generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindClassData, currentCSS);
-
-        // Display the generated CSS in Monaco Editor - make sure it's clean
-        // Remove any unwanted characters that might appear in the generated CSS
-        const cleanedCss = cleanText(css);
-        monacoEditor.setValue(cleanedCss);
-        window.generatedCSS = cleanedCss;
-
-        // Save the new CSS as a version
-        saveCSSVersion(cleanedCss, `${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
-
-        showStatus('CSS generated successfully!', 'success');
+          throw error; // Re-throw to stop execution
+        }
       } catch (error) {
         console.error('Error in CSS generation:', error);
-        showStatus(`Error: ${error.message}`, 'error');
+
+        // Show specific error messages for different types of errors
+        if (error.message.includes('API Error')) {
+          showStatus(`API Error: ${error.message.replace('API Error: ', '')}`, 'error');
+        } else if (error.message.includes('context invalidated')) {
+          showStatus('Connection to page was lost. Try refreshing the page.', 'error');
+        } else if (error.message.includes('timeout')) {
+          showStatus('Operation timed out. Please try again.', 'error');
+        } else {
+          showStatus(`Error: ${error.message}`, 'error');
+        }
       } finally {
         document.getElementById('loading-spinner').style.display = 'none';
       }
