@@ -32,8 +32,6 @@ function cleanText(text) {
   return text;
 }
 
-
-
 // Function to extract all portal classes from the tree
 function extractPortalClasses(node) {
   let classes = [...node.portalClasses];
@@ -554,7 +552,7 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
             }
           }] : []),
 
-                    // Add all reference images if available (only for first attempt)
+          // Add all reference images if available (only for first attempt)
           ...(window.referenceImages.length > 0 && retryCount === 0 ?
             window.referenceImages.map(img => ({
               inline_data: {
@@ -1016,7 +1014,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Make monacoEditor available for other functions
     window.cssEditor = monacoEditor;
 
-                // Function to add an image to the preview grid
+    // Function to add an image to the preview grid
     function addImageToPreview(imageData) {
       // Store the image data with a unique ID
       const imageId = 'img_' + Date.now();
@@ -1114,6 +1112,9 @@ document.addEventListener('DOMContentLoaded', () => {
       promptField.value = "Analyzing image to create design prompt...";
       showStatus('Analyzing reference image to create detailed design prompt...', 'info');
 
+      // Disable UI while processing image
+      setUIProcessingState(true, 'image-analysis');
+
       // Get API key from storage
       chrome.storage.local.get(['geminiApiKey'], async (result) => {
         const apiKey = result.geminiApiKey;
@@ -1121,6 +1122,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!apiKey) {
           promptField.value = "Please add your API key in the Settings tab first.";
           showStatus('API key is missing. Please add it in Settings tab.', 'error');
+          // Re-enable UI
+          setUIProcessingState(false);
           return;
         }
 
@@ -1229,7 +1232,7 @@ Output ONLY the prompt text, with no additional explanations or formatting.`
           const data = await response.json();
           if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
             throw new Error('Invalid response format from API');
-        }
+          }
 
           // Get the generated prompt
           const generatedPrompt = data.candidates[0].content.parts[0].text;
@@ -1244,6 +1247,9 @@ Output ONLY the prompt text, with no additional explanations or formatting.`
           console.error('Error generating prompt from image:', error);
           promptField.value = "Error analyzing image. Please try again or write your own prompt.";
           showStatus(`Error: ${error.message}`, 'error');
+        } finally {
+          // Re-enable UI no matter what happened
+          setUIProcessingState(false);
         }
       });
     }
@@ -1266,13 +1272,14 @@ Output ONLY the prompt text, with no additional explanations or formatting.`
       showStatus('All reference images removed', 'info');
     });
 
-
-
     // Helper function to generate and apply CSS
     window.generateAndApplyCSS = async function(apiKey, prompt, currentCSS) {
       try {
         // Show loading spinner
         document.getElementById('loading-spinner').style.display = 'inline-block';
+
+        // Disable UI elements during processing
+        setUIProcessingState(true, 'css-generation');
 
         // Save current CSS as a version before generating new one if it's not the initial placeholder
         if (currentCSS && currentCSS !== "/* CSS will appear here after generation */") {
@@ -1404,7 +1411,8 @@ Output ONLY the prompt text, with no additional explanations or formatting.`
           showStatus(`Error: ${error.message}`, 'error');
         }
       } finally {
-        document.getElementById('loading-spinner').style.display = 'none';
+        // Re-enable UI elements
+        setUIProcessingState(false);
       }
     };
 
@@ -1533,8 +1541,6 @@ Output ONLY the prompt text, with no additional explanations or formatting.`
         document.getElementById('loading-spinner').style.display = 'none';
       }
     });
-
-
 
   }, 100); // Small delay to ensure DOM is ready
 
@@ -1668,99 +1674,175 @@ async function applyCSSAndGetFeedback(apiKey, generatedCSS, prompt) {
     // Give the page a moment to render with the new CSS
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Capture screenshot of the result
+    // Capture screenshot of the result using multiple methods with fallbacks
     showStatus('Capturing screenshot of the styled page...', 'info');
-    const screenshotResponse = await new Promise((resolve, reject) => {
-      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        if (!tabs || !tabs[0]) {
-          reject(new Error('No active tab found'));
-          return;
-        }
 
-        safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
-          if (!response || !response.success) {
-            reject(new Error('Failed to capture screenshot'));
+    let screenshot = null;
+    let captureError = null;
+
+    // Try method 1: Standard content script capture (most complete)
+    try {
+      const screenshotResponse = await new Promise((resolve, reject) => {
+        chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+          if (!tabs || !tabs[0]) {
+            reject(new Error('No active tab found'));
             return;
           }
-          resolve(response);
+
+          let responseTimer = setTimeout(() => {
+            reject(new Error('Screenshot capture timeout'));
+          }, 8000);
+
+          safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
+            clearTimeout(responseTimer);
+            if (!response || !response.success) {
+              reject(new Error(response?.error || 'Failed to capture screenshot'));
+              return;
+            }
+            resolve(response);
+          });
         });
       });
-    });
 
-    if (!screenshotResponse.data) {
-      throw new Error('Failed to capture result screenshot');
-    }
-
-    // Get screenshot data
-    const screenshot = screenshotResponse.data;
-
-    // Save the screenshot automatically
-    saveScreenshot(screenshot);
-
-    // Upload screenshot to Gemini API
-    showStatus('Analyzing results for potential improvements...', 'info');
-
-    // Convert base64 to blob
-    const base64Data = screenshot.split(',')[1];
-    const byteCharacters = atob(base64Data);
-    const byteArrays = [];
-
-    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-      const slice = byteCharacters.slice(offset, offset + 512);
-      const byteNumbers = new Array(slice.length);
-      for (let i = 0; i < slice.length; i++) {
-        byteNumbers[i] = slice.charCodeAt(i);
+      if (screenshotResponse && screenshotResponse.data) {
+        screenshot = screenshotResponse.data;
+        showStatus('Screenshot captured successfully!', 'success');
       }
-      const byteArray = new Uint8Array(byteNumbers);
-      byteArrays.push(byteArray);
+    } catch (error) {
+      console.warn('Primary screenshot method failed:', error);
+      captureError = error;
+      // Continue to fallback methods
     }
 
-    const blob = new Blob(byteArrays, {type: 'image/png'});
+    // Try method 2: Chrome API capture (fallback, but may not include full page)
+    if (!screenshot) {
+      try {
+        showStatus('Trying alternative screenshot method...', 'info');
+        const tab = await new Promise((resolve) => {
+          chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+            resolve(tabs[0]);
+          });
+        });
 
-    // Get upload URL
-    const uploadUrlResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'X-Goog-Upload-Protocol': 'resumable',
-        'X-Goog-Upload-Command': 'start',
-        'X-Goog-Upload-Header-Content-Length': blob.size.toString(),
-        'X-Goog-Upload-Header-Content-Type': 'image/png',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        file: {
-          display_name: 'RESULT_SCREENSHOT'
+        // Use chrome.tabs.captureVisibleTab API
+        const dataUrl = await new Promise((resolve, reject) => {
+          chrome.tabs.captureVisibleTab(null, {format: 'png'}, (dataUrl) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+              return;
+            }
+            resolve(dataUrl);
+          });
+        });
+
+        if (dataUrl) {
+          screenshot = dataUrl;
+          showStatus('Captured visible portion of page', 'success');
         }
-      })
-    });
-
-    // Extract upload URL from headers
-    const uploadUrl = uploadUrlResponse.headers.get('X-Goog-Upload-URL');
-
-    if (!uploadUrl) {
-      throw new Error('Failed to get upload URL');
+      } catch (error) {
+        console.warn('Fallback screenshot method failed:', error);
+        captureError = captureError || error;
+      }
     }
 
-    // Upload the file
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Length': blob.size.toString(),
-        'X-Goog-Upload-Offset': '0',
-        'X-Goog-Upload-Command': 'upload, finalize'
-      },
-      body: blob
-    });
+    // Try method 3: Use DOM serialization fallback if screenshots failed
+    if (!screenshot) {
+      try {
+        showStatus('Using DOM analysis as fallback...', 'info');
 
-    if (!uploadResponse.ok) {
-      throw new Error('Failed to upload result screenshot');
+        // Skip the screenshot and just use the CSS analysis
+        screenshot = null;
+        showStatus('Proceeding with AI feedback without screenshot', 'info');
+      } catch (error) {
+        console.error('All screenshot methods failed:', error);
+        captureError = captureError || error;
+        throw new Error('Unable to capture or analyze page content: ' + captureError.message);
+      }
     }
 
-    const fileInfo = await uploadResponse.json();
-    const fileUri = fileInfo.file.uri;
+    // Save the screenshot automatically if we got one
+    if (screenshot) {
+      saveScreenshot(screenshot);
+    } else {
+      showStatus('Could not save screenshot, but continuing with analysis', 'info');
+    }
 
-    // Now ask LLM for feedback
+    // Prepare for file upload if we have a screenshot
+    let fileUri = null;
+    if (screenshot) {
+      try {
+        // Upload screenshot to Gemini API
+        showStatus('Analyzing results for potential improvements...', 'info');
+
+        // Convert base64 to blob
+        const base64Data = screenshot.split(',')[1];
+        const byteCharacters = atob(base64Data);
+        const byteArrays = [];
+
+        for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+          const slice = byteCharacters.slice(offset, offset + 512);
+          const byteNumbers = new Array(slice.length);
+          for (let i = 0; i < slice.length; i++) {
+            byteNumbers[i] = slice.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          byteArrays.push(byteArray);
+        }
+
+        const blob = new Blob(byteArrays, {type: 'image/png'});
+
+        // Get upload URL
+        const uploadUrlResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
+          method: 'POST',
+          headers: {
+            'X-Goog-Upload-Protocol': 'resumable',
+            'X-Goog-Upload-Command': 'start',
+            'X-Goog-Upload-Header-Content-Length': blob.size.toString(),
+            'X-Goog-Upload-Header-Content-Type': 'image/png',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            file: {
+              display_name: 'RESULT_SCREENSHOT'
+            }
+          })
+        });
+
+        // Extract upload URL from headers
+        const uploadUrl = uploadUrlResponse.headers.get('X-Goog-Upload-URL');
+
+        if (!uploadUrl) {
+          throw new Error('Failed to get upload URL');
+        }
+
+        // Upload the file
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Length': blob.size.toString(),
+            'X-Goog-Upload-Offset': '0',
+            'X-Goog-Upload-Command': 'upload, finalize'
+          },
+          body: blob
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error('Failed to upload result screenshot');
+        }
+
+        const fileInfo = await uploadResponse.json();
+        fileUri = fileInfo.file.uri;
+      } catch (error) {
+        console.error('Error uploading screenshot:', error);
+        showStatus('Error uploading screenshot. Proceeding without visual feedback.', 'info');
+      }
+    }
+
+    // Now ask LLM for feedback - with or without screenshot
     const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+    // Create payload for feedback with text-only fallback if no screenshot
+    showStatus(fileUri ? 'Getting AI feedback on visual results...' : 'Getting AI feedback on CSS code...', 'info');
 
     // Create payload for feedback
     const payload = {
@@ -1775,13 +1857,13 @@ async function applyCSSAndGetFeedback(apiKey, generatedCSS, prompt) {
               }
             })) : []),
 
-          // Include the result screenshot
-          {
+          // Include the result screenshot if available
+          ...(fileUri ? [{
             file_data: {
               mime_type: "image/png",
               file_uri: fileUri
             }
-          },
+          }] : []),
 
           {
             text: `You are a CSS expert evaluating a web page styling.
@@ -1794,8 +1876,8 @@ ${generatedCSS}
 \`\`\`
 
 TASK:
-1. I've applied the CSS above to the page and taken a screenshot of the result.
-2. Compare this result against ${window.referenceImages.length > 0 ? "the reference image(s) provided earlier" : "the intended design described in the original request"}.
+1. ${fileUri ? "I've applied the CSS above to the page and taken a screenshot of the result." : "I've applied the CSS above to the page but couldn't capture a screenshot."}
+2. ${fileUri ? `Compare this result against ${window.referenceImages.length > 0 ? "the reference image(s) provided earlier" : "the intended design described in the original request"}.` : "Analyze the CSS code quality and make improvements where needed."}
 3. Determine if the CSS needs further improvement.
 
 RESPONSE FORMAT:
@@ -1865,5 +1947,64 @@ Important: DO NOT prefix your response with "YES" or explanations - just return 
     console.error('Error in feedback process:', error);
     showStatus(`Error getting feedback: ${error.message}`, 'error');
     return null; // Return null to indicate no changes
+  }
+}
+
+// Function to disable/enable UI elements during processing
+function setUIProcessingState(isProcessing, processType) {
+  // Get relevant UI elements
+  const generateBtn = document.getElementById('generate-btn');
+  const uploadImageBtn = document.getElementById('upload-image-btn');
+  const clearAllImagesBtn = document.getElementById('clear-all-images-btn');
+  const userPromptField = document.getElementById('user-prompt');
+  const apiKeyField = document.getElementById('api-key');
+  const loadingSpinner = document.getElementById('loading-spinner');
+
+  if (isProcessing) {
+    // Set appropriate loading state based on which process is running
+    if (processType === 'image-analysis') {
+      // Disable generate button when analyzing image
+      generateBtn.disabled = true;
+      generateBtn.style.opacity = '0.5';
+      generateBtn.style.cursor = 'not-allowed';
+      userPromptField.disabled = true;
+
+      // Show a spinner on the upload button
+      uploadImageBtn.innerHTML = '<span class="spinner"></span> Analyzing...';
+      uploadImageBtn.disabled = true;
+      uploadImageBtn.style.opacity = '0.5';
+      uploadImageBtn.style.cursor = 'not-allowed';
+      clearAllImagesBtn.disabled = true;
+    }
+    else if (processType === 'css-generation') {
+      // When generating CSS, disable image upload buttons
+      uploadImageBtn.disabled = true;
+      uploadImageBtn.style.opacity = '0.5';
+      uploadImageBtn.style.cursor = 'not-allowed';
+      clearAllImagesBtn.disabled = true;
+      clearAllImagesBtn.style.opacity = '0.5';
+
+      // Loading spinner is shown by the existing code
+    }
+  }
+  else {
+    // Reset all UI elements to enabled state
+    generateBtn.disabled = false;
+    generateBtn.style.opacity = '1';
+    generateBtn.style.cursor = 'pointer';
+    userPromptField.disabled = false;
+
+    uploadImageBtn.disabled = false;
+    uploadImageBtn.style.opacity = '1';
+    uploadImageBtn.style.cursor = 'pointer';
+    uploadImageBtn.innerHTML = 'Upload Reference Image';
+
+    clearAllImagesBtn.disabled = false;
+    clearAllImagesBtn.style.opacity = '1';
+
+    // Hide spinner if it was being shown
+    if (loadingSpinner) {
+      loadingSpinner.style.display = 'none';
+    }
   }
 }
