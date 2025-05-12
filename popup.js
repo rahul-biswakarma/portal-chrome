@@ -32,11 +32,7 @@ function cleanText(text) {
   return text;
 }
 
-// Function to format CSS text (simplified)
-function formatCSS(css) {
-  if (!css) return '';
-  return css;
-}
+
 
 // Function to extract all portal classes from the tree
 function extractPortalClasses(node) {
@@ -1005,10 +1001,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Make monacoEditor available for other functions
     window.cssEditor = monacoEditor;
 
-    // Add event listener for the Format CSS button
-    document.getElementById('format-css-btn').addEventListener('click', () => {
-      monacoEditor.formatDocument();
-    });
+
 
     // Helper function to generate and apply CSS
     window.generateAndApplyCSS = async function(apiKey, prompt, currentCSS) {
@@ -1239,20 +1232,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Add a format CSS button to the UI
-    const formatButton = document.createElement('button');
-    formatButton.id = 'format-css-btn';
-    formatButton.className = 'action-btn';
-    formatButton.textContent = 'Format CSS';
-    formatButton.addEventListener('click', () => {
-      monacoEditor.formatDocument();
-    });
 
-    // Add button after the apply CSS button
-    const applyButton = document.getElementById('apply-css-btn');
-    if (applyButton && applyButton.parentNode) {
-      applyButton.parentNode.insertBefore(formatButton, applyButton.nextSibling);
-    }
 
   }, 100); // Small delay to ensure DOM is ready
 
