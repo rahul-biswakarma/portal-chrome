@@ -1111,32 +1111,141 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Set a loading message
-      promptField.value = "Analyzing image for design suggestions...";
+      promptField.value = "Analyzing image to create design prompt...";
+      showStatus('Analyzing reference image to create detailed design prompt...', 'info');
 
-      // Generate different types of design suggestions based on the number of images
-      const imageCount = window.referenceImages.length;
+      // Get API key from storage
+      chrome.storage.local.get(['geminiApiKey'], async (result) => {
+        const apiKey = result.geminiApiKey;
 
-      // Wait a moment to simulate "analysis" (in a real implementation, this would be AI-based)
-      setTimeout(() => {
-        let suggestedPrompt = "";
-
-        if (imageCount === 1) {
-          // For the first image, suggest a comprehensive redesign
-          suggestedPrompt = "Transform the portal design to match the reference image style. Apply similar color schemes, typography, and visual elements while maintaining good contrast and readability. Add subtle shadows and rounded corners where appropriate.";
-        } else {
-          // For additional images, suggest combining styles
-          suggestedPrompt = "Update the portal design to combine elements from all reference images. Use the color palette from the latest image while maintaining the layout style of the previous ones. Ensure consistent spacing, typography, and visual hierarchy.";
+        if (!apiKey) {
+          promptField.value = "Please add your API key in the Settings tab first.";
+          showStatus('API key is missing. Please add it in Settings tab.', 'error');
+          return;
         }
 
-        // Set the generated prompt
-        promptField.value = suggestedPrompt;
+        try {
+          // Get current page data for context
+          const tabs = await new Promise((resolve) => {
+            chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+              resolve(tabs);
+            });
+          });
 
-        // Highlight the prompt to make it easy to edit/replace
-        promptField.focus();
-        promptField.setSelectionRange(0, suggestedPrompt.length);
+          // Get the DOM structure
+          const treeResponse = await safeSendMessage(tabs[0].id, {action: 'getPortalClassTree'});
+          if (!treeResponse.success) {
+            throw new Error('Failed to get portal class structure');
+          }
+          const portalClassTree = treeResponse.data;
 
-        showStatus('Added design suggestion based on your image', 'success');
-      }, 800); // Short delay to make it feel like it's analyzing
+          // Get screenshot of current page if possible
+          let pageScreenshot = null;
+          try {
+            const screenshotResponse = await safeSendMessage(tabs[0].id, {action: 'captureScreenshot'});
+            if (screenshotResponse.success) {
+              pageScreenshot = screenshotResponse.data;
+            }
+          } catch (err) {
+            console.warn('Could not capture page screenshot:', err);
+          }
+
+          // Prepare the prompt generation request
+          const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+          // Function to simplify tree for transmission
+          function simplifyTree(node) {
+            const simplified = {
+              element: node.element,
+              portalClasses: node.portalClasses,
+              children: []
+            };
+            if (node.children && node.children.length > 0) {
+              simplified.children = node.children.map(child => simplifyTree(child));
+            }
+            return simplified;
+          }
+
+          const simplifiedTree = simplifyTree(portalClassTree);
+
+          // Prepare the prompt generation payload
+          const payload = {
+            contents: [{
+              parts: [
+                // Add reference image
+                {
+                  inline_data: {
+                    mime_type: imageData.split(';')[0].split(':')[1],
+                    data: imageData.split(',')[1]
+                  }
+                },
+                // Add current page screenshot if available
+                ...(pageScreenshot ? [{
+                  inline_data: {
+                    mime_type: pageScreenshot.split(';')[0].split(':')[1],
+                    data: pageScreenshot.split(',')[1]
+                  }
+                }] : []),
+                {
+                  text: `You are a UX/UI expert tasked with creating a detailed CSS styling prompt.
+
+I need you to create a prompt that would guide an AI to style a web page to look like the reference image provided. ${pageScreenshot ? "I've provided two images: the first is the reference design, and the second is the current page that needs styling." : "I've provided a reference design image."}
+
+The DOM structure of the current page focuses on classes matching pattern ^portal-.*$ (classes that start with "portal-"):
+${JSON.stringify(simplifiedTree, null, 2)}
+
+Please generate a detailed, specific, and actionable prompt that:
+1. Analyzes the visual style of the reference image (colors, typography, layout, spacing, shadows, etc.)
+2. Provides explicit CSS guidance for transforming the current page to match the reference
+3. Focuses ONLY on targeting classes starting with "portal-"
+4. Includes specific color values, spacing metrics, and design properties
+5. Prioritizes the most visually impactful changes first
+
+Your prompt should be comprehensive yet clear, with specific instructions rather than general suggestions.
+Output ONLY the prompt text, with no additional explanations or formatting.`
+                }
+              ]
+            }],
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 1024
+            }
+          };
+
+          // Call the Gemini API
+          const response = await fetch(`${url}?key=${apiKey}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error?.message || 'API request failed');
+          }
+
+          const data = await response.json();
+          if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+            throw new Error('Invalid response format from API');
+        }
+
+          // Get the generated prompt
+          const generatedPrompt = data.candidates[0].content.parts[0].text;
+
+          // Update the prompt field with the generated prompt
+          promptField.value = generatedPrompt;
+
+          // Show success message
+          showStatus('Design prompt created from reference image!', 'success');
+
+        } catch (error) {
+          console.error('Error generating prompt from image:', error);
+          promptField.value = "Error analyzing image. Please try again or write your own prompt.";
+          showStatus(`Error: ${error.message}`, 'error');
+        }
+      });
     }
 
     // Set up file input handler
@@ -1231,7 +1340,7 @@ document.addEventListener('DOMContentLoaded', () => {
           attachTailwindClasses(portalClassTree);
 
           // Generate CSS directly with the new approach
-          const css = await generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindClassData, currentCSS);
+          let css = await generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindClassData, currentCSS);
 
           // Display the generated CSS in Monaco Editor
           window.cssEditor.setValue(css);
@@ -1241,6 +1350,37 @@ document.addEventListener('DOMContentLoaded', () => {
           saveCSSVersion(css, `${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
 
           showStatus('CSS generated successfully!', 'success');
+
+          // AUTOMATIC FEEDBACK LOOP - Apply CSS, take screenshot, get feedback
+          showStatus('Starting automatic feedback cycle...', 'info');
+
+          // Apply the CSS and get feedback
+          const improvedCSS = await applyCSSAndGetFeedback(apiKey, css, prompt);
+
+          // If improved CSS was returned, apply it
+          if (improvedCSS) {
+            // Update the editor with improved CSS
+            window.cssEditor.setValue(improvedCSS);
+            window.generatedCSS = improvedCSS;
+
+            // Save as a new version
+            saveCSSVersion(improvedCSS, `Improved: ${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
+
+            // Apply the improved CSS
+            chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: 'applyCSS',
+                css: improvedCSS
+              }, (response) => {
+                if (chrome.runtime.lastError || !response || !response.success) {
+                  showStatus('Warning: Could not apply improved CSS.', 'error');
+                  return;
+                }
+                showStatus('Improved CSS applied successfully!', 'success');
+              });
+            });
+          }
+
         } catch (error) {
           console.error('Error fetching page data:', error);
           if (error.message.includes('Extension context invalidated')) {
@@ -1479,3 +1619,251 @@ document.addEventListener('DOMContentLoaded', () => {
   `;
   document.head.appendChild(style);
 });
+
+// Function to save a captured screenshot
+function saveScreenshot(screenshotData) {
+  try {
+    // Create a temporary anchor element
+    const link = document.createElement('a');
+    link.href = screenshotData;
+    link.download = `portal-styled-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    showStatus('Screenshot saved to your downloads folder!', 'success');
+  } catch (error) {
+    console.error('Error saving screenshot:', error);
+    showStatus('Failed to save screenshot', 'error');
+  }
+}
+
+// Function to apply CSS and get feedback from LLM
+async function applyCSSAndGetFeedback(apiKey, generatedCSS, prompt) {
+  try {
+    // First apply the CSS to the page
+    showStatus('Applying CSS to evaluate results...', 'info');
+
+    // Apply CSS to the page
+    const applyResponse = await new Promise((resolve, reject) => {
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        if (!tabs || !tabs[0]) {
+          reject(new Error('No active tab found'));
+          return;
+        }
+
+        safeSendMessage(tabs[0].id, {
+          action: 'applyCSS',
+          css: generatedCSS
+        }, (response) => {
+          if (!response || !response.success) {
+            reject(new Error('Failed to apply CSS'));
+            return;
+          }
+          resolve(response);
+        });
+      });
+    });
+
+    // Give the page a moment to render with the new CSS
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Capture screenshot of the result
+    showStatus('Capturing screenshot of the styled page...', 'info');
+    const screenshotResponse = await new Promise((resolve, reject) => {
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        if (!tabs || !tabs[0]) {
+          reject(new Error('No active tab found'));
+          return;
+        }
+
+        safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
+          if (!response || !response.success) {
+            reject(new Error('Failed to capture screenshot'));
+            return;
+          }
+          resolve(response);
+        });
+      });
+    });
+
+    if (!screenshotResponse.data) {
+      throw new Error('Failed to capture result screenshot');
+    }
+
+    // Get screenshot data
+    const screenshot = screenshotResponse.data;
+
+    // Save the screenshot automatically
+    saveScreenshot(screenshot);
+
+    // Upload screenshot to Gemini API
+    showStatus('Analyzing results for potential improvements...', 'info');
+
+    // Convert base64 to blob
+    const base64Data = screenshot.split(',')[1];
+    const byteCharacters = atob(base64Data);
+    const byteArrays = [];
+
+    for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+      const slice = byteCharacters.slice(offset, offset + 512);
+      const byteNumbers = new Array(slice.length);
+      for (let i = 0; i < slice.length; i++) {
+        byteNumbers[i] = slice.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      byteArrays.push(byteArray);
+    }
+
+    const blob = new Blob(byteArrays, {type: 'image/png'});
+
+    // Get upload URL
+    const uploadUrlResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': blob.size.toString(),
+        'X-Goog-Upload-Header-Content-Type': 'image/png',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        file: {
+          display_name: 'RESULT_SCREENSHOT'
+        }
+      })
+    });
+
+    // Extract upload URL from headers
+    const uploadUrl = uploadUrlResponse.headers.get('X-Goog-Upload-URL');
+
+    if (!uploadUrl) {
+      throw new Error('Failed to get upload URL');
+    }
+
+    // Upload the file
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Length': blob.size.toString(),
+        'X-Goog-Upload-Offset': '0',
+        'X-Goog-Upload-Command': 'upload, finalize'
+      },
+      body: blob
+    });
+
+    if (!uploadResponse.ok) {
+      throw new Error('Failed to upload result screenshot');
+    }
+
+    const fileInfo = await uploadResponse.json();
+    const fileUri = fileInfo.file.uri;
+
+    // Now ask LLM for feedback
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+    // Create payload for feedback
+    const payload = {
+      contents: [{
+        parts: [
+          // Include original reference images if available
+          ...(window.referenceImages.length > 0 ?
+            window.referenceImages.map(img => ({
+              inline_data: {
+                mime_type: img.data.split(';')[0].split(':')[1],
+                data: img.data.split(',')[1]
+              }
+            })) : []),
+
+          // Include the result screenshot
+          {
+            file_data: {
+              mime_type: "image/png",
+              file_uri: fileUri
+            }
+          },
+
+          {
+            text: `You are a CSS expert evaluating a web page styling.
+
+ORIGINAL REQUEST: "${prompt}"
+
+CURRENT CSS IMPLEMENTATION:
+\`\`\`css
+${generatedCSS}
+\`\`\`
+
+TASK:
+1. I've applied the CSS above to the page and taken a screenshot of the result.
+2. Compare this result against ${window.referenceImages.length > 0 ? "the reference image(s) provided earlier" : "the intended design described in the original request"}.
+3. Determine if the CSS needs further improvement.
+
+RESPONSE FORMAT:
+- If NO improvements are needed, respond with just the word "UNCHANGED".
+- If improvements ARE needed, respond with ONLY the complete improved CSS file.
+  * Include ALL previous CSS with your modifications
+  * Add comments explaining your changes
+  * Format as clean CSS without markdown code blocks or additional text
+
+Important: DO NOT prefix your response with "YES" or explanations - just return either "UNCHANGED" or the complete CSS.`
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 2048
+      }
+    };
+
+    const response = await fetch(`${url}?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`API Error: ${errorData.error?.message || response.statusText || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+      throw new Error('Invalid response format from API');
+    }
+
+    const feedbackText = data.candidates[0].content.parts[0].text.trim();
+
+    // Process the response
+    if (feedbackText === "UNCHANGED") {
+      showStatus('Current CSS implementation looks good!', 'success');
+      return null; // No improvements needed
+    } else {
+      showStatus('Applying improved CSS...', 'info');
+
+      // Check if the response is wrapped in code blocks and extract if needed
+      const cssMatch = feedbackText.match(/```css\n([\s\S]*?)\n```/) ||
+                     feedbackText.match(/```\n([\s\S]*?)\n```/);
+
+      if (cssMatch && cssMatch[1]) {
+        return cssMatch[1]; // Return the extracted CSS
+      }
+
+      // If no code block markers, assume the entire response is CSS
+      // (Check if it looks like CSS to avoid problems)
+      if (feedbackText.includes('{') && feedbackText.includes('}')) {
+        return feedbackText;
+      }
+
+      // If we got here, the response format was unexpected
+      showStatus('Received unexpected response format from AI', 'info');
+      return null;
+    }
+
+  } catch (error) {
+    console.error('Error in feedback process:', error);
+    showStatus(`Error getting feedback: ${error.message}`, 'error');
+    return null; // Return null to indicate no changes
+  }
+}
