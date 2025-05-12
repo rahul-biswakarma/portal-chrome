@@ -8,24 +8,36 @@ function safeSendMessage(message, callback) {
       return;
     }
 
-    // First check if we can send a message by pinging the extension
-    chrome.runtime.sendMessage({ action: 'ping' }, function(response) {
-      // If there's an error (like context invalidated), catch it
+    // Direct attempt to check extension context validity
+    if (chrome.runtime.id === undefined) {
+      console.warn('Extension context already invalidated');
+      if (callback) callback({ success: false, error: 'Extension context invalidated' });
+      return;
+    }
+
+    // Add timestamp to messages for tracking
+    const messageWithId = {
+      ...message,
+      _timestamp: Date.now()
+    };
+
+    // Send the actual message directly with proper error handling
+    chrome.runtime.sendMessage(messageWithId, function(response) {
+      // Check for runtime errors after sending
       if (chrome.runtime.lastError) {
-        console.warn('Extension context error:', chrome.runtime.lastError.message);
-        if (callback) callback({ success: false, error: chrome.runtime.lastError.message });
+        const errorMsg = chrome.runtime.lastError.message;
+        console.warn('Extension message error:', errorMsg);
+        if (callback) callback({ success: false, error: errorMsg });
         return;
       }
 
-      // If we got here, runtime is working, send the actual message
-      chrome.runtime.sendMessage(message, function(actualResponse) {
-        if (chrome.runtime.lastError) {
-          console.warn('Error sending message:', chrome.runtime.lastError.message);
-          if (callback) callback({ success: false, error: chrome.runtime.lastError.message });
-          return;
-        }
-        if (callback) callback(actualResponse);
-      });
+      // If response is undefined, create a default success response to prevent port closed errors
+      if (response === undefined) {
+        response = { success: true, data: null, silent: true };
+      }
+
+      // If we got here, everything worked
+      if (callback) callback(response);
     });
   } catch (error) {
     console.error('Exception in safeSendMessage:', error);
@@ -33,12 +45,40 @@ function safeSendMessage(message, callback) {
   }
 }
 
+// Variable to track if we're on a valid portal page
+let isPortalPage = false;
+
+// Function to check if page has portal classes
+function checkForPortalClasses() {
+  const portalElements = document.querySelectorAll('[class*="portal-"]');
+  isPortalPage = portalElements.length > 0;
+
+  // Notify extension about portal page status
+  safeSendMessage({
+    action: 'portalPageStatus',
+    isPortalPage: isPortalPage
+  }, () => {});
+
+  return isPortalPage;
+}
+
 // Function to traverse DOM and build portal class hierarchy
 function buildPortalClassTree(element) {
+  // Check if portal classes exist at all
+  if (!checkForPortalClasses()) {
+    return {
+      element: 'body',
+      portalClasses: [],
+      children: [],
+      isPortalPage: false
+    };
+  }
+
   let node = {
     element: element.tagName.toLowerCase(),
     portalClasses: [],
-    children: []
+    children: [],
+    isPortalPage: true
   };
 
   // Get all classes that match pattern portal-*
@@ -50,7 +90,7 @@ function buildPortalClassTree(element) {
   // Recursively process child elements
   Array.from(element.children).forEach(child => {
     const childTree = buildPortalClassTree(child);
-    if (childTree.portalClasses.length > 0 || childTree.children.length > 0) {
+    if (childTree.portalClasses?.length > 0 || childTree.children?.length > 0) {
       node.children.push(childTree);
     }
   });
@@ -60,8 +100,13 @@ function buildPortalClassTree(element) {
 
 // Function to get all portal classes with their computed styles
 function getPortalClassesWithStyles() {
+  // Check if portal classes exist
+  if (!checkForPortalClasses()) {
+    return { isPortalPage: false };
+  }
+
   const portalElements = document.querySelectorAll('[class*="portal-"]');
-  const portalClassStyles = {};
+  const portalClassStyles = { isPortalPage: true };
 
   portalElements.forEach(element => {
     const classes = Array.from(element.classList)
@@ -88,8 +133,13 @@ function getPortalClassesWithStyles() {
 
 // Function to collect tailwind classes from elements with portal classes
 function getTailwindClasses() {
+  // Check if portal classes exist
+  if (!checkForPortalClasses()) {
+    return { isPortalPage: false };
+  }
+
   const portalElements = document.querySelectorAll('[class*="portal-"]');
-  const tailwindData = {};
+  const tailwindData = { isPortalPage: true };
 
   portalElements.forEach(element => {
     const portalClasses = Array.from(element.classList)
@@ -108,7 +158,9 @@ function getTailwindClasses() {
 
   // Remove duplicates
   Object.keys(tailwindData).forEach(key => {
-    tailwindData[key] = [...new Set(tailwindData[key])];
+    if (key !== 'isPortalPage') {
+      tailwindData[key] = [...new Set(tailwindData[key])];
+    }
   });
 
   return tailwindData;
@@ -217,118 +269,209 @@ function applyCSS(css) {
 
 // Function to highlight elements with a specific class
 function highlightElementsWithClass(className) {
+  // First check if we're on a portal page
+  if (!checkForPortalClasses()) {
+    return 0;
+  }
+
   // Remove any existing highlights first
   removeHighlight();
 
-  // Find all elements with the specified class
-  const elements = document.querySelectorAll('.' + className);
+  try {
+    // Find all elements with the specified class
+    const elements = document.querySelectorAll('.' + className);
 
-  // Add highlight to each element
-  elements.forEach(element => {
-    // Save original styles
-    element.dataset.originalOutline = element.style.outline;
-    element.dataset.originalOutlineOffset = element.style.outlineOffset;
-    element.dataset.originalZIndex = element.style.zIndex;
-    element.dataset.originalPosition = element.style.position;
+    // Add highlight to each element
+    elements.forEach(element => {
+      try {
+        // Save original styles
+        element.dataset.originalOutline = element.style.outline;
+        element.dataset.originalOutlineOffset = element.style.outlineOffset;
+        element.dataset.originalZIndex = element.style.zIndex;
+        element.dataset.originalPosition = element.style.position;
 
-    // Apply highlight styles
-    element.style.outline = '2px solid #ff5722';
-    element.style.outlineOffset = '2px';
-    element.style.zIndex = '9999';
+        // Apply highlight styles
+        element.style.outline = '2px solid #ff5722';
+        element.style.outlineOffset = '2px';
+        element.style.zIndex = '9999';
 
-    // Only change position to relative if it's static
-    if (window.getComputedStyle(element).position === 'static') {
-      element.style.position = 'relative';
-    }
+        // Only change position to relative if it's static
+        if (window.getComputedStyle(element).position === 'static') {
+          element.style.position = 'relative';
+        }
 
-    // Add to highlighted elements
-    element.classList.add('portal-customizer-highlighted');
-  });
+        // Add to highlighted elements
+        element.classList.add('portal-customizer-highlighted');
+      } catch (err) {
+        console.warn('Error highlighting element:', err);
+      }
+    });
 
-  return elements.length;
+    return elements.length;
+  } catch (error) {
+    console.error('Error in highlightElementsWithClass:', error);
+    return 0;
+  }
 }
 
 // Function to remove highlights
 function removeHighlight() {
-  // Find all highlighted elements
-  const elements = document.querySelectorAll('.portal-customizer-highlighted');
+  try {
+    // Find all highlighted elements
+    const elements = document.querySelectorAll('.portal-customizer-highlighted');
 
-  // Restore original styles
-  elements.forEach(element => {
-    element.style.outline = element.dataset.originalOutline || '';
-    element.style.outlineOffset = element.dataset.originalOutlineOffset || '';
-    element.style.zIndex = element.dataset.originalZIndex || '';
-    element.style.position = element.dataset.originalPosition || '';
+    // Restore original styles
+    elements.forEach(element => {
+      try {
+        element.style.outline = element.dataset.originalOutline || '';
+        element.style.outlineOffset = element.dataset.originalOutlineOffset || '';
+        element.style.zIndex = element.dataset.originalZIndex || '';
+        element.style.position = element.dataset.originalPosition || '';
 
-    // Remove highlight class
-    element.classList.remove('portal-customizer-highlighted');
+        // Remove highlight class
+        element.classList.remove('portal-customizer-highlighted');
 
-    // Clean up data attributes
-    delete element.dataset.originalOutline;
-    delete element.dataset.originalOutlineOffset;
-    delete element.dataset.originalZIndex;
-    delete element.dataset.originalPosition;
-  });
+        // Clean up data attributes
+        delete element.dataset.originalOutline;
+        delete element.dataset.originalOutlineOffset;
+        delete element.dataset.originalZIndex;
+        delete element.dataset.originalPosition;
+      } catch (err) {
+        console.warn('Error removing highlight from element:', err);
+      }
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Error in removeHighlight:', error);
+    return false;
+  }
 }
 
 // Function to scroll element with class into view
 function scrollElementIntoView(className) {
-  // Find the first element with the specified class
-  const element = document.querySelector('.' + className);
-
-  if (element) {
-    // Scroll the element into view with smooth behavior
-    element.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center'
-    });
-
-    // Highlight the element temporarily
-    highlightElementsWithClass(className);
-
-    // Remove highlight after 2 seconds
-    setTimeout(() => {
-      removeHighlight();
-    }, 2000);
-
-    return true;
+  // First check if we're on a portal page
+  if (!checkForPortalClasses()) {
+    return false;
   }
 
-  return false;
+  try {
+    // Find the first element with the specified class
+    const element = document.querySelector('.' + className);
+
+    if (element) {
+      // Scroll the element into view with smooth behavior
+      element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+
+      // Highlight the element temporarily
+      highlightElementsWithClass(className);
+
+      // Remove highlight after 2 seconds
+      setTimeout(() => {
+        removeHighlight();
+      }, 2000);
+
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Error in scrollElementIntoView:', error);
+    return false;
+  }
 }
 
 // Function to set up hover detection on all portal elements
 function setupHoverDetection() {
-  const portalElements = document.querySelectorAll('[class*="portal-"]');
+  // First check if we're on a portal page
+  if (!checkForPortalClasses()) {
+    return;
+  }
 
-  portalElements.forEach(element => {
-    // Add mouse enter event
-    element.addEventListener('mouseenter', () => {
-      const portalClasses = Array.from(element.classList)
-        .filter(className => /^portal-.*$/.test(className));
+  try {
+    const portalElements = document.querySelectorAll('[class*="portal-"]');
 
-      if (portalClasses.length > 0) {
-        // Send message to popup using safe method
-        safeSendMessage({
-          action: 'hoverPortalElement',
-          portalClasses: portalClasses
-        });
+    portalElements.forEach(element => {
+      // Skip elements that already have listeners
+      if (element.dataset.portalListenersAdded === 'true') {
+        return;
       }
-    });
 
-    // Add mouse leave event
-    element.addEventListener('mouseleave', () => {
-      safeSendMessage({
-        action: 'leavePortalElement'
+      // Mark element as having listeners
+      element.dataset.portalListenersAdded = 'true';
+
+      // Add mouse enter event using addEventListener (not inline handler)
+      element.addEventListener('mouseenter', function() {
+        const portalClasses = Array.from(this.classList)
+          .filter(className => /^portal-.*$/.test(className));
+
+        if (portalClasses.length > 0) {
+          // Send message to popup using safe method
+          safeSendMessage({
+            action: 'hoverPortalElement',
+            portalClasses: portalClasses
+          }, () => {
+            // Empty callback to handle response and prevent warnings
+          });
+        }
+      });
+
+      // Add mouse leave event using addEventListener (not inline handler)
+      element.addEventListener('mouseleave', function() {
+        safeSendMessage({
+          action: 'leavePortalElement'
+        }, () => {
+          // Empty callback to handle response and prevent warnings
+        });
       });
     });
-  });
+  } catch (error) {
+    console.error('Error in setupHoverDetection:', error);
+  }
+}
+
+// Function to update all portal data
+function updatePortalData() {
+  // Check if we have portal classes first
+  if (!checkForPortalClasses()) {
+    // If no portal classes, notify extension
+    safeSendMessage({
+      action: 'noPortalClasses',
+      message: 'This is not a DevRev portal page.'
+    }, () => {});
+    return;
+  }
+
+  // Send message to update tree, styles, tailwind classes in the extension
+  safeSendMessage({
+    action: 'updatePortalData',
+    isPortalPage: true
+  }, () => {});
+}
+
+// Function to handle page visibility changes
+function handleVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    // When page becomes visible again, update data in case anything changed
+    updatePortalData();
+    setupHoverDetection();
+  }
 }
 
 // Call setup when page loads and when DOM changes
-setupHoverDetection();
+document.addEventListener('DOMContentLoaded', function() {
+  checkForPortalClasses();
+  setupHoverDetection();
+  updatePortalData();
+});
 
-// Set up a mutation observer to detect new portal elements
+// Handle visibility changes (when user switches tabs)
+document.addEventListener('visibilitychange', handleVisibilityChange);
+
+// Set up a mutation observer to detect new portal elements or DOM changes
 const observer = new MutationObserver((mutations) => {
   let shouldRefresh = false;
 
@@ -361,11 +504,13 @@ const observer = new MutationObserver((mutations) => {
   });
 
   if (shouldRefresh) {
-    setupHoverDetection();
+    checkForPortalClasses(); // Update portal page status
+    setupHoverDetection();  // Set up event listeners for new elements
+    updatePortalData();    // Update data in the extension
   }
 });
 
-// Start observing the document
+// Start observing the document with appropriate options
 observer.observe(document.body, {
   childList: true,
   subtree: true,
@@ -373,53 +518,163 @@ observer.observe(document.body, {
   attributeFilter: ['class']
 });
 
+// Listen for navigation events using the history API
+const originalPushState = history.pushState;
+const originalReplaceState = history.replaceState;
+
+// Override pushState to detect navigation
+history.pushState = function() {
+  originalPushState.apply(history, arguments);
+  // After navigation completes, refresh our data
+  setTimeout(() => {
+    checkForPortalClasses();
+    updatePortalData();
+    setupHoverDetection();
+  }, 500);
+};
+
+// Override replaceState to detect navigation
+history.replaceState = function() {
+  originalReplaceState.apply(history, arguments);
+  // After navigation completes, refresh our data
+  setTimeout(() => {
+    checkForPortalClasses();
+    updatePortalData();
+    setupHoverDetection();
+  }, 500);
+};
+
+// Listen for popstate (back/forward navigation)
+window.addEventListener('popstate', function() {
+  // After navigation completes, refresh our data
+  setTimeout(() => {
+    checkForPortalClasses();
+    updatePortalData();
+    setupHoverDetection();
+  }, 500);
+});
+
+// Reconnect handler for runtime
+function setupRuntimeReconnect() {
+  // Check connection status periodically
+  setInterval(() => {
+    try {
+      if (chrome.runtime && chrome.runtime.id) {
+        // Connection is good, do nothing
+      } else {
+        // Runtime disconnected, reload page to reconnect
+        console.log('Extension runtime disconnected, reloading content script');
+        window.location.reload();
+      }
+    } catch (e) {
+      console.warn('Error checking runtime connection:', e);
+    }
+  }, 10000); // Check every 10 seconds
+}
+
+// Set up runtime reconnection
+setupRuntimeReconnect();
+
 // Message listener - update with better error handling
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Always ensure a response, even if just an acknowledgement
+  const ensureResponse = () => {
+    // Send a default response if one hasn't been sent yet
+    try {
+      sendResponse({ success: true, message: 'Acknowledged' });
+    } catch (e) {
+      // Already responded or port closed, ignore
+    }
+  };
+
+  // Set a timeout to ensure we always send a response
+  const responseTimeout = setTimeout(ensureResponse, 500);
+
   // Add support for ping message (for connection checking)
   if (request.action === 'ping') {
     sendResponse({ success: true, message: 'content script connected' });
-    return;
+    clearTimeout(responseTimeout);
+    return true;
   }
 
+  // For hover/leave events, just acknowledge receipt
+  if (request.action === 'hoverPortalElement' || request.action === 'leavePortalElement') {
+    sendResponse({ success: true, silent: true });
+    clearTimeout(responseTimeout);
+    return true;
+  }
+
+  // Check portal page status
+  if (request.action === 'checkPortalPage') {
+    const isPortal = checkForPortalClasses();
+    sendResponse({
+      success: true,
+      isPortalPage: isPortal
+    });
+    clearTimeout(responseTimeout);
+    return true;
+  }
+
+  // Update all portal data
+  if (request.action === 'updateAllData') {
+    updatePortalData();
+    sendResponse({ success: true });
+    clearTimeout(responseTimeout);
+    return true;
+  }
+
+  // Request to build portal class tree
   if (request.action === 'getPortalClassTree') {
     try {
       const tree = buildPortalClassTree(document.body);
       sendResponse({
         success: true,
-        data: tree
+        data: tree,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     } catch (error) {
       console.error('Error getting portal class tree:', error);
       sendResponse({
         success: false,
-        error: error.message
+        error: error.message,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     }
   } else if (request.action === 'getPortalClassesWithStyles') {
     try {
       const styles = getPortalClassesWithStyles();
       sendResponse({
         success: true,
-        data: styles
+        data: styles,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     } catch (error) {
       sendResponse({
         success: false,
-        error: error.message
+        error: error.message,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     }
   } else if (request.action === 'getTailwindClasses') {
     try {
       const tailwindClasses = getTailwindClasses();
       sendResponse({
         success: true,
-        data: tailwindClasses
+        data: tailwindClasses,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     } catch (error) {
       sendResponse({
         success: false,
-        error: error.message
+        error: error.message,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     }
   } else if (request.action === 'getCurrentCSS') {
     try {
@@ -428,11 +683,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         success: true,
         data: css
       });
+      clearTimeout(responseTimeout);
     } catch (error) {
       sendResponse({
         success: false,
         error: error.message
       });
+      clearTimeout(responseTimeout);
     }
   } else if (request.action === 'captureScreenshot') {
     try {
@@ -450,12 +707,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             error: 'Failed to capture screenshot with all methods'
           });
         }
+        clearTimeout(responseTimeout);
       }).catch(error => {
         console.error('Screenshot error:', error);
         sendResponse({
           success: false,
           error: error.message
         });
+        clearTimeout(responseTimeout);
       });
 
       return true; // Keep the message channel open for async response
@@ -465,6 +724,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         success: false,
         error: error.message
       });
+      clearTimeout(responseTimeout);
     }
   } else if (request.action === 'applyCSS') {
     try {
@@ -472,49 +732,70 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({
         success: result
       });
+      clearTimeout(responseTimeout);
     } catch (error) {
       sendResponse({
         success: false,
         error: error.message
       });
+      clearTimeout(responseTimeout);
     }
   } else if (request.action === 'highlightElements') {
     try {
       const count = highlightElementsWithClass(request.className);
       sendResponse({
         success: true,
-        count: count
+        count: count,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     } catch (error) {
       sendResponse({
         success: false,
-        error: error.message
+        error: error.message,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     }
   } else if (request.action === 'removeHighlight') {
     try {
-      removeHighlight();
+      const result = removeHighlight();
       sendResponse({
-        success: true
+        success: result,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     } catch (error) {
       sendResponse({
         success: false,
-        error: error.message
+        error: error.message,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     }
   } else if (request.action === 'scrollElementIntoView') {
     try {
       const result = scrollElementIntoView(request.className);
       sendResponse({
-        success: result
+        success: result,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     } catch (error) {
       sendResponse({
         success: false,
-        error: error.message
+        error: error.message,
+        isPortalPage: isPortalPage
       });
+      clearTimeout(responseTimeout);
     }
+  } else {
+    // Handle unknown actions
+    sendResponse({
+      success: false,
+      error: 'Unknown action: ' + request.action
+    });
+    clearTimeout(responseTimeout);
   }
 
   return true; // Keep the message channel open for async response
