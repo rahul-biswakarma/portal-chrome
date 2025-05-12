@@ -546,15 +546,27 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
     contents: [
       {
         parts: [
-          // Add the image if we have a file URI (only for first attempt)
+          // Add the screenshot if we have a file URI (only for first attempt)
           ...(fileUri && retryCount === 0 ? [{
             file_data: {
               mime_type: "image/png",
               file_uri: fileUri
             }
           }] : []),
+
+                    // Add all reference images if available (only for first attempt)
+          ...(window.referenceImages.length > 0 && retryCount === 0 ?
+            window.referenceImages.map(img => ({
+              inline_data: {
+                mime_type: img.data.split(';')[0].split(':')[1],
+                data: img.data.split(',')[1]
+              }
+            })) : []),
+
           {
             text: `You are a CSS expert specializing in creating styles for web applications.
+
+${window.referenceImages.length > 0 ? `IMPORTANT: I've provided ${window.referenceImages.length} reference image${window.referenceImages.length > 1 ? 's' : ''} showing the desired design style. Please use ${window.referenceImages.length > 1 ? 'these' : 'this'} as inspiration when creating the CSS. Try to match the color scheme, styling patterns, and overall aesthetic of the reference image${window.referenceImages.length > 1 ? 's' : ''}.` : ""}
 
 USER PROMPT: "${prompt}"
 
@@ -993,6 +1005,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize Monaco editor for CSS
   let monacoEditor;
 
+  // Create a global array to store reference images data
+  window.referenceImages = [];
+
   // Wait a moment to ensure DOM is fully loaded
   setTimeout(async () => {
     // Create Monaco editor
@@ -1000,6 +1015,147 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Make monacoEditor available for other functions
     window.cssEditor = monacoEditor;
+
+                // Function to add an image to the preview grid
+    function addImageToPreview(imageData) {
+      // Store the image data with a unique ID
+      const imageId = 'img_' + Date.now();
+      window.referenceImages.push({
+        id: imageId,
+        data: imageData
+      });
+
+      // Show the image preview
+      const imagePreviewContainer = document.getElementById('image-preview-container');
+      const imagesGrid = document.getElementById('images-grid');
+
+      // Create a new image preview container
+      const imagePreviewDiv = document.createElement('div');
+      imagePreviewDiv.id = imageId;
+      imagePreviewDiv.style.position = 'relative';
+      imagePreviewDiv.style.display = 'inline-block';
+
+      // Create the image element
+      const imgElement = document.createElement('img');
+      imgElement.src = imageData;
+      imgElement.style.maxWidth = '150px';
+      imgElement.style.maxHeight = '150px';
+      imgElement.style.border = '1px solid #ccc';
+      imgElement.style.borderRadius = '4px';
+
+      // Create remove button
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '✕';
+      removeBtn.style.position = 'absolute';
+      removeBtn.style.top = '5px';
+      removeBtn.style.right = '5px';
+      removeBtn.style.background = 'rgba(255,255,255,0.7)';
+      removeBtn.style.border = 'none';
+      removeBtn.style.borderRadius = '50%';
+      removeBtn.style.width = '24px';
+      removeBtn.style.height = '24px';
+      removeBtn.style.fontSize = '12px';
+      removeBtn.style.cursor = 'pointer';
+
+      // Add remove button event listener
+      removeBtn.addEventListener('click', () => {
+        // Remove from array
+        window.referenceImages = window.referenceImages.filter(img => img.id !== imageId);
+
+        // Remove from DOM
+        imagePreviewDiv.remove();
+
+        // Hide container if no images left
+        if (window.referenceImages.length === 0) {
+          imagePreviewContainer.style.display = 'none';
+        }
+
+        showStatus('Image removed', 'info');
+      });
+
+      // Add elements to the DOM
+      imagePreviewDiv.appendChild(imgElement);
+      imagePreviewDiv.appendChild(removeBtn);
+      imagesGrid.appendChild(imagePreviewDiv);
+
+      imagePreviewContainer.style.display = 'block';
+
+      showStatus('Reference image added successfully!', 'success');
+    }
+
+    // Function to handle file upload
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (file && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const imageData = reader.result;
+          addImageToPreview(imageData);
+
+          // Generate suggested prompt based on the image
+          generatePromptFromImage(imageData);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    // Function to generate a suggested prompt based on the uploaded image
+    function generatePromptFromImage(imageData) {
+      // Get current prompt value
+      const promptField = document.getElementById('user-prompt');
+      const currentPrompt = promptField.value.trim();
+
+      // If there's already a prompt, don't override it
+      if (currentPrompt.length > 0) {
+        return;
+      }
+
+      // Set a loading message
+      promptField.value = "Analyzing image for design suggestions...";
+
+      // Generate different types of design suggestions based on the number of images
+      const imageCount = window.referenceImages.length;
+
+      // Wait a moment to simulate "analysis" (in a real implementation, this would be AI-based)
+      setTimeout(() => {
+        let suggestedPrompt = "";
+
+        if (imageCount === 1) {
+          // For the first image, suggest a comprehensive redesign
+          suggestedPrompt = "Transform the portal design to match the reference image style. Apply similar color schemes, typography, and visual elements while maintaining good contrast and readability. Add subtle shadows and rounded corners where appropriate.";
+        } else {
+          // For additional images, suggest combining styles
+          suggestedPrompt = "Update the portal design to combine elements from all reference images. Use the color palette from the latest image while maintaining the layout style of the previous ones. Ensure consistent spacing, typography, and visual hierarchy.";
+        }
+
+        // Set the generated prompt
+        promptField.value = suggestedPrompt;
+
+        // Highlight the prompt to make it easy to edit/replace
+        promptField.focus();
+        promptField.setSelectionRange(0, suggestedPrompt.length);
+
+        showStatus('Added design suggestion based on your image', 'success');
+      }, 800); // Short delay to make it feel like it's analyzing
+    }
+
+    // Set up file input handler
+    const fileInput = document.getElementById('image-file-input');
+    fileInput.addEventListener('change', handleFileUpload);
+
+    // Add button click handler for upload button
+    document.getElementById('upload-image-btn').addEventListener('click', () => {
+      fileInput.click(); // Trigger file input click
+    });
+
+    // Set up the clear all images button
+    document.getElementById('clear-all-images-btn').addEventListener('click', () => {
+      // Clear all reference images
+      window.referenceImages = [];
+      document.getElementById('images-grid').innerHTML = '';
+      document.getElementById('image-preview-container').style.display = 'none';
+      showStatus('All reference images removed', 'info');
+    });
 
 
 
@@ -1012,6 +1168,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Save current CSS as a version before generating new one if it's not the initial placeholder
         if (currentCSS && currentCSS !== "/* CSS will appear here after generation */") {
           saveCSSVersion(currentCSS, `Before: ${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
+        }
+
+        // Check if we have reference images
+        const hasReferenceImages = window.referenceImages.length > 0;
+        if (hasReferenceImages) {
+          showStatus(`Using ${window.referenceImages.length} reference image(s) for design inspiration`, 'info');
         }
 
         showStatus('Fetching page data...', 'info');

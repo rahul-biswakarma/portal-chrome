@@ -374,10 +374,20 @@
     <div id="prompt-container">
       <p>Describe how you want to customize the portal design:</p>
       <textarea id="user-prompt" placeholder="Example: Make all portal headers blue with rounded corners and add a shadow to portal containers"></textarea>
-      <button id="generate-btn">Generate CSS with AI <span id="loading-spinner" class="loading" style="display: none;"></span></button>
+      <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
+        <input type="file" id="image-file-input" accept="image/*" style="display: none;">
+        <button id="upload-image-btn" style="padding: 6px 12px; background-color: #f8f9fa; color: #333; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 12px;">Upload Reference Image</button>
+        <span style="font-size: 12px; color: #666;">Add reference images to help the AI match your desired design style</span>
+      </div>
+      <button id="generate-btn" style="margin-top: 15px;">Generate CSS with AI <span id="loading-spinner" class="loading" style="display: none;"></span></button>
     </div>
     <div id="css-output">
       <div id="monaco-editor-container"></div>
+    </div>
+    <div id="image-preview-container" style="display: none; margin-top: 10px; text-align: center;">
+      <p style="margin-bottom: 5px; font-size: 12px; color: #666;">Reference Images</p>
+      <div id="images-grid" style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 10px;"></div>
+      <button id="clear-all-images-btn" style="margin-top: 10px; padding: 4px 8px; background-color: #f8f9fa; color: #333; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-size: 12px;">Clear All Images</button>
     </div>
     <button id="apply-css-btn">Apply CSS to Page</button>
     <div id="status-message"></div>
