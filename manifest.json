@@ -23,6 +23,9 @@
   "side_panel": {
     "default_path": "popup.html"
   },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self'"
+  },
   "content_scripts": [
     {
       "matches": [
@@ -49,6 +52,6 @@
     }
   ],
   "action": {
-    "default_popup": "popup.html"
+    "default_title": "Portal Design Customizer"
   }
 }

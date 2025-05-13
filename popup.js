@@ -26,6 +26,13 @@ function createTreeNode(node, level = 0, isLast = true) {
   return text;
 }
 
+// Global variables
+let portalClassTree = null;
+let tailwindClassData = {};
+let allPortalClasses = [];
+// Store CSS versions
+let cssVersions = [];
+
 // Function to clean text of problematic characters
 function cleanText(text) {
   if (!text) return '';
@@ -102,9 +109,6 @@ function showStatus(message, type) {
     }, 300);
   }, 3000);
 }
-
-// Store CSS versions
-let cssVersions = [];
 
 // Function to save a CSS version
 function saveCSSVersion(css, description = '') {
@@ -933,52 +937,65 @@ async function loadTreeData() {
     const response = await safeSendMessage(tabs[0].id, {action: 'getPortalClassTree'}, null, 15000);
 
     if (!response || !response.success) {
-      throw new Error(response.error || 'Failed to get portal class data');
+      throw new Error(response?.error || 'Failed to get portal class data');
     }
 
-    if (response.data) {
-      portalClassTree = response.data;
+    // Initialize default empty tree if no data received
+    if (!response.data) {
+      portalClassTree = {
+        element: 'body',
+        portalClasses: [],
+        children: [],
+        isPortalPage: false
+      };
+      treeContainer.innerHTML = '<div style="text-align: center; padding: 20px;">No portal classes found on this page. The extension works best on DevRev portal pages.</div>';
+      return;
+    }
 
-      try {
-        // Get tailwind classes
-        tailwindClassData = await collectTailwindClasses();
+    portalClassTree = response.data;
 
-        // Attach tailwind classes to the portal class tree
-        const attachTailwindClasses = (node) => {
-          if (node.portalClasses && node.portalClasses.length > 0) {
-            // Find matching tailwind data for this node
-            const tailwindClasses = [];
-            node.portalClasses.forEach(className => {
-              if (tailwindClassData[className]) {
-                tailwindClasses.push(...tailwindClassData[className]);
-              }
-            });
-            node.tailwindClasses = [...new Set(tailwindClasses)]; // Remove duplicates
-          }
+    try {
+      // Get tailwind classes
+      tailwindClassData = await collectTailwindClasses();
 
-          // Process children
-          if (node.children) {
-            node.children.forEach(child => attachTailwindClasses(child));
-          }
-        };
+      // Attach tailwind classes to the portal class tree
+      const attachTailwindClasses = (node) => {
+        if (node.portalClasses && node.portalClasses.length > 0) {
+          // Find matching tailwind data for this node
+          const tailwindClasses = [];
+          node.portalClasses.forEach(className => {
+            if (tailwindClassData[className]) {
+              tailwindClasses.push(...tailwindClassData[className]);
+            }
+          });
+          node.tailwindClasses = [...new Set(tailwindClasses)]; // Remove duplicates
+        }
 
-        attachTailwindClasses(portalClassTree);
-      } catch (error) {
-        console.warn('Error loading tailwind classes:', error);
-        // Continue even if tailwind classes fail to load
-      }
+        // Process children
+        if (node.children) {
+          node.children.forEach(child => attachTailwindClasses(child));
+        }
+      };
 
-      // Use the HTML tree renderer
-      treeContainer.innerHTML = '';
-      const treeHTML = createTreeNodeHTML(response.data);
-      treeContainer.appendChild(treeHTML);
+      attachTailwindClasses(portalClassTree);
+    } catch (error) {
+      console.warn('Error loading tailwind classes:', error);
+      // Continue even if tailwind classes fail to load
+    }
 
-      // Extract all portal classes for CSS generation
-      allPortalClasses = extractPortalClasses(response.data);
-      // Remove duplicates
-      allPortalClasses = [...new Set(allPortalClasses)];
-    } else {
-      treeContainer.innerHTML = '<div style="text-align: center; padding: 20px;">No portal classes found on this page.</div>';
+    // Use the HTML tree renderer
+    treeContainer.innerHTML = '';
+    const treeHTML = createTreeNodeHTML(portalClassTree);
+    treeContainer.appendChild(treeHTML);
+
+    // Extract all portal classes for CSS generation
+    allPortalClasses = extractPortalClasses(portalClassTree);
+    // Remove duplicates
+    allPortalClasses = [...new Set(allPortalClasses)];
+
+    // Show a message if no portal classes found
+    if (allPortalClasses.length === 0) {
+      treeContainer.innerHTML = '<div style="text-align: center; padding: 20px;">No portal classes found on this page. The extension works best on DevRev portal pages.</div>';
     }
   } catch (error) {
     console.error('Error loading tree data:', error);
@@ -993,8 +1010,13 @@ async function loadTreeData() {
     treeContainer.innerHTML = `
       <div style="text-align: center; padding: 20px; color: #721c24; background-color: #f8d7da; border-radius: 4px; border: 1px solid #f5c6cb;">
         <p><strong>Error:</strong> ${errorMessage}</p>
-        <button onclick="window.location.reload()" style="margin-top: 10px; padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Refresh Page</button>
+        <button id="refresh-tree-button" style="margin-top: 10px; padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Refresh Page</button>
       </div>`;
+
+    // Add event listener to the refresh button instead of using inline onclick
+    document.getElementById('refresh-tree-button')?.addEventListener('click', () => {
+      window.location.reload();
+    });
   }
 }
 

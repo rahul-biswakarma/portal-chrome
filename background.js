@@ -1,5 +1,11 @@
 // Background script for Portal Chrome Extension
 
+// Enable side panel when extension icon is clicked
+chrome.action.onClicked.addListener((tab) => {
+  // Open the side panel
+  chrome.sidePanel.open({ tabId: tab.id });
+});
+
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Handle ping request (used for checking connection health)
