@@ -708,6 +708,18 @@ async function getCurrentCSS() {
   }
 }
 
+// Function to handle when a portal element is hovered on the page
+function handlePortalElementHover(portalClasses) {
+  // Highlight the corresponding tree nodes
+  highlightTreeNodes(portalClasses);
+}
+
+// Function to handle when mouse leaves a portal element on the page
+function handlePortalElementLeave() {
+  // Remove highlights
+  removeTreeHighlights();
+}
+
 // Function to highlight tree nodes with specific classes
 function highlightTreeNodes(classes) {
   // Remove any existing highlights first
@@ -732,6 +744,10 @@ function highlightTreeNodes(classes) {
         // Scroll the node into view if it's not visible
         currentNode.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       }
+
+      // Also highlight the class name itself for better visibility
+      span.style.backgroundColor = 'rgba(66, 133, 244, 0.25)';
+      span.style.fontWeight = 'bold';
     });
   });
 }
@@ -1575,16 +1591,43 @@ Output ONLY the prompt text, with no additional explanations or formatting.`
   let tailwindClassData = null;
   let generatedCSS = '';
 
-  // Listen for messages from content script about hover events
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.action === 'hoverPortalElement') {
-      // Highlight tree nodes for the hovered classes
-      highlightTreeNodes(message.portalClasses);
-    } else if (message.action === 'leavePortalElement') {
-      // Remove highlights
-      removeTreeHighlights();
+  // Set up message listeners for the popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Always send a response to prevent connection errors
+  const respond = (response = { success: true }) => {
+    try {
+      sendResponse(response);
+    } catch (error) {
+      console.warn('Error sending response:', error);
     }
-  });
+  };
+
+  try {
+    // Handle different message actions
+    switch (message.action) {
+      case 'hoverPortalElement':
+        handlePortalElementHover(message.portalClasses);
+        respond();
+        break;
+
+      case 'leavePortalElement':
+        handlePortalElementLeave();
+        respond();
+        break;
+
+      // ... other message handlers ...
+
+      default:
+        respond({ success: false, error: 'Unknown action' });
+    }
+  } catch (error) {
+    console.error('Error handling message:', error);
+    respond({ success: false, error: error.message });
+  }
+
+  // Return true to indicate we'll respond asynchronously
+  return true;
+});
 
   // Load API key and CSS versions from storage
   chrome.storage.local.get(['geminiApiKey', 'cssVersions'], (result) => {

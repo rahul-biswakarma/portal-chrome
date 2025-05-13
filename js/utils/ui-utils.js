@@ -1,68 +1,57 @@
 // UI utility functions
 
 /**
- * Show a status message as a toast notification
+ * Show a status message as a status badge instead of toast
  * @param {string} message - The message to display
  * @param {string} type - The type of message (success, error, info)
  */
 export function showStatus(message, type) {
-  // Find or create toast container
-  let toastContainer = document.getElementById('toast-container');
-  if (!toastContainer) {
-    toastContainer = document.createElement('div');
-    toastContainer.id = 'toast-container';
-    toastContainer.style.position = 'fixed';
-    toastContainer.style.bottom = '20px';
-    toastContainer.style.right = '20px';
-    toastContainer.style.zIndex = '9999';
-    document.body.appendChild(toastContainer);
+  // Find or create status badge container
+  let statusBadge = document.getElementById('status-badge');
+  if (!statusBadge) {
+    statusBadge = document.createElement('div');
+    statusBadge.id = 'status-badge';
+    statusBadge.style.position = 'fixed';
+    statusBadge.style.top = '0';
+    statusBadge.style.left = '0';
+    statusBadge.style.right = '0';
+    statusBadge.style.zIndex = '9999';
+    statusBadge.style.textAlign = 'center';
+    statusBadge.style.padding = '8px';
+    statusBadge.style.fontSize = '12px';
+    statusBadge.style.fontWeight = '500';
+    statusBadge.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+    statusBadge.style.transform = 'translateY(-100%)';
+    statusBadge.style.opacity = '0';
+    document.body.appendChild(statusBadge);
   }
 
-  // Create toast element
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-
-  // Style the toast
-  toast.style.padding = '10px 15px';
-  toast.style.borderRadius = '4px';
-  toast.style.marginTop = '10px';
-  toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
-  toast.style.minWidth = '200px';
-  toast.style.animation = 'fadeIn 0.3s, fadeOut 0.3s 2.7s';
-  toast.style.opacity = '0';
+  // Set message and style based on type
+  statusBadge.textContent = message;
 
   // Add type-specific styles
   if (type === 'success') {
-    toast.style.backgroundColor = '#d4edda';
-    toast.style.color = '#155724';
-    toast.style.borderLeft = '4px solid #28a745';
+    statusBadge.style.backgroundColor = '#E3FCEF';
+    statusBadge.style.color = '#0E6245';
+    statusBadge.style.borderBottom = '1px solid #A6E9D5';
   } else if (type === 'error') {
-    toast.style.backgroundColor = '#f8d7da';
-    toast.style.color = '#721c24';
-    toast.style.borderLeft = '4px solid #dc3545';
+    statusBadge.style.backgroundColor = '#FFE9ED';
+    statusBadge.style.color = '#CD2B31';
+    statusBadge.style.borderBottom = '1px solid #FFC1CA';
   } else if (type === 'info') {
-    toast.style.backgroundColor = '#d1ecf1';
-    toast.style.color = '#0c5460';
-    toast.style.borderLeft = '4px solid #17a2b8';
+    statusBadge.style.backgroundColor = '#EFF8FF';
+    statusBadge.style.color = '#0A558C';
+    statusBadge.style.borderBottom = '1px solid #B9DDFF';
   }
 
-  // Add to container
-  toastContainer.appendChild(toast);
+  // Show the badge
+  statusBadge.style.transform = 'translateY(0)';
+  statusBadge.style.opacity = '1';
 
-  // Fade in
+  // Hide after 3 seconds
   setTimeout(() => {
-    toast.style.opacity = '1';
-  }, 10);
-
-  // Remove after 3 seconds
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    setTimeout(() => {
-      if (toast.parentNode) {
-        toast.parentNode.removeChild(toast);
-      }
-    }, 300);
+    statusBadge.style.transform = 'translateY(-100%)';
+    statusBadge.style.opacity = '0';
   }, 3000);
 }
 

@@ -1,6 +1,6 @@
 import { showStatus } from './ui.js';
 import { simplifyTree } from './tree.js';
-import { dataURLtoBlob } from './screenshot.js';
+import { dataURLtoBlob, captureScreenshot } from './screenshot.js';
 
 /**
  * Generate CSS using Gemini API
@@ -140,4 +140,104 @@ Your task:
 5. If adding new styles, place them in logical sections within the existing CSS structure
 6. If modifying existing styles, update them in-place
 7. Include !important where necessary to override tailwind styles
-8. Include comprehensive comments explaining your styling approach
+8. Include comprehensive comments explaining your styling approach`
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      topK: 32,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+    },
+    safetySettings: [
+      {
+        category: "HARM_CATEGORY_HARASSMENT",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      },
+      {
+        category: "HARM_CATEGORY_HATE_SPEECH",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      },
+      {
+        category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      },
+      {
+        category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+        threshold: "BLOCK_MEDIUM_AND_ABOVE"
+      }
+    ]
+  };
+
+  try {
+    // Make the API request
+    const response = await fetch(`${url}?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`API error: ${errorData.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    // Check if we have a valid response with text
+    if (data.candidates &&
+        data.candidates[0] &&
+        data.candidates[0].content &&
+        data.candidates[0].content.parts) {
+
+      // Extract the CSS from the response
+      const responseParts = data.candidates[0].content.parts;
+      let cssText = '';
+
+      // Look for the CSS in the response parts
+      for (const part of responseParts) {
+        if (part.text) {
+          // Extract CSS code blocks from the text
+          const cssMatches = part.text.match(/```css([\s\S]*?)```/g);
+          if (cssMatches && cssMatches.length > 0) {
+            // Use the first CSS block found
+            cssText = cssMatches[0]
+              .replace(/```css\n?/g, '') // Remove opening ```css
+              .replace(/```$/g, '');     // Remove closing ```
+            break;
+          } else {
+            // If no code blocks, use the entire text if it looks like CSS
+            if (part.text.includes('{') && part.text.includes('}')) {
+              cssText = part.text;
+            }
+          }
+        }
+      }
+
+      if (cssText) {
+        showStatus('CSS generated successfully!', 'success');
+        return cssText;
+      } else {
+        throw new Error('No CSS found in the response');
+      }
+    } else {
+      throw new Error('Invalid response format from API');
+    }
+  } catch (error) {
+    console.error('Error generating CSS:', error);
+    showStatus(`Error: ${error.message}`, 'error');
+
+    // Retry with simplified payload if we haven't exceeded max retries
+    if (retryCount < MAX_RETRIES) {
+      showStatus(`Retrying with simplified request (${retryCount + 1}/${MAX_RETRIES})...`, 'info');
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      return generateCSSWithAI(apiKey, prompt, portalClassTree, tailwindData, currentCSS, retryCount + 1);
+    } else {
+      throw new Error(`Failed after ${MAX_RETRIES} attempts: ${error.message}`);
+    }
+  }
+}
