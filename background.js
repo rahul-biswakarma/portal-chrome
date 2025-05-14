@@ -31,7 +31,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // Handle request to capture just the visible tab (simpler than full page)
   if (request.action === 'captureVisibleTab') {
     try {
-      captureVisibleTabOnly(sendResponse);
+      captureCurrentTab()
+        .then(dataUrl => {
+          sendResponse({ success: true, data: dataUrl });
+        })
+        .catch(error => {
+          console.error('Tab capture error:', error);
+          sendResponse({ success: false, error: error.message });
+        });
     } catch (error) {
       console.error('Error starting visible capture:', error);
       sendResponse({
@@ -316,4 +323,166 @@ function restorePageAfterScreenshot() {
   document.body.classList.remove('portal-screenshot-in-progress');
 
   return true;
+}
+
+// Enhanced background script for Portal Design Customizer
+// Handles messages from popup.js and content.js
+
+// Listen for messages from content script or popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Always send a response to prevent connection errors
+  const respond = (response = { success: true }) => {
+    try {
+      sendResponse(response);
+    } catch (error) {
+      console.warn('Error sending response:', error);
+    }
+  };
+
+  try {
+    // Handle different message actions
+    switch (message.action) {
+      case 'downloadScreenshot':
+        // Handle screenshot download requests
+        downloadScreenshot(message.dataUrl, message.filename)
+          .then(downloadId => {
+            respond({ success: true, downloadId });
+          })
+          .catch(error => {
+            console.error('Download error:', error);
+            respond({ success: false, error: error.message });
+          });
+        break;
+
+      case 'openSidePanel':
+        // Open the side panel when requested
+        chrome.sidePanel.open({ tabId: sender.tab.id });
+        respond();
+        break;
+
+      case 'captureVisibleTab':
+        captureCurrentTab()
+          .then(dataUrl => {
+            respond({ success: true, data: dataUrl });
+          })
+          .catch(error => {
+            console.error('Tab capture error:', error);
+            respond({ success: false, error: error.message });
+          });
+        break;
+
+      default:
+        respond({ success: false, error: 'Unknown action' });
+    }
+  } catch (error) {
+    console.error('Error handling message:', error);
+    respond({ success: false, error: error.message });
+  }
+
+  // Return true to indicate we'll respond asynchronously
+  return true;
+});
+
+/**
+ * Helper function to download a screenshot using chrome.downloads API
+ * @param {string} dataUrl - The data URL of the screenshot
+ * @param {string} filename - The filename to save as
+ * @returns {Promise<number>} The download ID
+ */
+async function downloadScreenshot(dataUrl, filename = 'portal-screenshot.png') {
+  return new Promise((resolve, reject) => {
+    if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+      reject(new Error('Invalid screenshot data'));
+      return;
+    }
+
+    try {
+      chrome.downloads.download({
+        url: dataUrl,
+        filename: filename,
+        saveAs: false
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+
+        if (downloadId === undefined) {
+          reject(new Error('Download failed - undefined download ID'));
+          return;
+        }
+
+        resolve(downloadId);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+// Handle extension installation or update
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log('Portal Design Customizer installed or updated:', details.reason);
+
+  // Initialize extension state if needed
+  if (details.reason === 'install') {
+    // Set default settings on install
+    chrome.storage.local.set({
+      cssVersions: [],
+      initialized: true
+    });
+  }
+});
+
+// Handle tab updates to detect navigation
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Only proceed if the tab has completed loading
+  if (changeInfo.status === 'complete' && tab.url) {
+    // Check if the URL is a portal page (this is just a simple example check)
+    const isPortalPage = tab.url.includes('devrev.ai') || tab.url.includes('portal');
+
+    if (isPortalPage) {
+      // Let the user know this extension is available for this page
+      chrome.action.setBadgeText({
+        text: 'AI',
+        tabId: tabId
+      });
+      chrome.action.setBadgeBackgroundColor({
+        color: '#4285F4',
+        tabId: tabId
+      });
+    } else {
+      // Clear badge on non-portal pages
+      chrome.action.setBadgeText({
+        text: '',
+        tabId: tabId
+      });
+    }
+  }
+});
+
+/**
+ * Helper function to capture the current tab
+ * @returns {Promise<string>} Promise that resolves with the screenshot data URL
+ */
+async function captureCurrentTab() {
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.tabs.captureVisibleTab(null, { format: 'png', quality: 100 }, (dataUrl) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+
+        if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+          reject(new Error('Invalid screenshot data received from Chrome API'));
+          return;
+        }
+
+        resolve(dataUrl);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
 }

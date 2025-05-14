@@ -172,92 +172,92 @@ function getCurrentCSS() {
   return styleElement ? styleElement.textContent : '';
 }
 
-// Function to take a full page screenshot (not just the viewport)
+// Function to take a screenshot using Chrome's native captureVisibleTab API
 async function captureFullPageScreenshot() {
   try {
     console.log('[Screenshot] Starting screenshot capture process...');
 
-    // First try to use a scrolling capture approach
+    // First attempt: Use chrome.tabs.captureVisibleTab via background script
     try {
-      console.log('[Screenshot] Attempting scrolling screenshot method');
-      const scrollScreenshot = await captureScrollingScreenshot();
-      console.log('[Screenshot] Successfully captured scrolling screenshot');
-      return scrollScreenshot;
-    } catch (scrollError) {
-      console.warn('[Screenshot] Scrolling capture failed:', scrollError);
+      console.log('[Screenshot] Attempting captureVisibleTab via background script');
 
-      // Fall back to just capturing the visible viewport
-      try {
-        console.log('[Screenshot] Trying visible viewport capture fallback...');
-        const viewportScreenshot = await captureVisibleViewport();
-        console.log('[Screenshot] Successfully captured visible viewport');
-        return viewportScreenshot;
-      } catch (visibleError) {
-        console.error('[Screenshot] Viewport capture failed:', visibleError);
-        throw new Error('All screenshot methods failed: ' + visibleError.message);
+      const capturedData = await new Promise((resolve, reject) => {
+        // Set a timeout to prevent hanging
+        const timeoutId = setTimeout(() => {
+          reject(new Error('Screenshot capture timed out after 5 seconds'));
+        }, 5000);
+
+        // Request screenshot from background script
+        safeSendMessage({ action: 'captureVisibleTab' }, (response) => {
+          clearTimeout(timeoutId);
+
+          if (!response || !response.success) {
+            reject(new Error('Background capture failed: ' + (response?.error || 'Unknown error')));
+            return;
+          }
+
+          resolve(response.data);
+        });
+      });
+
+      if (capturedData && capturedData.startsWith('data:image')) {
+        console.log('[Screenshot] Successfully captured screenshot via background script');
+        return capturedData;
+      } else {
+        throw new Error('Invalid screenshot data received');
       }
+    } catch (backgroundError) {
+      console.warn('[Screenshot] Background script capture failed:', backgroundError);
     }
+
+    // Second attempt: Use direct captureVisibleTab
+    try {
+      console.log('[Screenshot] Attempting direct captureVisibleTab');
+
+      // Just capture the visible viewport - this is the most reliable method
+      return await captureVisibleViewport();
+    } catch (directError) {
+      console.warn('[Screenshot] Direct viewport capture failed:', directError);
+    }
+
+    // Last resort: Just return null and let caller handle it
+    console.error('[Screenshot] All screenshot methods failed');
+    return null;
   } catch (error) {
     console.error('[Screenshot] Screenshot capture failed completely:', error);
     throw error;
   }
 }
 
-// Capture just the visible viewport using background script
+// Simplified capture of just the visible viewport
 async function captureVisibleViewport() {
   return new Promise((resolve, reject) => {
-    console.log('[Screenshot] Requesting visible tab capture from background script');
-    safeSendMessage({ action: 'captureVisibleTab' }, (response) => {
-      if (response && response.success && response.data) {
-        console.log('[Screenshot] Received visible tab screenshot');
-        resolve(response.data);
-      } else {
-        console.error('[Screenshot] Failed to capture visible viewport:', response?.error || 'Unknown error');
-        reject(new Error('Failed to capture visible viewport: ' + (response?.error || 'Unknown error')));
-      }
-    });
-  });
-}
+    console.log('[Screenshot] Sending direct captureVisibleTab request to background');
 
-// New approach: Capture by scrolling through the page
-async function captureScrollingScreenshot() {
-  console.log('[Screenshot] Starting scrolling screenshot capture');
-  // Save original scroll position
-  const originalScrollPosition = {
-    left: window.scrollX,
-    top: window.scrollY
-  };
-
-  try {
-    // First scroll to the top of the page
-    window.scrollTo(0, 0);
-    console.log('[Screenshot] Scrolled to top of page');
-
-    // Allow time for scrolling and rendering
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    // Get the screenshot of the viewport at the top
-    console.log('[Screenshot] Requesting visible tab capture for top of page');
-    const topViewport = await new Promise((resolve, reject) => {
-      safeSendMessage({ action: 'captureVisibleTab' }, (response) => {
-        if (response && response.success && response.data) {
-          console.log('[Screenshot] Received top viewport screenshot');
-          resolve(response.data);
-        } else {
-          console.error('[Screenshot] Failed to capture top of page:', response?.error || 'Unknown error');
-          reject(new Error('Failed to capture top of page: ' + (response?.error || 'Unknown error')));
+    // Send a direct message to the background
+    chrome.runtime.sendMessage(
+      { action: 'captureVisibleTab' },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error('Chrome runtime error: ' + chrome.runtime.lastError.message));
+          return;
         }
-      });
-    });
 
-    // The simple approach: just return the top viewport screenshot
-    // This is the most reliable method even though it doesn't capture the full page
-    return topViewport;
-  } finally {
-    // Restore original scroll position no matter what
-    console.log('[Screenshot] Restoring original scroll position');
-    window.scrollTo(originalScrollPosition.left, originalScrollPosition.top);
-  }
+        if (!response || !response.success) {
+          reject(new Error('Failed to capture: ' + (response?.error || 'Unknown error')));
+          return;
+        }
+
+        if (!response.data || !response.data.startsWith('data:image')) {
+          reject(new Error('Invalid screenshot data received'));
+          return;
+        }
+
+        console.log('[Screenshot] Successfully captured visible viewport');
+        resolve(response.data);
+      }
+    );
+  });
 }
 
 // Function to apply CSS to the page

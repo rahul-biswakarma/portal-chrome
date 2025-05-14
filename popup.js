@@ -1,3 +1,14 @@
+// Import required modules
+import { showStatus, setUIProcessingState } from './js/modules/ui.js';
+import { saveCSSVersion, deleteCSSVersion, applyVersion, previewVersion, updateVersionsTab } from './js/modules/versions.js';
+import { simplifyTree } from './js/modules/tree.js';
+import {
+  analyzeReferenceImage,
+  generateCSSWithAI,
+  analyzeCSSAndGetFeedback,
+  isValidImageData
+} from './js/modules/api.js';
+
 // Function to create a text representation of the tree node
 function createTreeNode(node, level = 0, isLast = true) {
   let text = '';
@@ -48,265 +59,11 @@ function extractPortalClasses(node) {
   return classes;
 }
 
-// Function to show status message as a toast
-function showStatus(message, type) {
-  // Find or create toast container
-  let toastContainer = document.getElementById('toast-container');
-  if (!toastContainer) {
-    toastContainer = document.createElement('div');
-    toastContainer.id = 'toast-container';
-    toastContainer.style.position = 'fixed';
-    toastContainer.style.bottom = '20px';
-    toastContainer.style.right = '20px';
-    toastContainer.style.zIndex = '9999';
-    document.body.appendChild(toastContainer);
-  }
+// Moved to versions.js module
 
-  // Create toast element
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
+// Moved to versions.js module
 
-  // Style the toast
-  toast.style.padding = '10px 15px';
-  toast.style.borderRadius = '4px';
-  toast.style.marginTop = '10px';
-  toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
-  toast.style.minWidth = '200px';
-  toast.style.animation = 'fadeIn 0.3s, fadeOut 0.3s 2.7s';
-  toast.style.opacity = '0';
-
-  // Add type-specific styles
-  if (type === 'success') {
-    toast.style.backgroundColor = '#d4edda';
-    toast.style.color = '#155724';
-    toast.style.borderLeft = '4px solid #28a745';
-  } else if (type === 'error') {
-    toast.style.backgroundColor = '#f8d7da';
-    toast.style.color = '#721c24';
-    toast.style.borderLeft = '4px solid #dc3545';
-  } else if (type === 'info') {
-    toast.style.backgroundColor = '#d1ecf1';
-    toast.style.color = '#0c5460';
-    toast.style.borderLeft = '4px solid #17a2b8';
-  }
-
-  // Add to container
-  toastContainer.appendChild(toast);
-
-  // Fade in
-  setTimeout(() => {
-    toast.style.opacity = '1';
-  }, 10);
-
-  // Remove after 3 seconds
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    setTimeout(() => {
-      if (toast.parentNode) {
-        toast.parentNode.removeChild(toast);
-      }
-    }, 300);
-  }, 3000);
-}
-
-// Function to save a CSS version
-function saveCSSVersion(css, description = '') {
-  const timestamp = Date.now(); // Use numeric timestamp instead of Date object
-  const id = `version_${timestamp}`;
-
-  // Create new version object
-  const version = {
-    id,
-    timestamp,
-    description: description || `Version ${cssVersions.length + 1}`,
-    css
-  };
-
-  // Add to versions array
-  cssVersions.push(version);
-
-  // Save to chrome.storage.local
-  chrome.storage.local.set({cssVersions}, () => {
-    console.log('CSS version saved', version);
-    // Update versions tab
-    updateVersionsTab();
-  });
-
-  return version;
-}
-
-// Function to delete a CSS version
-function deleteCSSVersion(versionId) {
-  cssVersions = cssVersions.filter(v => v.id !== versionId);
-
-  // Save updated versions to storage
-  chrome.storage.local.set({cssVersions}, () => {
-    console.log('CSS version deleted', versionId);
-    // Update versions tab
-    updateVersionsTab();
-  });
-}
-
-// Function to update the versions tab with all saved versions
-function updateVersionsTab() {
-  const versionsContainer = document.getElementById('versions-container');
-  if (!versionsContainer) return;
-
-  // Clear current content
-  versionsContainer.innerHTML = '';
-
-  if (cssVersions.length === 0) {
-    versionsContainer.innerHTML = '<div class="no-versions">No saved versions yet. Generate CSS to create a version.</div>';
-    return;
-  }
-
-  // Sort versions by timestamp (newest first)
-  const sortedVersions = [...cssVersions].sort((a, b) => b.timestamp - a.timestamp);
-
-  // Create version cards
-  sortedVersions.forEach(version => {
-    const versionCard = document.createElement('div');
-    versionCard.className = 'version-card';
-    versionCard.dataset.versionId = version.id;
-
-    const header = document.createElement('div');
-    header.className = 'version-header';
-
-    const title = document.createElement('div');
-    title.className = 'version-title';
-    title.textContent = version.description;
-
-    const date = document.createElement('div');
-    date.className = 'version-date';
-    // Format the timestamp (which is a number) to a date string
-    date.textContent = new Date(version.timestamp).toLocaleString();
-
-    header.appendChild(title);
-    header.appendChild(date);
-
-    const actions = document.createElement('div');
-    actions.className = 'version-actions';
-
-    const previewBtn = document.createElement('button');
-    previewBtn.className = 'version-btn preview-btn';
-    previewBtn.textContent = 'Preview';
-    previewBtn.addEventListener('click', () => previewVersion(version.id));
-
-    const restoreBtn = document.createElement('button');
-    restoreBtn.className = 'version-btn apply-btn';
-    restoreBtn.textContent = 'Restore';
-    restoreBtn.addEventListener('click', () => applyVersion(version.id));
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'version-btn delete-btn';
-    deleteBtn.textContent = 'Delete';
-    deleteBtn.addEventListener('click', () => {
-      if (confirm('Are you sure you want to delete this version?')) {
-        deleteCSSVersion(version.id);
-      }
-    });
-
-    actions.appendChild(previewBtn);
-    actions.appendChild(restoreBtn);
-    actions.appendChild(deleteBtn);
-
-    versionCard.appendChild(header);
-    versionCard.appendChild(actions);
-
-    // Add a small preview of the CSS
-    const cssPreview = document.createElement('div');
-    cssPreview.className = 'css-preview';
-    // Show first 100 characters of the CSS - clean first to remove any weird characters
-    const cleanedPreview = cleanText(version.css);
-    cssPreview.textContent = cleanedPreview.substring(0, 100) + (cleanedPreview.length > 100 ? '...' : '');
-    versionCard.appendChild(cssPreview);
-
-    versionsContainer.appendChild(versionCard);
-  });
-}
-
-// Function to preview a version
-function previewVersion(versionId) {
-  chrome.storage.local.get('cssVersions', (result) => {
-    const versions = result.cssVersions || [];
-    const version = versions.find(v => v.id === versionId);
-
-    if (!version) return;
-
-    // Create a modal to show the CSS
-    const modal = document.createElement('div');
-    modal.className = 'css-preview-modal';
-
-    const modalContent = document.createElement('div');
-    modalContent.className = 'modal-content';
-
-    const modalHeader = document.createElement('div');
-    modalHeader.className = 'modal-header';
-    modalHeader.innerHTML = `
-      <span>${version.description || 'CSS Version'} - ${new Date(version.timestamp).toLocaleString()}</span>
-      <span class="close-btn">&times;</span>
-    `;
-
-    const cssContent = document.createElement('div');
-    cssContent.className = 'css-content';
-    cssContent.textContent = version.css;
-
-    const applyBtn = document.createElement('button');
-    applyBtn.className = 'apply-preview-btn';
-    applyBtn.textContent = 'Apply this CSS';
-    applyBtn.addEventListener('click', () => {
-      applyVersion(versionId);
-      modal.remove();
-    });
-
-    modalContent.appendChild(modalHeader);
-    modalContent.appendChild(cssContent);
-    modalContent.appendChild(applyBtn);
-    modal.appendChild(modalContent);
-
-    document.body.appendChild(modal);
-
-    // Close modal when clicking the close button
-    modalContent.querySelector('.close-btn').addEventListener('click', () => {
-      modal.remove();
-    });
-
-    // Close modal when clicking outside the content
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        modal.remove();
-      }
-    });
-  });
-}
-
-// Function to apply a version to the editor
-function applyVersion(versionId) {
-  chrome.storage.local.get('cssVersions', (result) => {
-    const versions = result.cssVersions || [];
-    const version = versions.find(v => v.id === versionId);
-
-    if (!version) return;
-
-    // Set the CSS in Monaco editor
-    window.cssEditor.setValue(version.css);
-
-    // Also apply the CSS to the page
-    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: 'applyCSS',
-        css: version.css
-      }, (response) => {
-        if (chrome.runtime.lastError || !response || !response.success) {
-          showStatus('Failed to apply CSS version. Please try again.', 'error');
-          return;
-        }
-        showStatus('CSS version applied successfully!', 'success');
-      });
-    });
-  });
-}
+// Moved to versions.js module
 
 // Add safe messaging function to handle extension context errors
 function safeSendMessage(tabId, message, callback, timeout = 30000) {
@@ -399,28 +156,12 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
   // Create a simplified version of the tree for the LLM
-  // Only include tag name, portal classes, and tailwind classes
-  function simplifyTree(node) {
-    const simplified = {
-      element: node.element,
-      portalClasses: node.portalClasses,
-      tailwindClasses: node.tailwindClasses || [],
-      children: []
-    };
-
-    if (node.children && node.children.length > 0) {
-      simplified.children = node.children.map(child => simplifyTree(child));
-    }
-
-    return simplified;
-  }
-
   const simplifiedTree = simplifyTree(portalClassTree);
 
-  // Get the screenshot if possible
+  // Attempt to get a screenshot of the current page
   let screenshot = null;
-  showStatus('Capturing page screenshot... This may take a moment.', 'info');
 
+  // Try to capture the screenshot using the content script
   try {
     const tabResponse = await new Promise((resolve, reject) => {
       chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
@@ -506,7 +247,6 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
       }
 
       // Upload the file
-      showStatus('Uploading screenshot to AI...', 'info');
       const uploadResponse = await fetch(uploadUrl, {
         method: 'POST',
         headers: {
@@ -518,15 +258,14 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
       });
 
       if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file');
+        throw new Error('Failed to upload screenshot');
       }
 
       const fileInfo = await uploadResponse.json();
       fileUri = fileInfo.file.uri;
-      showStatus('Screenshot uploaded successfully!', 'success');
     } catch (error) {
       console.error('Error uploading screenshot:', error);
-      showStatus('Error uploading screenshot. Proceeding without it.', 'info');
+      showStatus('Error uploading screenshot. Proceeding without visual context.', 'info');
     }
   }
 
@@ -642,12 +381,16 @@ Start with a comment block explaining the overall approach.`
     // Just return the CSS without formatting
     return cssMatch[1] || cssMatch[0];
   } catch (error) {
-    console.error('Error calling Gemini API for CSS generation:', error);
+    console.error('Error generating CSS:', error);
 
-    // Retry logic for network errors
-    if (retryCount < MAX_RETRIES && !(error.message.includes('API Error'))) {
-      showStatus(`Network error (attempt ${retryCount + 1}/${MAX_RETRIES + 1}). Retrying...`, 'info');
+    // If we failed because of token length, retry with a simpler request
+    if (error.message.includes('token') && retryCount < MAX_RETRIES) {
+      showStatus(`CSS generation failed due to length limits. Simplifying request (attempt ${retryCount + 1}/${MAX_RETRIES + 1})...`, 'info');
+
+      // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+
+      // Retry with simplified payload
       return generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS, retryCount + 1);
     }
 
@@ -1190,7 +933,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const screenshotResponse = await new Promise((resolve, reject) => {
               let responseTimer = setTimeout(() => {
                 reject(new Error('Screenshot capture timeout'));
-              }, 8000);
+              }, 12000); // Increased timeout for more reliable capture
 
               console.log('Requesting screenshot from content script...');
               safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
@@ -1204,7 +947,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   return;
                 }
 
-                if (!response.data || typeof response.data !== 'string' || !response.data.startsWith('data:image')) {
+                if (!isValidImageData(response.data)) {
                   console.error('Invalid screenshot data format received');
                   reject(new Error('Invalid screenshot data format'));
                   return;
@@ -1212,83 +955,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 resolve(response);
               });
-            });
+            })
 
             if (screenshotResponse && screenshotResponse.data) {
               pageScreenshot = screenshotResponse.data;
+              console.log('Successfully captured current page screenshot for first LLM call');
 
-                              // Automatically download the screenshot for verification
-                saveScreenshot(pageScreenshot, 'reference-analysis');
+              // Automatically download the screenshot for verification
+              saveScreenshot(pageScreenshot, 'current-page');
+              showStatus('Current page screenshot captured for comparison', 'success');
             }
           } catch (err) {
             console.warn('Could not capture page screenshot:', err);
-            showStatus('Could not capture full page screenshot. The analysis may be limited.', 'info');
-          }
+            showStatus('Could not capture current page screenshot. Falling back to reference-only analysis.', 'info');
 
-          // Prepare the prompt generation request
-          const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+            // Try an alternative screenshot method if the first one failed
+            try {
+              console.log('Trying alternative screenshot method...');
 
-          // Prepare the prompt generation payload
-          const payload = {
-            contents: [{
-              parts: [
-                // Add reference image
-                {
-                  inline_data: {
-                    mime_type: imageData.split(';')[0].split(':')[1],
-                    data: imageData.split(',')[1]
+              // Use chrome.tabs API directly as fallback
+              const dataUrl = await new Promise((resolve, reject) => {
+                chrome.tabs.captureVisibleTab(null, {format: 'png', quality: 100}, (dataUrl) => {
+                  if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
                   }
-                },
-                // Add current page screenshot if available
-                ...(pageScreenshot ? [{
-                  inline_data: {
-                    mime_type: pageScreenshot.split(';')[0].split(':')[1],
-                    data: pageScreenshot.split(',')[1]
-                  }
-                }] : []),
-                {
-                  text: `You are a UX/UI design expert looking at design differences.
+                  resolve(dataUrl);
+                });
+              });
 
-${pageScreenshot ? "I've provided two images: the first is a reference design, and the second is the current design that needs modifications." : "I've provided a reference design image."}
-
-Your task:
-1. Describe the key visual differences between the reference design and the current design
-2. Focus on explaining visual elements only - colors, spacing, shapes, typography, layout
-3. Use simple, non-technical language that describes what you see
-4. Do NOT mention CSS, HTML, DOM, classes, or any technical implementation details
-5. Prioritize the most noticeable visual differences first
-
-Output ONLY give me a prompt for other llm where i sent both images (current and target) along with dom class with there base tailwind classes and the prompt will be used to style the current page to look like the target page.`
-                }
-              ]
-            }],
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 1024
+              if (dataUrl) {
+                pageScreenshot = dataUrl;
+                console.log('Successfully captured screenshot using fallback method');
+                saveScreenshot(pageScreenshot, 'current-page-fallback');
+                showStatus('Current page screenshot captured using fallback method', 'info');
+              }
+            } catch (fallbackError) {
+              console.error('All screenshot methods failed:', fallbackError);
+              showStatus('Unable to capture current page. Analysis will be limited.', 'error');
             }
-          };
-
-          // Call the Gemini API
-          const response = await fetch(`${url}?key=${apiKey}`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error?.message || 'API request failed');
           }
 
-          const data = await response.json();
-          if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
-            throw new Error('Invalid response format from API');
-          }
-
-          // Get the generated prompt
-          const generatedPrompt = data.candidates[0].content.parts[0].text;
+          // Call the API function to analyze the reference image
+          const generatedPrompt = await analyzeReferenceImage(apiKey, imageData, pageScreenshot);
 
           // Update the prompt field with the generated prompt
           promptField.value = generatedPrompt;
@@ -1399,8 +1108,15 @@ Output ONLY give me a prompt for other llm where i sent both images (current and
 
           attachTailwindClasses(portalClassTree);
 
-          // Generate CSS directly with the new approach
-          let css = await generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindClassData, currentCSS);
+          // --- BEGIN ITERATIVE FEEDBACK LOOP ---
+          let css = await generateCSSWithAI(
+            apiKey,
+            // Improved prompt for pixel-perfect matching
+            `${prompt}\n\nIMPORTANT: The goal is to make the current Help Center visually indistinguishable from the reference image(s). Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences. Only use the provided class names. If unsure, err on the side of making more changes.`,
+            portalClassTree,
+            tailwindClassData,
+            currentCSS
+          );
 
           // Display the generated CSS in Monaco Editor
           window.cssEditor.setValue(css);
@@ -1412,34 +1128,134 @@ Output ONLY give me a prompt for other llm where i sent both images (current and
           showStatus('CSS generated successfully!', 'success');
 
           // AUTOMATIC FEEDBACK LOOP - Apply CSS, take screenshot, get feedback
-          showStatus('Starting automatic feedback cycle...', 'info');
+          showStatus('Running AI review of applied styles...', 'info');
 
-          // Apply the CSS and get feedback
-          const improvedCSS = await applyCSSAndGetFeedback(apiKey, css, prompt);
+          // Create a visual progress indicator for the feedback rounds
+          const progressIndicator = document.createElement('div');
+          progressIndicator.className = 'feedback-progress-indicator';
+          progressIndicator.style.cssText = 'display: flex; justify-content: center; margin: 10px 0; gap: 5px;';
 
-          // If improved CSS was returned, apply it
-          if (improvedCSS) {
-            // Update the editor with improved CSS
-            window.cssEditor.setValue(improvedCSS);
-            window.generatedCSS = improvedCSS;
+          // Iterative feedback loop: increased from 3 to 5 rounds
+          const MAX_FEEDBACK_ITERATIONS = 5;
 
-            // Save as a new version
-            saveCSSVersion(improvedCSS, `Improved: ${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
-
-            // Apply the improved CSS
-            chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-              chrome.tabs.sendMessage(tabs[0].id, {
-                action: 'applyCSS',
-                css: improvedCSS
-              }, (response) => {
-                if (chrome.runtime.lastError || !response || !response.success) {
-                  showStatus('Warning: Could not apply improved CSS.', 'error');
-                  return;
-                }
-                showStatus('Improved CSS applied successfully!', 'success');
-              });
-            });
+          // Create visual indicators for each round
+          for (let i = 0; i < MAX_FEEDBACK_ITERATIONS; i++) {
+            const roundIndicator = document.createElement('div');
+            roundIndicator.className = `round-indicator round-${i}`;
+            roundIndicator.style.cssText = 'width: 12px; height: 12px; border-radius: 50%; background-color: #ddd; transition: all 0.3s;';
+            roundIndicator.setAttribute('title', `Feedback round ${i+1}`);
+            progressIndicator.appendChild(roundIndicator);
           }
+
+          // Find a good place to insert the progress indicator
+          const statusContainer = document.querySelector('.status-container') || document.getElementById('monaco-editor-container');
+          if (statusContainer) {
+            statusContainer.parentNode.insertBefore(progressIndicator, statusContainer.nextSibling);
+          }
+
+          let improvedCSS = css;
+          let feedbackRound = 0;
+          let feedbackNeeded = true;
+          let lastChangeSignificance = 1.0; // Start with full significance
+
+          // Update the visual indicator for the current round
+          const updateProgressIndicator = (round, success = true) => {
+            const indicators = document.querySelectorAll('.round-indicator');
+            indicators.forEach((indicator, index) => {
+              if (index < round) {
+                indicator.style.backgroundColor = '#4CAF50'; // Green for completed rounds
+              } else if (index === round) {
+                indicator.style.backgroundColor = success ? '#2196F3' : '#F44336'; // Blue for current, red for error
+                indicator.style.transform = 'scale(1.2)';
+              }
+            });
+          };
+
+          try {
+            while (feedbackNeeded && feedbackRound < MAX_FEEDBACK_ITERATIONS) {
+              // Update progress indicator for current round
+              updateProgressIndicator(feedbackRound);
+
+              showStatus(`Analyzing style match... (Round ${feedbackRound + 1}/${MAX_FEEDBACK_ITERATIONS})`, 'info');
+
+              // Apply the CSS and get feedback
+              const feedback = await analyzeCSSAndGetFeedback(
+                apiKey,
+                improvedCSS,
+                // Improved feedback prompt
+                `${prompt}\n\nIMPORTANT: The goal is to make the current Help Center visually indistinguishable from the reference image(s). Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences. Only use the provided class names. If unsure, err on the side of making more changes.`
+              );
+
+              if (feedback) {
+                feedbackRound++;
+
+                // Estimate significance of changes (simple heuristic based on difference length)
+                const changeSize = Math.abs(feedback.length - improvedCSS.length);
+                lastChangeSignificance = Math.min(1.0, changeSize / (improvedCSS.length * 0.3)); // Normalize to 0-1
+
+                showStatus(`Visual improvements identified! Applying changes... (Round ${feedbackRound}/${MAX_FEEDBACK_ITERATIONS})`, 'info');
+
+                // Update the editor with improved CSS
+                window.cssEditor.setValue(feedback);
+                window.generatedCSS = feedback;
+
+                // Save as a new version with round number
+                saveCSSVersion(feedback, `AI-improved (Round ${feedbackRound}/${MAX_FEEDBACK_ITERATIONS}): ${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
+
+                // Apply the improved CSS
+                await new Promise((resolve) => {
+                  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                      action: 'applyCSS',
+                      css: feedback
+                    }, (response) => {
+                      if (chrome.runtime.lastError || !response || !response.success) {
+                        showStatus('Warning: Could not apply improved CSS.', 'error');
+                        updateProgressIndicator(feedbackRound, false);
+                        resolve();
+                        return;
+                      }
+                      updateProgressIndicator(feedbackRound);
+                      showStatus(`✅ Improved styles applied! (Round ${feedbackRound}/${MAX_FEEDBACK_ITERATIONS})`, 'success');
+                      resolve();
+                    });
+                  });
+                });
+
+                improvedCSS = feedback;
+
+                // Early termination if changes are very minor (indicating we're close to perfect)
+                if (lastChangeSignificance < 0.05 && feedbackRound >= 2) {
+                  showStatus('✅ Achieved high-quality visual match! Further improvements would be minimal.', 'success');
+                  feedbackNeeded = false;
+                }
+              } else {
+                // No improvements needed
+                updateProgressIndicator(feedbackRound);
+                showStatus('✅ AI review complete - visual match achieved!', 'success');
+                feedbackNeeded = false;
+              }
+            }
+
+            // Final message after all iterations
+            if (feedbackRound >= MAX_FEEDBACK_ITERATIONS) {
+              showStatus(`Completed ${MAX_FEEDBACK_ITERATIONS} rounds of visual refinement. Final result applied.`, 'success');
+            }
+
+          } catch (error) {
+            console.error('Error in feedback loop:', error);
+            updateProgressIndicator(feedbackRound, false);
+            showStatus(`Error during feedback round ${feedbackRound + 1}: ${error.message}`, 'error');
+          }
+
+          // After loop completes (successfully or with error), remove progress indicator after a delay
+          setTimeout(() => {
+            if (progressIndicator && progressIndicator.parentNode) {
+              progressIndicator.style.opacity = '0';
+              setTimeout(() => progressIndicator.remove(), 500);
+            }
+          }, 5000);
+          // --- END ITERATIVE FEEDBACK LOOP ---
 
         } catch (error) {
           console.error('Error fetching page data:', error);
@@ -1597,53 +1413,6 @@ Output ONLY give me a prompt for other llm where i sent both images (current and
 
   }, 100); // Small delay to ensure DOM is ready
 
-  // Create a container for the tree
-  const treeContainer = document.getElementById('tree-container');
-
-  // Store all portal classes and tree for CSS generation
-  let allPortalClasses = [];
-  let portalClassTree = null;
-  let tailwindClassData = null;
-  let generatedCSS = '';
-
-  // Set up message listeners for the popup
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // Always send a response to prevent connection errors
-  const respond = (response = { success: true }) => {
-    try {
-      sendResponse(response);
-    } catch (error) {
-      console.warn('Error sending response:', error);
-    }
-  };
-
-  try {
-    // Handle different message actions
-    switch (message.action) {
-      case 'hoverPortalElement':
-        handlePortalElementHover(message.portalClasses);
-        respond();
-        break;
-
-      case 'leavePortalElement':
-        handlePortalElementLeave();
-        respond();
-        break;
-
-      // ... other message handlers ...
-
-      default:
-        respond({ success: false, error: 'Unknown action' });
-    }
-  } catch (error) {
-    console.error('Error handling message:', error);
-    respond({ success: false, error: error.message });
-  }
-
-  // Return true to indicate we'll respond asynchronously
-  return true;
-});
-
   // Load API key and CSS versions from storage
   chrome.storage.local.get(['geminiApiKey', 'cssVersions'], (result) => {
     if (result.geminiApiKey) {
@@ -1708,76 +1477,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Function to save a captured screenshot
 function saveScreenshot(screenshotData, description = 'portal') {
-  try {
-    if (!screenshotData || typeof screenshotData !== 'string' || !screenshotData.startsWith('data:image')) {
-      console.error('Invalid screenshot data:', screenshotData ? screenshotData.substring(0, 50) + '...' : 'undefined');
-      showStatus('Error: Invalid screenshot data format', 'error');
-      return;
-    }
-
-    // Use chrome.downloads API for more reliable downloads
-    const filename = `portal-${description}-${Date.now()}.png`;
-
-    // Create a blob from the data URL
-    const byteString = atob(screenshotData.split(',')[1]);
-    const mimeString = screenshotData.split(',')[0].split(':')[1].split(';')[0];
-    const ab = new ArrayBuffer(byteString.length);
-    const ia = new Uint8Array(ab);
-
-    for (let i = 0; i < byteString.length; i++) {
-      ia[i] = byteString.charCodeAt(i);
-    }
-
-    const blob = new Blob([ab], {type: mimeString});
-    const url = URL.createObjectURL(blob);
-
-    // Use chrome.downloads API if available, otherwise fall back to a link
-    if (chrome.downloads) {
-      chrome.downloads.download({
-        url: url,
-        filename: filename,
-        saveAs: false
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error('Chrome download error:', chrome.runtime.lastError);
-          fallbackDownload();
-        } else {
-          showStatus(`Screenshot "${description}" saved to downloads folder!`, 'success');
-          showStatus('Note: Screenshot shows only the visible portion of the page', 'info');
-        }
-        // Clean up the object URL after download starts
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-      });
-    } else {
-      fallbackDownload();
-    }
-
-    // Fallback to traditional download link
-    function fallbackDownload() {
-      try {
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-
-        // Give the browser time to process the download
-        setTimeout(() => {
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          showStatus(`Screenshot "${description}" saved using fallback method`, 'success');
-          showStatus('Note: Check your browser download notifications', 'info');
-        }, 100);
-      } catch (err) {
-        console.error('Fallback download error:', err);
-        showStatus('Failed to save screenshot: ' + err.message, 'error');
-      }
-    }
-  } catch (error) {
-    console.error('Error in saveScreenshot:', error);
-    showStatus('Screenshot download failed: ' + error.message, 'error');
-  }
+  // Import the saveScreenshot function from our screenshot module
+  import('./js/modules/screenshot.js').then(screenshotModule => {
+    screenshotModule.saveScreenshot(screenshotData, description);
+  }).catch(error => {
+    console.error('Error importing screenshot module:', error);
+    showStatus('Error saving screenshot: ' + error.message, 'error');
+  });
 }
 
 // Function to apply CSS and get feedback from LLM
@@ -1816,53 +1522,42 @@ async function applyCSSAndGetFeedback(apiKey, generatedCSS, prompt) {
     let screenshot = null;
     let captureError = null;
 
-    // Try method 1: Standard content script capture (most complete)
+    // Try method 1: Use content script capture (better for full page)
     try {
-      const screenshotResponse = await new Promise((resolve, reject) => {
+      // Get current tab
+      const tab = await new Promise((resolve) => {
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-          if (!tabs || !tabs[0]) {
-            reject(new Error('No active tab found'));
-            return;
-          }
-
-          let responseTimer = setTimeout(() => {
-            reject(new Error('Screenshot capture timeout'));
-          }, 10000); // Increased timeout
-
-          console.log('Requesting styled page screenshot...');
-          safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
-            clearTimeout(responseTimer);
-            console.log('Styled page screenshot response:', response ? 'Success' : 'Failed');
-
-            if (!response || !response.success) {
-              const error = response?.error || 'Failed to capture screenshot';
-              console.error('Screenshot error:', error);
-              reject(new Error(error));
-              return;
-            }
-
-            if (!response.data || typeof response.data !== 'string' || !response.data.startsWith('data:image')) {
-              console.error('Invalid screenshot data format received');
-              reject(new Error('Invalid screenshot data format'));
-              return;
-            }
-
-            resolve(response);
-          });
+          resolve(tabs[0]);
         });
       });
 
-      if (screenshotResponse && screenshotResponse.data) {
-        screenshot = screenshotResponse.data;
-        showStatus('Screenshot captured successfully!', 'success');
+      // Request screenshot with timeout protection
+      const screenshotResult = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Screenshot capture timed out'));
+        }, 15000); // 15 second timeout
 
-                  // Automatically download the screenshot for verification
-          saveScreenshot(screenshot, 'after-styling');
+        safeSendMessage(tab.id, {action: 'captureScreenshot'}, (response) => {
+          clearTimeout(timeout);
+          if (!response || !response.success) {
+            reject(new Error(response?.error || 'Failed to capture screenshot'));
+            return;
+          }
+          resolve(response.data);
+        });
+      });
+
+      // Validate screenshot
+      if (screenshotResult && typeof screenshotResult === 'string' && screenshotResult.startsWith('data:image')) {
+        screenshot = screenshotResult;
+        showStatus('Captured screenshot for feedback', 'success');
+      } else {
+        throw new Error('Invalid screenshot data received');
       }
     } catch (error) {
       console.warn('Primary screenshot method failed:', error);
       captureError = error;
-      // Continue to fallback methods
+      showStatus('Primary screenshot method failed, trying alternatives...', 'info');
     }
 
     // Try method 2: Chrome API capture (fallback, but may not include full page)
@@ -1995,7 +1690,7 @@ async function applyCSSAndGetFeedback(apiKey, generatedCSS, prompt) {
     // Create payload for feedback with text-only fallback if no screenshot
     showStatus(fileUri ? 'Getting AI feedback on visual results...' : 'Getting AI feedback on CSS code...', 'info');
 
-    // Create payload for feedback
+    // Create payload for feedback with clearer instructions
     const payload = {
       contents: [{
         parts: [
@@ -2031,14 +1726,18 @@ TASK:
 2. ${fileUri ? `Compare this result against ${window.referenceImages.length > 0 ? "the reference image(s) provided earlier" : "the intended design described in the original request"}.` : "Analyze the CSS code quality and make improvements where needed."}
 3. Determine if the CSS needs further improvement.
 
-RESPONSE FORMAT:
-- If NO improvements are needed, respond with just the word "UNCHANGED".
-- If improvements ARE needed, respond with ONLY the complete improved CSS file.
-  * Include ALL previous CSS with your modifications
-  * Add comments explaining your changes
-  * Format as clean CSS without markdown code blocks or additional text
+EXACTLY FOLLOW THIS RESPONSE FORMAT:
+- If NO improvements are needed, respond with ONLY the word "No".
+- If improvements ARE needed, respond with ONLY the complete improved CSS file, with no explanations or markdown formatting.
 
-Important: DO NOT prefix your response with "YES" or explanations - just return either "UNCHANGED" or the complete CSS.`
+IMPORTANT RULES:
+- Your ENTIRE response must be EITHER the single word "No" OR the complete CSS code.
+- Do NOT add any explanation text, prefixes, or suffixes.
+- If returning CSS, include ALL previous CSS with your modifications.
+- Add comments in the CSS to explain your changes.
+- Do NOT use markdown code blocks or any extra formatting.
+
+I REPEAT: Return ONLY "No" or the complete CSS code with no other text.`
           }
         ]
       }],
@@ -2048,6 +1747,7 @@ Important: DO NOT prefix your response with "YES" or explanations - just return 
       }
     };
 
+    // Make API request
     const response = await fetch(`${url}?key=${apiKey}`, {
       method: 'POST',
       headers: {
@@ -2068,30 +1768,41 @@ Important: DO NOT prefix your response with "YES" or explanations - just return 
 
     const feedbackText = data.candidates[0].content.parts[0].text.trim();
 
-    // Process the response
-    if (feedbackText === "UNCHANGED") {
-      showStatus('Current CSS implementation looks good!', 'success');
+    console.log('Feedback LLM response:', feedbackText.substring(0, 100) + '...');
+
+    // Process the response with improved handling
+    if (feedbackText === "No" || feedbackText.toLowerCase() === "no.") {
+      showStatus('AI review: No improvements needed! The CSS looks good.', 'success');
       return null; // No improvements needed
     } else {
-      showStatus('Applying improved CSS...', 'info');
-
-      // Check if the response is wrapped in code blocks and extract if needed
-      const cssMatch = feedbackText.match(/```css\n([\s\S]*?)\n```/) ||
-                     feedbackText.match(/```\n([\s\S]*?)\n```/);
-
-      if (cssMatch && cssMatch[1]) {
-        return cssMatch[1]; // Return the extracted CSS
-      }
-
-      // If no code block markers, assume the entire response is CSS
-      // (Check if it looks like CSS to avoid problems)
+      // Check if it looks like CSS (contains braces)
       if (feedbackText.includes('{') && feedbackText.includes('}')) {
-        return feedbackText;
-      }
+        showStatus('AI suggested CSS improvements! Applying updated styles...', 'info');
 
-      // If we got here, the response format was unexpected
-      showStatus('Received unexpected response format from AI', 'info');
-      return null;
+        // Extract CSS if it's wrapped in code blocks (even though we asked for no markdown)
+        const cssMatch = feedbackText.match(/```css\n([\s\S]*?)\n```/) ||
+                         feedbackText.match(/```\n([\s\S]*?)\n```/);
+
+        if (cssMatch && cssMatch[1]) {
+          showStatus('Applied AI-suggested CSS improvements', 'success');
+          return cssMatch[1]; // Return the extracted CSS
+        }
+
+        // Otherwise, return the full text assuming it's all CSS
+        showStatus('Applied AI-suggested CSS improvements', 'success');
+        return feedbackText;
+      } else if (feedbackText.toLowerCase().includes("unchanged") ||
+                feedbackText.toLowerCase().includes("no changes") ||
+                feedbackText.toLowerCase().startsWith("no")) {
+        // Handle variant "no change needed" responses
+        showStatus('AI review: No improvements needed! The CSS looks good.', 'success');
+        return null;
+      } else {
+        // If we got here, the response format was unexpected
+        console.error('Unexpected feedback format:', feedbackText);
+        showStatus('AI provided feedback in an unexpected format', 'error');
+        return null;
+      }
     }
 
   } catch (error) {
@@ -2101,61 +1812,4 @@ Important: DO NOT prefix your response with "YES" or explanations - just return 
   }
 }
 
-// Function to disable/enable UI elements during processing
-function setUIProcessingState(isProcessing, processType) {
-  // Get relevant UI elements
-  const generateBtn = document.getElementById('generate-btn');
-  const uploadImageBtn = document.getElementById('upload-image-btn');
-  const clearAllImagesBtn = document.getElementById('clear-all-images-btn');
-  const userPromptField = document.getElementById('user-prompt');
-  const apiKeyField = document.getElementById('api-key');
-  const loadingSpinner = document.getElementById('loading-spinner');
-
-  if (isProcessing) {
-    // Set appropriate loading state based on which process is running
-    if (processType === 'image-analysis') {
-      // Disable generate button when analyzing image
-      generateBtn.disabled = true;
-      generateBtn.style.opacity = '0.5';
-      generateBtn.style.cursor = 'not-allowed';
-      userPromptField.disabled = true;
-
-      // Show a spinner on the upload button
-      uploadImageBtn.innerHTML = '<span class="spinner"></span> Analyzing...';
-      uploadImageBtn.disabled = true;
-      uploadImageBtn.style.opacity = '0.5';
-      uploadImageBtn.style.cursor = 'not-allowed';
-      clearAllImagesBtn.disabled = true;
-    }
-    else if (processType === 'css-generation') {
-      // When generating CSS, disable image upload buttons
-      uploadImageBtn.disabled = true;
-      uploadImageBtn.style.opacity = '0.5';
-      uploadImageBtn.style.cursor = 'not-allowed';
-      clearAllImagesBtn.disabled = true;
-      clearAllImagesBtn.style.opacity = '0.5';
-
-      // Loading spinner is shown by the existing code
-    }
-  }
-  else {
-    // Reset all UI elements to enabled state
-    generateBtn.disabled = false;
-    generateBtn.style.opacity = '1';
-    generateBtn.style.cursor = 'pointer';
-    userPromptField.disabled = false;
-
-    uploadImageBtn.disabled = false;
-    uploadImageBtn.style.opacity = '1';
-    uploadImageBtn.style.cursor = 'pointer';
-    uploadImageBtn.innerHTML = 'Upload Reference Image';
-
-    clearAllImagesBtn.disabled = false;
-    clearAllImagesBtn.style.opacity = '1';
-
-    // Hide spinner if it was being shown
-    if (loadingSpinner) {
-      loadingSpinner.style.display = 'none';
-    }
-  }
-}
+// Function moved to ui.js module

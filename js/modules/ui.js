@@ -75,3 +75,49 @@ export function cleanText(text) {
   if (!text) return '';
   return text;
 }
+
+/**
+ * Function to disable/enable UI elements during processing
+ * @param {boolean} isProcessing - Whether processing is happening
+ * @param {string} processType - Type of processing ('image-analysis', 'css-generation', 'file-upload')
+ */
+export function setUIProcessingState(isProcessing, processType) {
+  // Get all UI elements that should be disabled during processing
+  const uiElements = document.querySelectorAll('button, input, textarea, select');
+
+  // Processing types
+  // - 'image-analysis': disable only image upload elements
+  // - 'css-generation': disable all elements
+  // - 'file-upload': disable only upload elements
+
+  uiElements.forEach(el => {
+    const isImageElement = el.id.includes('image') || el.id.includes('upload');
+    const isGenerateElement = el.id.includes('generate') || el.id === 'user-prompt';
+
+    // Set disabled state based on processing type
+    if (processType === 'image-analysis' && isImageElement) {
+      el.disabled = isProcessing;
+    } else if (processType === 'css-generation') {
+      el.disabled = isProcessing;
+    } else if (processType === 'file-upload' && isImageElement) {
+      el.disabled = isProcessing;
+    } else if (!processType) {
+      // If no specific type, disable/enable all elements
+      el.disabled = isProcessing;
+    }
+  });
+
+  // Show/hide the progress spinner
+  const spinner = document.getElementById('progress-spinner');
+  if (spinner) {
+    spinner.style.display = isProcessing ? 'block' : 'none';
+  }
+
+  // If processing is complete, scroll to the editor
+  if (!isProcessing && processType === 'css-generation') {
+    const editorContainer = document.getElementById('editor-container');
+    if (editorContainer) {
+      editorContainer.scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+}
