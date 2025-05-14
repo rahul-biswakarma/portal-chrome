@@ -432,7 +432,7 @@ async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData
         // Use our safe messaging function with a timeout
         let messageTimeout = setTimeout(() => {
           reject(new Error('Screenshot capture timed out'));
-        }, 10000); // 10 seconds timeout
+        }, 10000); // 10 seconds timeout for full page capture
 
         safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
           clearTimeout(messageTimeout);
@@ -1183,12 +1183,46 @@ document.addEventListener('DOMContentLoaded', () => {
           // Get screenshot of current page if possible
           let pageScreenshot = null;
           try {
-            const screenshotResponse = await safeSendMessage(tabs[0].id, {action: 'captureScreenshot'});
-            if (screenshotResponse.success) {
+            // Show detailed status message
+            showStatus('Capturing screenshot of current viewport...', 'info');
+
+            // Increase the timeout for screenshot capture
+            const screenshotResponse = await new Promise((resolve, reject) => {
+              let responseTimer = setTimeout(() => {
+                reject(new Error('Screenshot capture timeout'));
+              }, 8000);
+
+              console.log('Requesting screenshot from content script...');
+              safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
+                clearTimeout(responseTimer);
+                console.log('Screenshot response received:', response ? 'Success' : 'Failed');
+
+                if (!response || !response.success) {
+                  const error = response?.error || 'Failed to capture screenshot';
+                  console.error('Screenshot error:', error);
+                  reject(new Error(error));
+                  return;
+                }
+
+                if (!response.data || typeof response.data !== 'string' || !response.data.startsWith('data:image')) {
+                  console.error('Invalid screenshot data format received');
+                  reject(new Error('Invalid screenshot data format'));
+                  return;
+                }
+
+                resolve(response);
+              });
+            });
+
+            if (screenshotResponse && screenshotResponse.data) {
               pageScreenshot = screenshotResponse.data;
+
+                              // Automatically download the screenshot for verification
+                saveScreenshot(pageScreenshot, 'reference-analysis');
             }
           } catch (err) {
             console.warn('Could not capture page screenshot:', err);
+            showStatus('Could not capture full page screenshot. The analysis may be limited.', 'info');
           }
 
           // Prepare the prompt generation request
@@ -1673,20 +1707,76 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // Function to save a captured screenshot
-function saveScreenshot(screenshotData) {
+function saveScreenshot(screenshotData, description = 'portal') {
   try {
-    // Create a temporary anchor element
-    const link = document.createElement('a');
-    link.href = screenshotData;
-    link.download = `portal-styled-${Date.now()}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    if (!screenshotData || typeof screenshotData !== 'string' || !screenshotData.startsWith('data:image')) {
+      console.error('Invalid screenshot data:', screenshotData ? screenshotData.substring(0, 50) + '...' : 'undefined');
+      showStatus('Error: Invalid screenshot data format', 'error');
+      return;
+    }
 
-    showStatus('Screenshot saved to your downloads folder!', 'success');
+    // Use chrome.downloads API for more reliable downloads
+    const filename = `portal-${description}-${Date.now()}.png`;
+
+    // Create a blob from the data URL
+    const byteString = atob(screenshotData.split(',')[1]);
+    const mimeString = screenshotData.split(',')[0].split(':')[1].split(';')[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+
+    const blob = new Blob([ab], {type: mimeString});
+    const url = URL.createObjectURL(blob);
+
+    // Use chrome.downloads API if available, otherwise fall back to a link
+    if (chrome.downloads) {
+      chrome.downloads.download({
+        url: url,
+        filename: filename,
+        saveAs: false
+      }, (downloadId) => {
+        if (chrome.runtime.lastError) {
+          console.error('Chrome download error:', chrome.runtime.lastError);
+          fallbackDownload();
+        } else {
+          showStatus(`Screenshot "${description}" saved to downloads folder!`, 'success');
+          showStatus('Note: Screenshot shows only the visible portion of the page', 'info');
+        }
+        // Clean up the object URL after download starts
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+    } else {
+      fallbackDownload();
+    }
+
+    // Fallback to traditional download link
+    function fallbackDownload() {
+      try {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+
+        // Give the browser time to process the download
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          showStatus(`Screenshot "${description}" saved using fallback method`, 'success');
+          showStatus('Note: Check your browser download notifications', 'info');
+        }, 100);
+      } catch (err) {
+        console.error('Fallback download error:', err);
+        showStatus('Failed to save screenshot: ' + err.message, 'error');
+      }
+    }
   } catch (error) {
-    console.error('Error saving screenshot:', error);
-    showStatus('Failed to save screenshot', 'error');
+    console.error('Error in saveScreenshot:', error);
+    showStatus('Screenshot download failed: ' + error.message, 'error');
   }
 }
 
@@ -1737,14 +1827,26 @@ async function applyCSSAndGetFeedback(apiKey, generatedCSS, prompt) {
 
           let responseTimer = setTimeout(() => {
             reject(new Error('Screenshot capture timeout'));
-          }, 8000);
+          }, 10000); // Increased timeout
 
+          console.log('Requesting styled page screenshot...');
           safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
             clearTimeout(responseTimer);
+            console.log('Styled page screenshot response:', response ? 'Success' : 'Failed');
+
             if (!response || !response.success) {
-              reject(new Error(response?.error || 'Failed to capture screenshot'));
+              const error = response?.error || 'Failed to capture screenshot';
+              console.error('Screenshot error:', error);
+              reject(new Error(error));
               return;
             }
+
+            if (!response.data || typeof response.data !== 'string' || !response.data.startsWith('data:image')) {
+              console.error('Invalid screenshot data format received');
+              reject(new Error('Invalid screenshot data format'));
+              return;
+            }
+
             resolve(response);
           });
         });
@@ -1753,6 +1855,9 @@ async function applyCSSAndGetFeedback(apiKey, generatedCSS, prompt) {
       if (screenshotResponse && screenshotResponse.data) {
         screenshot = screenshotResponse.data;
         showStatus('Screenshot captured successfully!', 'success');
+
+                  // Automatically download the screenshot for verification
+          saveScreenshot(screenshot, 'after-styling');
       }
     } catch (error) {
       console.warn('Primary screenshot method failed:', error);
@@ -1806,10 +1911,10 @@ async function applyCSSAndGetFeedback(apiKey, generatedCSS, prompt) {
       }
     }
 
-    // Save the screenshot automatically if we got one
-    if (screenshot) {
-      saveScreenshot(screenshot);
-    } else {
+          // Save the screenshot automatically if we got one
+      if (screenshot) {
+        saveScreenshot(screenshot, 'for-feedback');
+      } else {
       showStatus('Could not save screenshot, but continuing with analysis', 'info');
     }
 

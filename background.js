@@ -27,6 +27,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     return true; // Keep message channel open for async response
   }
+
+  // Handle request to capture just the visible tab (simpler than full page)
+  if (request.action === 'captureVisibleTab') {
+    try {
+      captureVisibleTabOnly(sendResponse);
+    } catch (error) {
+      console.error('Error starting visible capture:', error);
+      sendResponse({
+        success: false,
+        error: error.message || 'Unknown error in background script'
+      });
+    }
+    return true; // Keep message channel open for async response
+  }
 });
 
 // Function to capture a full page screenshot
@@ -141,6 +155,88 @@ async function captureFullPage(sendResponse) {
   } catch (error) {
     console.error('Error capturing full page screenshot:', error);
     sendResponse({ success: false, error: error.message || 'Unknown error' });
+  }
+}
+
+// Simple function to capture just the visible portion of the tab
+async function captureVisibleTabOnly(sendResponse) {
+  try {
+    console.log('[Background] Starting visible tab capture');
+
+    // Get the current tab
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!activeTab || !activeTab.id) {
+      console.error('[Background] No active tab found for screenshot');
+      sendResponse({ success: false, error: 'No active tab found' });
+      return;
+    }
+
+    console.log('[Background] Active tab found, id:', activeTab.id);
+
+    // Try with a slight delay first to ensure the page is rendered completely
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    try {
+      // Simple direct capture with highest quality
+      console.log('[Background] Capturing visible tab with chrome API...');
+      const dataUrl = await chrome.tabs.captureVisibleTab(
+        activeTab.windowId,
+        { format: 'png', quality: 100 }
+      );
+
+      if (!dataUrl || !dataUrl.startsWith('data:image')) {
+        console.error('[Background] Invalid data URL returned from capture');
+        throw new Error('Invalid data URL format');
+      }
+
+      console.log('[Background] Screenshot captured successfully');
+
+      // Return the captured image
+      sendResponse({ success: true, data: dataUrl });
+    } catch (captureError) {
+      console.error('[Background] Primary capture method failed:', captureError);
+
+      // Try again with a different approach
+      try {
+        console.log('[Background] Trying fallback capture method...');
+
+        // Inject a script to ensure the page is ready
+        await chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          function: () => {
+            // Force a small repaint
+            document.body.style.minHeight = (document.body.offsetHeight + 1) + 'px';
+            setTimeout(() => {
+              document.body.style.minHeight = '';
+            }, 10);
+          }
+        });
+
+        // Wait a bit longer after the repaint
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Try again
+        const dataUrl = await chrome.tabs.captureVisibleTab(
+          activeTab.windowId,
+          { format: 'png', quality: 100 }
+        );
+
+        console.log('[Background] Fallback capture successful');
+        sendResponse({ success: true, data: dataUrl });
+      } catch (fallbackError) {
+        console.error('[Background] Fallback capture failed:', fallbackError);
+        sendResponse({
+          success: false,
+          error: 'Both capture methods failed: ' + fallbackError.message
+        });
+      }
+    }
+  } catch (error) {
+    console.error('[Background] Error in visible tab capture:', error);
+    sendResponse({
+      success: false,
+      error: error.message || 'Failed to capture visible tab'
+    });
   }
 }
 

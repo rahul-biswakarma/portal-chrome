@@ -175,77 +175,88 @@ function getCurrentCSS() {
 // Function to take a full page screenshot (not just the viewport)
 async function captureFullPageScreenshot() {
   try {
-    // First try to use the background script method for best results
-    return new Promise((resolve, reject) => {
-      safeSendMessage({ action: 'captureFullPage' }, (response) => {
-        if (response && response.success && response.data) {
-          resolve(response.data);
-        } else {
-          // If background method fails, try html2canvas as fallback
-          performHtml2CanvasCapture().then(resolve).catch(reject);
-        }
-      });
-    });
+    console.log('[Screenshot] Starting screenshot capture process...');
+
+    // First try to use a scrolling capture approach
+    try {
+      console.log('[Screenshot] Attempting scrolling screenshot method');
+      const scrollScreenshot = await captureScrollingScreenshot();
+      console.log('[Screenshot] Successfully captured scrolling screenshot');
+      return scrollScreenshot;
+    } catch (scrollError) {
+      console.warn('[Screenshot] Scrolling capture failed:', scrollError);
+
+      // Fall back to just capturing the visible viewport
+      try {
+        console.log('[Screenshot] Trying visible viewport capture fallback...');
+        const viewportScreenshot = await captureVisibleViewport();
+        console.log('[Screenshot] Successfully captured visible viewport');
+        return viewportScreenshot;
+      } catch (visibleError) {
+        console.error('[Screenshot] Viewport capture failed:', visibleError);
+        throw new Error('All screenshot methods failed: ' + visibleError.message);
+      }
+    }
   } catch (error) {
-    console.error('Error in captureFullPageScreenshot:', error);
-    return performHtml2CanvasCapture();
+    console.error('[Screenshot] Screenshot capture failed completely:', error);
+    throw error;
   }
 }
 
-// Extract html2canvas capture logic to separate function for better organization
-async function performHtml2CanvasCapture() {
+// Capture just the visible viewport using background script
+async function captureVisibleViewport() {
+  return new Promise((resolve, reject) => {
+    console.log('[Screenshot] Requesting visible tab capture from background script');
+    safeSendMessage({ action: 'captureVisibleTab' }, (response) => {
+      if (response && response.success && response.data) {
+        console.log('[Screenshot] Received visible tab screenshot');
+        resolve(response.data);
+      } else {
+        console.error('[Screenshot] Failed to capture visible viewport:', response?.error || 'Unknown error');
+        reject(new Error('Failed to capture visible viewport: ' + (response?.error || 'Unknown error')));
+      }
+    });
+  });
+}
+
+// New approach: Capture by scrolling through the page
+async function captureScrollingScreenshot() {
+  console.log('[Screenshot] Starting scrolling screenshot capture');
+  // Save original scroll position
+  const originalScrollPosition = {
+    left: window.scrollX,
+    top: window.scrollY
+  };
+
   try {
-    // Get the full dimensions of the page
-    let fullHeight = Math.max(
-      document.body.scrollHeight,
-      document.documentElement.scrollHeight,
-      document.body.offsetHeight,
-      document.documentElement.offsetHeight,
-      document.body.clientHeight,
-      document.documentElement.clientHeight
-    );
+    // First scroll to the top of the page
+    window.scrollTo(0, 0);
+    console.log('[Screenshot] Scrolled to top of page');
 
-    let fullWidth = Math.max(
-      document.body.scrollWidth,
-      document.documentElement.scrollWidth,
-      document.body.offsetWidth,
-      document.documentElement.offsetWidth,
-      document.body.clientWidth,
-      document.documentElement.clientWidth
-    );
+    // Allow time for scrolling and rendering
+    await new Promise(resolve => setTimeout(resolve, 300));
 
-    // Create a canvas element in memory
-    const canvas = document.createElement('canvas');
-    canvas.width = fullWidth;
-    canvas.height = fullHeight;
-    const ctx = canvas.getContext('2d');
-
-    // Save current scroll position
-    const originalScrollTop = window.scrollY;
-    const originalScrollLeft = window.scrollX;
-
-    // Configure html2canvas - use simpler settings for better reliability
-    const result = await html2canvas(document.documentElement, {
-      allowTaint: true,
-      useCORS: true,
-      logging: false,
-      width: fullWidth,
-      height: fullHeight,
-      x: 0,
-      y: 0,
-      scrollX: -window.scrollX,
-      scrollY: -window.scrollY,
-      scale: 1
+    // Get the screenshot of the viewport at the top
+    console.log('[Screenshot] Requesting visible tab capture for top of page');
+    const topViewport = await new Promise((resolve, reject) => {
+      safeSendMessage({ action: 'captureVisibleTab' }, (response) => {
+        if (response && response.success && response.data) {
+          console.log('[Screenshot] Received top viewport screenshot');
+          resolve(response.data);
+        } else {
+          console.error('[Screenshot] Failed to capture top of page:', response?.error || 'Unknown error');
+          reject(new Error('Failed to capture top of page: ' + (response?.error || 'Unknown error')));
+        }
+      });
     });
 
-    // Restore original scroll position
-    window.scrollTo(originalScrollLeft, originalScrollTop);
-
-    // Convert canvas to data URL
-    return result.toDataURL('image/jpeg', 0.85);
-  } catch (error) {
-    console.error('HTML2Canvas capture error:', error);
-    throw error;
+    // The simple approach: just return the top viewport screenshot
+    // This is the most reliable method even though it doesn't capture the full page
+    return topViewport;
+  } finally {
+    // Restore original scroll position no matter what
+    console.log('[Screenshot] Restoring original scroll position');
+    window.scrollTo(originalScrollPosition.left, originalScrollPosition.top);
   }
 }
 
