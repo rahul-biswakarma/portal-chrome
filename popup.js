@@ -1147,8 +1147,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Set a loading message
-      promptField.value = "Analyzing image to create design prompt...";
-      showStatus('Analyzing reference image to create detailed design prompt...', 'info');
+      promptField.value = "Analyzing image to identify visual differences...";
+      showStatus('Analyzing reference image to identify visual differences...', 'info');
 
       // Disable UI while processing image
       setUIProcessingState(true, 'image-analysis');
@@ -1194,21 +1194,6 @@ document.addEventListener('DOMContentLoaded', () => {
           // Prepare the prompt generation request
           const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
-          // Function to simplify tree for transmission
-          function simplifyTree(node) {
-            const simplified = {
-              element: node.element,
-              portalClasses: node.portalClasses,
-              children: []
-            };
-            if (node.children && node.children.length > 0) {
-              simplified.children = node.children.map(child => simplifyTree(child));
-            }
-            return simplified;
-          }
-
-          const simplifiedTree = simplifyTree(portalClassTree);
-
           // Prepare the prompt generation payload
           const payload = {
             contents: [{
@@ -1228,22 +1213,18 @@ document.addEventListener('DOMContentLoaded', () => {
                   }
                 }] : []),
                 {
-                  text: `You are a UX/UI expert tasked with creating a detailed CSS styling prompt.
+                  text: `You are a UX/UI design expert looking at design differences.
 
-I need you to create a prompt that would guide an AI to style a web page to look like the reference image provided. ${pageScreenshot ? "I've provided two images: the first is the reference design, and the second is the current page that needs styling." : "I've provided a reference design image."}
+${pageScreenshot ? "I've provided two images: the first is a reference design, and the second is the current design that needs modifications." : "I've provided a reference design image."}
 
-The DOM structure of the current page focuses on classes matching pattern ^portal-.*$ (classes that start with "portal-"):
-${JSON.stringify(simplifiedTree, null, 2)}
+Your task:
+1. Describe the key visual differences between the reference design and the current design
+2. Focus on explaining visual elements only - colors, spacing, shapes, typography, layout
+3. Use simple, non-technical language that describes what you see
+4. Do NOT mention CSS, HTML, DOM, classes, or any technical implementation details
+5. Prioritize the most noticeable visual differences first
 
-Please generate a detailed, specific, and actionable prompt that:
-1. Analyzes the visual style of the reference image (colors, typography, layout, spacing, shadows, etc.)
-2. Provides explicit CSS guidance for transforming the current page to match the reference
-3. Focuses ONLY on targeting classes starting with "portal-"
-4. Includes specific color values, spacing metrics, and design properties
-5. Prioritizes the most visually impactful changes first
-
-Your prompt should be comprehensive yet clear, with specific instructions rather than general suggestions.
-Output ONLY the prompt text, with no additional explanations or formatting.`
+Output ONLY give me a prompt for other llm where i sent both images (current and target) along with dom class with there base tailwind classes and the prompt will be used to style the current page to look like the target page.`
                 }
               ]
             }],
@@ -1279,11 +1260,11 @@ Output ONLY the prompt text, with no additional explanations or formatting.`
           promptField.value = generatedPrompt;
 
           // Show success message
-          showStatus('Design prompt created from reference image!', 'success');
+          showStatus('Visual description created from reference image!', 'success');
 
         } catch (error) {
-          console.error('Error generating prompt from image:', error);
-          promptField.value = "Error analyzing image. Please try again or write your own prompt.";
+          console.error('Error analyzing image:', error);
+          promptField.value = "Error analyzing image. Please try again or write your own description.";
           showStatus(`Error: ${error.message}`, 'error');
         } finally {
           // Re-enable UI no matter what happened
