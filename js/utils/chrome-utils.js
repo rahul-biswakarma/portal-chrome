@@ -1,12 +1,12 @@
 // Chrome API utility functions
 
 /**
- * Send a message safely with error handling and timeout
- * @param {number} tabId - The tab ID to send the message to
- * @param {object} message - The message to send
- * @param {function} callback - Optional callback function
- * @param {number} timeout - Timeout in milliseconds
- * @returns {Promise} - Promise that resolves with the response
+ * Safe message sending function to handle extension context errors
+ * @param {number} tabId - The ID of the tab to send the message to
+ * @param {Object} message - The message to send
+ * @param {Function} callback - Optional callback to execute when a response is received
+ * @param {number} timeout - The timeout in milliseconds after which to consider the request failed
+ * @returns {Promise} A promise that resolves with the response
  */
 export function safeSendMessage(tabId, message, callback, timeout = 30000) {
   return new Promise((resolve) => {
@@ -52,11 +52,6 @@ export function safeSendMessage(tabId, message, callback, timeout = 30000) {
           // Special handling for common errors
           if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
             console.warn('Extension context was invalidated. Attempting recovery...');
-
-            // Show a user-friendly error and advice
-            if (typeof showStatus === 'function') {
-              showStatus('Connection to page was lost. Try refreshing the page.', 'error');
-            }
 
             // Attempt to recover basic functionality
             safeCallback({

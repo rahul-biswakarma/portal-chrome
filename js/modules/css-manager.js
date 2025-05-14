@@ -4,8 +4,8 @@ import { showStatus } from '../utils/ui-utils.js';
 import { simplifyTree } from './tree.js';
 
 /**
- * Generate CSS with Gemini directly from DOM structure and tailwind classes
- * @param {string} apiKey - The Gemini API key
+ * Generate CSS with OpenAI directly from DOM structure and tailwind classes
+ * @param {string} apiKey - The OpenAI API key
  * @param {string} prompt - The user prompt
  * @param {object} portalClassTree - The portal class tree
  * @param {object} tailwindData - The tailwind class data
@@ -16,7 +16,7 @@ import { simplifyTree } from './tree.js';
 export async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS = "", retryCount = 0) {
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 2000; // 2 seconds
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+  const url = 'https://api.openai.com/v1/chat/completions';
 
   const simplifiedTree = simplifyTree(portalClassTree);
 
@@ -58,82 +58,7 @@ export async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailw
     showStatus('Could not capture full page with styling. Using simplified data.', 'info');
   }
 
-  // Show a new status before uploading
-  if (screenshot) {
-    showStatus('Preparing screenshot for AI analysis...', 'info');
-  }
-
-  // Prepare for file upload if we have a screenshot
-  let fileUri = null;
-  if (screenshot) {
-    try {
-      // Convert base64 to blob
-      const base64Data = screenshot.split(',')[1];
-      const byteCharacters = atob(base64Data);
-      const byteArrays = [];
-
-      for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-        const slice = byteCharacters.slice(offset, offset + 512);
-        const byteNumbers = new Array(slice.length);
-        for (let i = 0; i < slice.length; i++) {
-          byteNumbers[i] = slice.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        byteArrays.push(byteArray);
-      }
-
-      const blob = new Blob(byteArrays, {type: 'image/png'});
-
-      // Get upload URL
-      const uploadUrlResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
-        method: 'POST',
-        headers: {
-          'X-Goog-Upload-Protocol': 'resumable',
-          'X-Goog-Upload-Command': 'start',
-          'X-Goog-Upload-Header-Content-Length': blob.size.toString(),
-          'X-Goog-Upload-Header-Content-Type': 'image/png',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          file: {
-            display_name: 'SCREENSHOT'
-          }
-        })
-      });
-
-      // Extract upload URL from headers
-      const uploadUrl = uploadUrlResponse.headers.get('X-Goog-Upload-URL');
-
-      if (!uploadUrl) {
-        throw new Error('Failed to get upload URL');
-      }
-
-      // Upload the file
-      showStatus('Uploading screenshot to AI...', 'info');
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Length': blob.size.toString(),
-          'X-Goog-Upload-Offset': '0',
-          'X-Goog-Upload-Command': 'upload, finalize'
-        },
-        body: blob
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file');
-      }
-
-      const fileInfo = await uploadResponse.json();
-      fileUri = fileInfo.file.uri;
-      showStatus('Screenshot uploaded successfully!', 'success');
-    } catch (error) {
-      console.error('Error uploading screenshot:', error);
-      showStatus('Error uploading screenshot. Proceeding without it.', 'info');
-    }
-  }
-
-  // Show a status before generating CSS
+  // Show status before generating CSS
   showStatus('Generating CSS based on your request...', 'info');
 
   // Simplify the tailwind data to only show essential information
@@ -146,34 +71,18 @@ export async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailw
     });
   }
 
-  // Prepare the payload with reduced size if needed for retry
-  const payload = {
-    contents: [
-      {
-        parts: [
-          // Add the screenshot if we have a file URI (only for first attempt)
-          ...(fileUri && retryCount === 0 ? [{
-            file_data: {
-              mime_type: "image/png",
-              file_uri: fileUri
-            }
-          }] : []),
-
-          // Add all reference images if available (only for first attempt)
-          ...(window.referenceImages && window.referenceImages.length > 0 && retryCount === 0 ?
-            window.referenceImages.map(img => ({
-              inline_data: {
-                mime_type: img.data.split(';')[0].split(':')[1],
-                data: img.data.split(',')[1]
-              }
-            })) : []),
-
-          {
-            text: `You are a CSS expert specializing in creating styles for web applications.
-
-${window.referenceImages && window.referenceImages.length > 0 ? `IMPORTANT: I've provided ${window.referenceImages.length} reference image${window.referenceImages.length > 1 ? 's' : ''} showing the desired design style. Please use ${window.referenceImages.length > 1 ? 'these' : 'this'} as inspiration when creating the CSS. Try to match the color scheme, styling patterns, and overall aesthetic of the reference image${window.referenceImages.length > 1 ? 's' : ''}.` : ""}
-
-USER PROMPT: "${prompt}"
+  // Prepare the messages for OpenAI
+  const messages = [
+    {
+      role: "system",
+      content: "You are a CSS expert specializing in creating styles for web applications. Your job is to generate CSS code based on user requests that will help them achieve their desired design."
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `USER PROMPT: "${prompt}"
 
 DOM STRUCTURE (focusing on classes matching pattern ^portal-.*$):
 ${retryCount === 0 ? JSON.stringify(simplifiedTree, null, 2) : JSON.stringify(simplifiedTree)}
@@ -184,79 +93,109 @@ ${currentCSS}
 Your task:
 1. Generate or modify the CSS code that fulfills the user's design request
 2. ONLY use selectors that target classes matching the pattern ^portal-.*$ (classes that start with "portal-")
-3. Do not use element selectors, IDs, or non-portal- classes
+3. Do not use element selectors, IDs, or non-portal- classes or other tags like body, html, etc.
 4. The final output should be a COMPLETE CSS file that includes all existing styles with your modifications
-5. If adding new styles, place them in logical sections within the existing CSS structure
-6. If modifying existing styles, update them in-place
-7. Include !important where necessary to override tailwind styles
-8. Include comprehensive comments explaining your styling approach
+5. Include !important where necessary to override tailwind styles
+6. Do NOT include comments in the CSS.
 
-Format your response as a CSS code block only, without any additional text.
-Start with a comment block explaining the overall approach.`
-          }
-        ]
-      }
-    ],
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 2048
+IMPORTANT: Return ONLY CSS code with no additional text.`
+        }
+      ]
     }
-  };
+  ];
+
+  // Add screenshot if available
+  if (screenshot && retryCount === 0) {
+    messages[1].content.push({
+      type: "image_url",
+      image_url: {
+        url: screenshot
+      }
+    });
+  }
+
+  // Add reference images if available
+  if (window.referenceImages && window.referenceImages.length > 0 && retryCount === 0) {
+    const referenceContent = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `I'm providing ${window.referenceImages.length} reference image${window.referenceImages.length > 1 ? 's' : ''} showing the desired design. Please use ${window.referenceImages.length > 1 ? 'these' : 'this'} as the target visual style for the CSS you generate.`
+        }
+      ]
+    };
+
+    // Add each reference image to the content array
+    window.referenceImages.forEach(img => {
+      referenceContent.content.push({
+        type: "image_url",
+        image_url: {
+          url: img.data
+        }
+      });
+    });
+
+    messages.push(referenceContent);
+  }
 
   try {
-    const response = await fetch(`${url}?key=${apiKey}`, {
+    // Make the API request
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: "o4-mini-2025-04-16",
+        messages: messages,
+      })
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('API error:', errorData);
-      throw new Error(`API error: ${errorData.error?.message || 'Unknown error'}`);
+      throw new Error(`API error: ${errorData.error?.message || response.statusText}`);
     }
 
     const data = await response.json();
 
-    // Check if we have a valid response with content
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+    // Extract CSS from the response
+    if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+      const content = data.choices[0].message.content;
+
+      // Extract CSS if it's wrapped in code blocks
+      const cssMatch = content.match(/```css\n([\s\S]*?)\n```/) ||
+                      content.match(/```\n([\s\S]*?)\n```/);
+
+      if (cssMatch && cssMatch[1]) {
+        showStatus('CSS generated successfully!', 'success');
+        return cssMatch[1];
+      }
+
+      // If no code block but looks like CSS, return as is
+      if (content.includes('{') && content.includes('}')) {
+        showStatus('CSS generated successfully!', 'success');
+        return content;
+      }
+
+      throw new Error('No CSS found in the response');
+    } else {
       throw new Error('Invalid response format from API');
     }
-
-    // Extract the CSS from the response
-    const content = data.candidates[0].content;
-    let cssText = '';
-
-    // Process the parts to extract the CSS
-    if (content.parts && content.parts.length > 0) {
-      for (const part of content.parts) {
-        if (part.text) {
-          cssText += part.text;
-        }
-      }
-    }
-
-    // Clean up the CSS - remove any markdown code block markers
-    cssText = cssText.replace(/```css/g, '').replace(/```/g, '').trim();
-
-    return cssText;
   } catch (error) {
     console.error('Error generating CSS:', error);
 
-    // Retry with simplified payload if we haven't exceeded max retries
-    if (retryCount < MAX_RETRIES) {
-      console.log(`Retrying CSS generation (attempt ${retryCount + 1} of ${MAX_RETRIES})...`);
-      showStatus(`Retrying CSS generation (attempt ${retryCount + 1} of ${MAX_RETRIES})...`, 'info');
-
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-
-      // Retry with a simpler payload
-      return generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS, retryCount + 1);
+    // If we've exceeded retries or the error isn't retryable, propagate it
+    if (retryCount >= MAX_RETRIES ||
+        !error.message.includes('overloaded') && !error.message.includes('rate limit')) {
+      showStatus(`Error: ${error.message}`, 'error');
+      throw error;
     }
 
-    throw error;
+    // Otherwise retry with a delay and simplified payload
+    showStatus(`API busy (attempt ${retryCount + 1}/${MAX_RETRIES + 1}). Retrying...`, 'info');
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    return generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS, retryCount + 1);
   }
 }

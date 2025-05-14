@@ -1,216 +1,135 @@
 import { showStatus } from './ui.js';
 import { simplifyTree } from './tree.js';
 import { dataURLtoBlob, captureScreenshot, saveScreenshot, captureAndSaveScreenshot } from './screenshot.js';
+import { safeSendMessage } from '../utils/chrome-utils.js';
 
 /**
- * Validate image data to ensure it's a valid base64 image
- * @param {string} imageData - The image data as a base64 string
- * @returns {boolean} Whether the image data is valid
+ * Validates if a string is a valid image data URL
+ * @param {string} imageData - Data URL to validate
+ * @returns {boolean} - Whether the string is a valid image data URL
  */
 export function isValidImageData(imageData) {
-  if (!imageData || typeof imageData !== 'string') {
-    return false;
-  }
-
-  // Check format
-  if (!imageData.startsWith('data:image')) {
-    return false;
-  }
-
-  // Check if it has base64 data
-  const parts = imageData.split(',');
-  if (parts.length !== 2 || !parts[1] || parts[1].length < 10) {
-    return false;
-  }
-
-  return true;
+  return typeof imageData === 'string' &&
+         imageData.startsWith('data:image/') &&
+         imageData.includes('base64,');
 }
 
 /**
- * Upload an image to Gemini API
- * @param {string} apiKey - The Gemini API key
- * @param {string} imageData - The image data as a base64 string
- * @param {string} displayName - The display name for the image
- * @returns {Promise<string|null>} Promise that resolves with the file URI or null if upload failed
- */
-export async function uploadImageToGemini(apiKey, imageData, displayName = 'IMAGE') {
-  if (!isValidImageData(imageData)) {
-    console.error('Invalid image data provided for upload');
-    return null;
-  }
-
-  try {
-    // Convert base64 to blob
-    const blob = dataURLtoBlob(imageData);
-
-    // Get upload URL
-    const uploadUrlResponse = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'X-Goog-Upload-Protocol': 'resumable',
-        'X-Goog-Upload-Command': 'start',
-        'X-Goog-Upload-Header-Content-Length': blob.size.toString(),
-        'X-Goog-Upload-Header-Content-Type': 'image/png',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        file: {
-          display_name: displayName
-        }
-      })
-    });
-
-    // Extract upload URL from headers
-    const uploadUrl = uploadUrlResponse.headers.get('X-Goog-Upload-URL');
-
-    if (!uploadUrl) {
-      throw new Error('Failed to get upload URL');
-    }
-
-    // Upload the file
-    showStatus(`Uploading ${displayName.toLowerCase()} to AI...`, 'info');
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Length': blob.size.toString(),
-        'X-Goog-Upload-Offset': '0',
-        'X-Goog-Upload-Command': 'upload, finalize'
-      },
-      body: blob
-    });
-
-    if (!uploadResponse.ok) {
-      throw new Error(`Failed to upload ${displayName.toLowerCase()}`);
-    }
-
-    const fileInfo = await uploadResponse.json();
-    return fileInfo.file.uri;
-  } catch (error) {
-    console.error(`Error uploading ${displayName.toLowerCase()}:`, error);
-    showStatus(`Error uploading ${displayName.toLowerCase()}. Proceeding without it.`, 'info');
-    return null;
-  }
-}
-
-/**
- * Analyze reference image and current page screenshot to generate a description
- * @param {string} apiKey - The Gemini API key
- * @param {string} referenceImage - The reference image as a base64 string
- * @param {string|null} pageScreenshot - The current page screenshot as a base64 string (optional)
- * @returns {Promise<string>} Promise that resolves with the generated description
+ * Analyze a reference image to suggest CSS changes
+ * @param {string} apiKey - The OpenAI API key
+ * @param {string} referenceImage - Base64 encoded reference image
+ * @param {string} pageScreenshot - Base64 encoded current page screenshot
+ * @returns {Promise<string>} - Promise resolving to the suggested design changes
  */
 export async function analyzeReferenceImage(apiKey, referenceImage, pageScreenshot = null) {
   try {
-    // Validate images
-    const isReferenceValid = isValidImageData(referenceImage);
-    let isCurrentPageValid = pageScreenshot ? isValidImageData(pageScreenshot) : false;
+    const url = 'https://api.openai.com/v1/chat/completions';
 
-    if (!isReferenceValid) {
-      console.error('Reference image is invalid');
-      throw new Error('Invalid reference image data');
-    }
+    // Prepare the message content
+    const messages = [
+      {
+        role: "system",
+        content: "You are a visual design expert who analyzes web design references and produces detailed descriptions of their styling elements."
+      }
+    ];
 
-    if (pageScreenshot && !isCurrentPageValid) {
-      console.warn('Current page screenshot is invalid - falling back to reference only');
-      pageScreenshot = null;
-      showStatus('Current page screenshot is invalid, using reference only', 'warning');
-    }
-
-    // Log if we have both images
-    if (pageScreenshot) {
-      console.log('Both images validated successfully');
-      showStatus('Comparing reference design with current page...', 'info');
-    } else {
-      console.log('Only sending reference image to API - no current page screenshot');
-      showStatus('Analyzing reference design only (no current page)...', 'info');
-    }
-
-    // Call the Gemini API
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-
-    // Prepare the payload
-    const payload = {
-      contents: [{
-        parts: [
-          // Image ordering is important - reference design FIRST, current page SECOND
-          // Add reference image (ALWAYS first)
+    // Add reference image content
+    if (isValidImageData(referenceImage)) {
+      messages.push({
+        role: "user",
+        content: [
           {
-            inline_data: {
-              mime_type: referenceImage.split(';')[0].split(':')[1],
-              data: referenceImage.split(',')[1]
-            }
+            type: "text",
+            text: "This is reference image, i want to make my current page look like this."
           },
-          // Add current page screenshot if available (ALWAYS second)
-          ...(pageScreenshot ? [{
-            inline_data: {
-              mime_type: pageScreenshot.split(';')[0].split(':')[1],
-              data: pageScreenshot.split(',')[1]
-            }
-          }] : []),
           {
-            text: `You are a world-class UI/UX design expert.
-
-You have been given ${pageScreenshot ? "two screenshots" : "one screenshot"}:
-- The target screenshot: This is the reference image showing the desired final appearance of the Help Center.
-${pageScreenshot ? "- The current screenshot: This is how the Help Center currently looks." : ""}
-
-${pageScreenshot ? "Your task:" : "Your task (with only the target screenshot available):"}
-1. ${pageScreenshot ? "Carefully compare the target screenshot (reference) and the current screenshot." : "Analyze the target screenshot (reference) in detail."}
-2. Identify and describe ${pageScreenshot ? "all visual differences between the two" : "key visual elements"}. Focus on:
-   - Colors (backgrounds, text, buttons, etc.)
-   - Spacing and alignment (margins, paddings, gaps)
-   - Shapes and borders (rounded corners, outlines, etc.)
-   - Typography (font size, weight, family, line height)
-   - Layout and positioning of elements
-   - Any other noticeable visual ${pageScreenshot ? "differences" : "characteristics"}
-3. Do NOT mention or refer to CSS, HTML, DOM, class names, or any technical implementation details.
-4. Use clear, simple, non-technical language that describes only what you see visually.
-5. Prioritize the most noticeable ${pageScreenshot ? "differences" : "elements"} first.
-6. Be as specific as possible (e.g., "${pageScreenshot ? "The button in the target screenshot is blue and larger, while in the current screenshot it is gray and smaller." : "The button is blue with white text and has rounded corners."}")
-
-Output:
-- Write a prompt that can be used for an LLM to generate CSS that will ${pageScreenshot ? "transform the current screenshot to match the target screenshot" : "implement the visual design shown in the target screenshot"}.
-- The prompt should be a clear, structured description of the ${pageScreenshot ? "visual changes needed" : "visual design"}, referring to the ${pageScreenshot ? "screenshots as \"target screenshot\" and \"current screenshot\"" : "design as \"target screenshot\""} throughout.`
+            type: "image_url",
+            image_url: {
+              url: referenceImage
+            }
           }
         ]
-      }],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 1024
-      }
-    };
+      });
+    }
+
+    // Add current page screenshot if available
+    if (pageScreenshot && isValidImageData(pageScreenshot)) {
+      messages.push({
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "Here is what my current page looks like."
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: pageScreenshot
+            }
+          }
+        ]
+      });
+    }
+
+    messages.push({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Please analyze the reference image and current page image and generate a prompt for another LLM to generate CSS. I will provide the LLM with the reference image, current image, our prompt, other info and rules likes use only specific classes along with list of all classes and pre-applied tailwind classes. Give me a prompt that will generate CSS that will make my current page look like the reference image. NOTE: do not include any CSS in the prompt, just the prompt for the other LLM."
+        }
+      ]
+    });
 
     // Make the API request
-    const response = await fetch(`${url}?key=${apiKey}`, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: "o4-mini-2025-04-16",
+        messages: messages,
+      })
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error?.message || 'API request failed');
+      throw new Error(`API error: ${errorData.error?.message || response.statusText}`);
     }
 
     const data = await response.json();
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+
+    if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+      let content = data.choices[0].message.content;
+
+      // Clean the response by removing markdown code blocks and formatting
+      content = content
+        // Remove ```text, ```prompt, or other language-specific code blocks
+        .replace(/```(?:text|prompt|css|markdown|)\n/g, '')
+        .replace(/```/g, '')
+        // Remove any remaining markdown formatting if needed
+        .replace(/\*\*/g, '')  // Bold
+        .replace(/\*/g, '')    // Italic
+        .replace(/\_\_/g, '')  // Bold
+        .replace(/\_/g, '')    // Italic
+        .trim();
+
+      return content;
+    } else {
       throw new Error('Invalid response format from API');
     }
-
-    // Get the generated prompt
-    const generatedPrompt = data.candidates[0].content.parts[0].text;
-    return generatedPrompt;
   } catch (error) {
-    console.error('Error analyzing image:', error);
-    throw error;
+    console.error('Error analyzing reference image:', error);
+    showStatus(`Error analyzing image: ${error.message}`, 'error');
+    return "Could not analyze the image. Please try again or provide your own description.";
   }
 }
 
 /**
- * Generate CSS using Gemini API
- * @param {string} apiKey - The Gemini API key
+ * Generate CSS using OpenAI API
+ * @param {string} apiKey - The OpenAI API key
  * @param {string} prompt - The user prompt
  * @param {Object} portalClassTree - The portal class tree
  * @param {Object} tailwindData - The tailwind class data
@@ -219,26 +138,12 @@ Output:
  * @returns {Promise<string>} Promise that resolves with the generated CSS
  */
 export async function generateCSSWithAI(apiKey, prompt, portalClassTree, tailwindData, currentCSS = "", retryCount = 0) {
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = 5;
   const RETRY_DELAY = 2000; // 2 seconds
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+  const url = 'https://api.openai.com/v1/chat/completions';
 
   // Create a simplified version of the tree for the LLM
   const simplifiedTree = simplifyTree(portalClassTree);
-
-  // Get the screenshot if possible and save it automatically
-  let screenshot = await captureAndSaveScreenshot('reference-analysis');
-
-  // Show a new status before uploading
-  if (screenshot) {
-    showStatus('Preparing screenshot for AI analysis...', 'info');
-  }
-
-  // Prepare for file upload if we have a screenshot
-  let fileUri = null;
-  if (screenshot) {
-    fileUri = await uploadImageToGemini(apiKey, screenshot, 'SCREENSHOT');
-  }
 
   // Show a status before generating CSS
   showStatus('Generating CSS based on your request...', 'info');
@@ -254,38 +159,20 @@ export async function generateCSSWithAI(apiKey, prompt, portalClassTree, tailwin
   }
 
   // --- Improved prompt for pixel-perfect matching and visual fidelity ---
-  const improvedPrompt = `${prompt}\n\nIMPORTANT: The goal is to make the current Help Center visually indistinguishable from the reference image(s). Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences. Only use the provided class names. If unsure, err on the side of making more changes.`;
+  const improvedPrompt = `${prompt}\n\nIMPORTANT: The goal is to make the current design visually match the desired outcome. Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences. Only use the provided class names. If unsure, err on the side of making more changes.`;
 
-  // Prepare the payload with reduced size if needed for retry
-  const payload = {
-    contents: [
-      {
-        parts: [
-          // Add the screenshot if we have a file URI (only for first attempt)
-          ...(fileUri && retryCount === 0 ? [{
-            file_data: {
-              mime_type: "image/png",
-              file_uri: fileUri
-            }
-          }] : []),
-
-          // Add all reference images if available (only for first attempt)
-          ...(window.referenceImages.length > 0 && retryCount === 0 ?
-            window.referenceImages.map(img => ({
-              inline_data: {
-                mime_type: img.data.split(';')[0].split(':')[1],
-                data: img.data.split(',')[1]
-              }
-            })) : []),
-
-          {
-            text: `You are an expert CSS developer specializing in pixel-perfect visual implementation.
-
-${window.referenceImages.length > 0 ?
-`I've provided ${window.referenceImages.length} target screenshot${window.referenceImages.length > 1 ? 's' : ''} showing the desired visual design.
-These are your reference images - they show how the Help Center should look after your CSS changes.` : ""}
-
-USER REQUEST: "${improvedPrompt}"
+  // Prepare the messages for OpenAI
+  const messages = [
+    {
+      role: "system",
+      content: "You are an expert CSS developer specializing in pixel-perfect visual implementation. Your task is to generate CSS that will transform a web page to match a target design."
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `USER REQUEST: "${improvedPrompt}"
 
 DOM STRUCTURE:
 The following is a tree of elements with their portal-* classes. Use these class names in your CSS selectors.
@@ -299,9 +186,9 @@ CURRENT CSS FILE:
 ${currentCSS}
 
 INSTRUCTIONS:
-1. Write CSS that will transform the current design to match the target design (reference image).
+1. Write CSS that will transform the current design to match the target design.
 2. ONLY create selectors that target classes matching the pattern ^portal-.*$ (classes that start with "portal-")
-3. Ensure your CSS is pixel-perfect and precisely matches the visual design in the target screenshots.
+3. Ensure your CSS is pixel-perfect and precisely matches the visual design.
 4. Do not use element selectors, IDs, or non-portal- classes.
 5. Include !important where necessary to override existing styles.
 6. Your output must be a COMPLETE CSS file including:
@@ -315,45 +202,49 @@ INSTRUCTIONS:
    - Spacing (gaps between elements)
    - Borders and shapes (radius, width, style)
 
-FORMAT YOUR RESPONSE AS CSS CODE ONLY, NO EXPLANATIONS OUTSIDE THE CSS.`
-          }
-        ]
-      }
-    ],
-    generationConfig: {
-      temperature: 0.2,
-      topK: 32,
-      topP: 0.95,
-      maxOutputTokens: 8192,
-    },
-    safetySettings: [
-      {
-        category: "HARM_CATEGORY_HARASSMENT",
-        threshold: "BLOCK_MEDIUM_AND_ABOVE"
-      },
-      {
-        category: "HARM_CATEGORY_HATE_SPEECH",
-        threshold: "BLOCK_MEDIUM_AND_ABOVE"
-      },
-      {
-        category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-        threshold: "BLOCK_MEDIUM_AND_ABOVE"
-      },
-      {
-        category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-        threshold: "BLOCK_MEDIUM_AND_ABOVE"
-      }
-    ]
-  };
+RETURN ONLY CSS CODE WITH NO ADDITIONAL TEXT OR EXPLANATIONS OUTSIDE OF CSS COMMENTS.`
+        }
+      ]
+    }
+  ];
+
+  // Add reference images if available
+  if (window.referenceImages && window.referenceImages.length > 0 && retryCount === 0) {
+    const referenceContent = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `I'm providing ${window.referenceImages.length} reference image${window.referenceImages.length > 1 ? 's' : ''} showing the desired design. Please use ${window.referenceImages.length > 1 ? 'these' : 'this'} as the target visual style for the CSS you generate.`
+        }
+      ]
+    };
+
+    // Add each reference image to the content array
+    window.referenceImages.forEach(img => {
+      referenceContent.content.push({
+        type: "image_url",
+        image_url: {
+          url: img.data
+        }
+      });
+    });
+
+    messages.push(referenceContent);
+  }
 
   try {
     // Make the API request
-    const response = await fetch(`${url}?key=${apiKey}`, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: "o4-mini-2025-04-16",
+        messages: messages,
+      })
     });
 
     if (!response.ok) {
@@ -363,148 +254,69 @@ FORMAT YOUR RESPONSE AS CSS CODE ONLY, NO EXPLANATIONS OUTSIDE THE CSS.`
 
     const data = await response.json();
 
-    // Check if we have a valid response with text
-    if (data.candidates &&
-        data.candidates[0] &&
-        data.candidates[0].content &&
-        data.candidates[0].content.parts) {
+    // Extract CSS from the response
+    if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+      const content = data.choices[0].message.content;
 
-      // Extract the CSS from the response
-      const responseParts = data.candidates[0].content.parts;
-      let cssText = '';
+      // Extract CSS if it's wrapped in code blocks
+      const cssMatch = content.match(/```css\n([\s\S]*?)\n```/) ||
+                      content.match(/```\n([\s\S]*?)\n```/);
 
-      // Look for the CSS in the response parts
-      for (const part of responseParts) {
-        if (part.text) {
-          // Extract CSS code blocks from the text
-          const cssMatches = part.text.match(/```css([\s\S]*?)```/g);
-          if (cssMatches && cssMatches.length > 0) {
-            // Use the first CSS block found
-            cssText = cssMatches[0]
-              .replace(/```css\n?/g, '') // Remove opening ```css
-              .replace(/```$/g, '');     // Remove closing ```
-            break;
-          } else {
-            // If no code blocks, use the entire text if it looks like CSS
-            if (part.text.includes('{') && part.text.includes('}')) {
-              cssText = part.text;
-            }
-          }
-        }
-      }
-
-      if (cssText) {
+      if (cssMatch && cssMatch[1]) {
         showStatus('CSS generated successfully!', 'success');
-        return cssText;
-      } else {
-        throw new Error('No CSS found in the response');
+        return cssMatch[1];
       }
+
+      // If no code block but looks like CSS, return as is
+      if (content.includes('{') && content.includes('}')) {
+        showStatus('CSS generated successfully!', 'success');
+        return content;
+      }
+
+      throw new Error('No CSS found in the response');
     } else {
       throw new Error('Invalid response format from API');
     }
   } catch (error) {
     console.error('Error generating CSS:', error);
-    showStatus(`Error: ${error.message}`, 'error');
 
-    // Retry with simplified payload if we haven't exceeded max retries
-    if (retryCount < MAX_RETRIES) {
-      showStatus(`Retrying with simplified request (${retryCount + 1}/${MAX_RETRIES})...`, 'info');
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-      return generateCSSWithAI(apiKey, prompt, portalClassTree, tailwindData, currentCSS, retryCount + 1);
-    } else {
-      throw new Error(`Failed after ${MAX_RETRIES} attempts: ${error.message}`);
+    // If we've exceeded retries or the error isn't retryable, propagate it
+    if (retryCount >= MAX_RETRIES ||
+        !error.message.includes('overloaded') && !error.message.includes('rate limit')) {
+      showStatus(`Error: ${error.message}`, 'error');
+      throw error;
     }
+
+    // Otherwise retry with a delay and simplified payload
+    showStatus(`API busy (attempt ${retryCount + 1}/${MAX_RETRIES + 1}). Retrying...`, 'info');
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    return generateCSSWithAI(apiKey, prompt, portalClassTree, tailwindData, currentCSS, retryCount + 1);
   }
 }
 
 /**
- * Analyze applied CSS and suggest improvements
- * @param {string} apiKey - The Gemini API key
- * @param {string} generatedCSS - The current CSS that was applied
+ * Analyze CSS and get feedback for improvements
+ * @param {string} apiKey - The OpenAI API key
+ * @param {string} generatedCSS - The generated CSS
  * @param {string} prompt - The original user prompt
- * @param {string|null} screenshot - Screenshot of the current page with CSS applied (optional)
- * @returns {Promise<string|null>} Promise that resolves with improved CSS or null if no improvements needed
+ * @param {string} screenshot - Optional screenshot of the current page
+ * @returns {Promise<string|null>} - Promise resolving to improved CSS or null if no improvements needed
  */
 export async function analyzeCSSAndGetFeedback(apiKey, generatedCSS, prompt, screenshot = null) {
   try {
-    // Apply CSS to the page
-    const applyResponse = await new Promise((resolve, reject) => {
-      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        if (!tabs || !tabs[0]) {
-          reject(new Error('No active tab found'));
-          return;
-        }
+    const url = 'https://api.openai.com/v1/chat/completions';
 
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: 'applyCSS',
-          css: generatedCSS
-        }, (response) => {
-          if (!response || !response.success) {
-            reject(new Error('Failed to apply CSS'));
-            return;
-          }
-          resolve(response);
-        });
-      });
-    });
-
-    // Give the page a moment to render with the new CSS
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Capture screenshot of the styled page and save it automatically
-    showStatus('Capturing screenshot of the styled page for AI analysis...', 'info');
-    screenshot = await captureAndSaveScreenshot('after-styling');
-
-    // Prepare for file upload if we have a screenshot
-    let fileUri = null;
-    if (screenshot) {
-      fileUri = await uploadImageToGemini(apiKey, screenshot, 'RESULT_SCREENSHOT');
-    }
-
-    // --- Improved feedback prompt for pixel-perfect matching and visual fidelity ---
-    const improvedPrompt = `${prompt}\n\nIMPORTANT: The goal is to make the current Help Center visually indistinguishable from the reference image(s). Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences. Only use the provided class names. If unsure, err on the side of making more changes.`;
-
-    // Create payload for feedback with clearer instructions
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-
-    showStatus(fileUri ?
-      'Getting AI feedback on visual results...' :
-      'Getting AI feedback on CSS code...', 'info');
-
-    // Create another screenshot for feedback if we don't already have one
-    if (!screenshot) {
-      screenshot = await captureAndSaveScreenshot('for-feedback');
-      if (screenshot) {
-        // Try to upload this new screenshot
-        fileUri = await uploadImageToGemini(apiKey, screenshot, 'FEEDBACK_SCREENSHOT');
-      }
-    }
-
-    // Create payload for feedback with clearer instructions
-    const payload = {
-      contents: [{
-        parts: [
-          // Include original reference images if available
-          ...(window.referenceImages.length > 0 ?
-            window.referenceImages.map(img => ({
-              inline_data: {
-                mime_type: img.data.split(';')[0].split(':')[1],
-                data: img.data.split(',')[1]
-              }
-            })) : []),
-
-          // Include the result screenshot if available
-          ...(fileUri ? [{
-            file_data: {
-              mime_type: "image/png",
-              file_uri: fileUri
-            }
-          }] : []),
-
-          {
-            text: `You are a CSS expert evaluating the visual match between a target design and the current implementation.
-
-ORIGINAL REQUEST: "${improvedPrompt}"
+    // Prepare the messages for OpenAI
+    const messages = [
+      {
+        role: "system",
+        content: "You are a CSS expert evaluating a web page styling. Your job is to improve CSS code to better match a target design."
+      },
+      {
+        role: "user",
+        content: [{
+          type: "text",
+          text: `ORIGINAL REQUEST: "${prompt}"
 
 CURRENT CSS IMPLEMENTATION:
 \`\`\`css
@@ -512,20 +324,13 @@ ${generatedCSS}
 \`\`\`
 
 TASK:
-1. ${fileUri ? "I've applied the CSS above to the page and taken a screenshot of the result (this is the CURRENT state)." : "I've applied the CSS above to the page but couldn't capture a screenshot."}
-2. ${fileUri ? `Compare this CURRENT state against the TARGET design shown in the reference image(s).` : "Analyze the CSS code quality and make improvements where needed."}
-3. Look for ANY visual discrepancies, no matter how small, between the CURRENT state and the TARGET design.
-
-${fileUri ? `
-EVALUATION INSTRUCTIONS:
-1. Pixel-perfect matching: Compare every visual detail between the CURRENT state and TARGET design
-2. Scrutinize: Colors, spacing, typography, borders, shadows, alignment, etc.
-3. For each discrepancy, determine what CSS changes are needed to make the CURRENT match the TARGET
-` : ""}
+1. ${screenshot ? "I've applied the CSS above to the page and taken a screenshot of the result." : "I've applied the CSS above to the page but couldn't capture a screenshot."}
+2. ${screenshot ? `Compare this result against the intended design described in the original request.` : "Analyze the CSS code quality and make improvements where needed."}
+3. Determine if the CSS needs further improvement.
 
 EXACTLY FOLLOW THIS RESPONSE FORMAT:
-- If NO improvements are needed (the current state perfectly matches the target design), respond with ONLY the word "No".
-- If ANY improvements ARE needed, respond with ONLY the complete improved CSS file, with no explanations or markdown formatting.
+- If NO improvements are needed, respond with ONLY the word "No".
+- If improvements ARE needed, respond with ONLY the complete improved CSS file, with no explanations or markdown formatting.
 
 IMPORTANT RULES:
 - Your ENTIRE response must be EITHER the single word "No" OR the complete CSS code.
@@ -535,50 +340,77 @@ IMPORTANT RULES:
 - Do NOT use markdown code blocks or any extra formatting.
 
 I REPEAT: Return ONLY "No" or the complete CSS code with no other text.`
+        }]
+      }
+    ];
+
+    // Add screenshot if available
+    if (screenshot && isValidImageData(screenshot)) {
+      messages[1].content.push({
+        type: "image_url",
+        image_url: {
+          url: screenshot
+        }
+      });
+    }
+
+    // Add reference images if available
+    if (window.referenceImages && window.referenceImages.length > 0) {
+      const referenceContent = {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `These are the reference images showing the target design. Compare with my current result and improve the CSS to match these better.`
           }
         ]
-      }],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 2048
-      }
-    };
+      };
 
-    // Make API request
-    const response = await fetch(`${url}?key=${apiKey}`, {
+      window.referenceImages.forEach(img => {
+        referenceContent.content.push({
+          type: "image_url",
+          image_url: {
+            url: img.data
+          }
+        });
+      });
+
+      messages.push(referenceContent);
+    }
+
+    // Make the API request
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        model: "o4-mini-2025-04-16",
+        messages: messages,
+      })
     });
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(`API Error: ${errorData.error?.message || response.statusText || 'Unknown error'}`);
+      throw new Error(`API error: ${errorData.error?.message || response.statusText}`);
     }
 
     const data = await response.json();
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
-      throw new Error('Invalid response format from API');
-    }
 
-    const feedbackText = data.candidates[0].content.parts[0].text.trim();
+    if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+      const feedbackText = data.choices[0].message.content.trim();
 
-    console.log('Feedback LLM response:', feedbackText.substring(0, 100) + '...');
-
-    // Process the response with improved handling
-    if (feedbackText === "No" || feedbackText.toLowerCase() === "no.") {
-      showStatus('AI review: No improvements needed! The CSS looks good.', 'success');
-      return null; // No improvements needed
-    } else {
-      // Check if it looks like CSS (contains braces)
-      if (feedbackText.includes('{') && feedbackText.includes('}')) {
+      // Process the response
+      if (feedbackText === "No" || feedbackText.toLowerCase() === "no.") {
+        showStatus('AI review: No improvements needed! The CSS looks good.', 'success');
+        return null; // No improvements needed
+      } else if (feedbackText.includes('{') && feedbackText.includes('}')) {
         showStatus('AI suggested CSS improvements! Applying updated styles...', 'info');
 
-        // Extract CSS if it's wrapped in code blocks (even though we asked for no markdown)
+        // Extract CSS if it's wrapped in code blocks
         const cssMatch = feedbackText.match(/```css\n([\s\S]*?)\n```/) ||
-                        feedbackText.match(/```\n([\s\S]*?)\n```/);
+                         feedbackText.match(/```\n([\s\S]*?)\n```/);
 
         if (cssMatch && cssMatch[1]) {
           showStatus('Applied AI-suggested CSS improvements', 'success');
@@ -600,10 +432,216 @@ I REPEAT: Return ONLY "No" or the complete CSS code with no other text.`
         showStatus('AI provided feedback in an unexpected format', 'error');
         return null;
       }
+    } else {
+      throw new Error('Invalid response format from API');
     }
   } catch (error) {
     console.error('Error in feedback process:', error);
     showStatus(`Error getting feedback: ${error.message}`, 'error');
     return null; // Return null to indicate no changes
+  }
+}
+
+/**
+ * Generate CSS directly from DOM structure and tailwind classes
+ * @param {string} apiKey - The API key
+ * @param {string} prompt - The user prompt
+ * @param {Object} portalClassTree - The portal class tree
+ * @param {Object} tailwindData - The tailwind class data
+ * @param {string} currentCSS - The current CSS
+ * @param {number} retryCount - The retry count
+ * @returns {Promise<string>} Promise that resolves with the generated CSS
+ */
+export async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS = "", retryCount = 0) {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 2000; // 2 seconds
+  const url = 'https://api.openai.com/v1/chat/completions';
+
+  // Create a simplified version of the tree for the LLM
+  const simplifiedTree = simplifyTree(portalClassTree);
+
+  // Attempt to get a screenshot of the current page
+  let screenshot = null;
+
+  // Try to capture the screenshot using the content script
+  try {
+    const tabResponse = await new Promise((resolve, reject) => {
+      chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+        if (!tabs || !tabs[0]) {
+          reject(new Error('No active tab found'));
+          return;
+        }
+
+        // Use our safe messaging function with a timeout
+        let messageTimeout = setTimeout(() => {
+          reject(new Error('Screenshot capture timed out'));
+        }, 10000); // 10 seconds timeout for full page capture
+
+        // Use safeSendMessage to communicate with the content script
+        safeSendMessage(tabs[0].id, {action: 'captureScreenshot'}, (response) => {
+          clearTimeout(messageTimeout);
+          if (!response || !response.success) {
+            const errorMsg = response && response.error ? response.error : 'Unknown error';
+            reject(new Error(errorMsg));
+            return;
+          }
+          resolve(response);
+        });
+      });
+    });
+
+    if (tabResponse && tabResponse.success && tabResponse.data) {
+      screenshot = tabResponse.data;
+      showStatus('Screenshot captured successfully!', 'success');
+    }
+  } catch (error) {
+    console.warn('Could not capture screenshot:', error);
+    showStatus('Could not capture full page with styling. Using simplified data.', 'info');
+  }
+
+  // Show a status before generating CSS
+  showStatus('Generating CSS based on your request...', 'info');
+
+  // Simplify the tailwind data to only show essential information
+  const simplifiedTailwindData = {};
+  if (tailwindData) {
+    Object.keys(tailwindData).forEach(selector => {
+      if (/^portal-.*$/.test(selector)) {
+        simplifiedTailwindData[selector] = tailwindData[selector];
+      }
+    });
+  }
+
+  // Prepare the messages for OpenAI
+  const messages = [
+    {
+      role: "system",
+      content: "You are an expert CSS developer specializing in pixel-perfect visual implementation. Your task is to generate CSS that will transform DevRev Help Center page to match a specific design request. NOTE: 'portal-public' is a special class that is only present if user is not logged in. So only use this class if mentioned in user prompt"
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `USER REQUEST: "${prompt}"
+
+DOM STRUCTURE (focusing on classes matching pattern ^portal-.*$):
+${retryCount === 0 ? JSON.stringify(simplifiedTree, null, 2) : JSON.stringify(simplifiedTree)}
+
+TAILWIND DATA:
+Some elements already have Tailwind classes applied. Your CSS needs to override these when necessary.
+${Object.keys(simplifiedTailwindData).length > 0 ? JSON.stringify(simplifiedTailwindData, null, 2) : "No Tailwind data available."}
+
+CURRENT CSS FILE:
+${currentCSS}
+
+Your task:
+1. Generate or modify the CSS code that fulfills the user's design request
+2. ONLY use selectors that target classes matching the pattern ^portal-.*$ (classes that start with "portal-")
+3. Do not use element selectors, IDs, or non-portal- classes or other tags like body, html, etc.,
+4. The final output should be a COMPLETE CSS file that includes all existing styles with your modifications
+5. Include !important where necessary to override tailwind styles
+6. Do NOT include comments in the CSS.
+
+IMPORTANT: Return ONLY CSS code with no additional text.`
+        }
+      ]
+    }
+  ];
+
+  // Add screenshot if available
+  if (screenshot && retryCount === 0) {
+    messages[1].content.push({
+      type: "image_url",
+      image_url: {
+        url: screenshot
+      }
+    });
+  }
+
+  // Add reference images if available
+  if (window.referenceImages && window.referenceImages.length > 0 && retryCount === 0) {
+    const referenceContent = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `I'm providing ${window.referenceImages.length} reference image${window.referenceImages.length > 1 ? 's' : ''} showing the desired design. Please use ${window.referenceImages.length > 1 ? 'these' : 'this'} as the target visual style for the CSS you generate.`
+        }
+      ]
+    };
+
+    // Add each reference image to the content array
+    window.referenceImages.forEach(img => {
+      referenceContent.content.push({
+        type: "image_url",
+        image_url: {
+          url: img.data
+        }
+      });
+    });
+
+    messages.push(referenceContent);
+  }
+
+  try {
+    // Make the API request
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "o4-mini-2025-04-16",
+        messages: messages,
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      const errorMessage = errorData.error?.message || response.statusText || 'Unknown error';
+      throw new Error(`API error: ${errorMessage}`);
+    }
+
+    const data = await response.json();
+
+    // Extract CSS from the response
+    if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+      const content = data.choices[0].message.content;
+
+      // Extract CSS if it's wrapped in code blocks
+      const cssMatch = content.match(/```css\n([\s\S]*?)\n```/) ||
+                      content.match(/```\n([\s\S]*?)\n```/);
+
+      if (cssMatch && cssMatch[1]) {
+        showStatus('CSS generated successfully!', 'success');
+        return cssMatch[1];
+      }
+
+      // If no code block but looks like CSS, return as is
+      if (content.includes('{') && content.includes('}')) {
+        showStatus('CSS generated successfully!', 'success');
+        return content;
+      }
+
+      throw new Error('No CSS found in the response');
+    } else {
+      throw new Error('Invalid response format from API');
+    }
+  } catch (error) {
+    console.error('Error generating CSS:', error);
+
+    // If we've exceeded retries or the error isn't retryable, propagate it
+    if (retryCount >= MAX_RETRIES ||
+        !error.message.includes('overloaded') && !error.message.includes('rate limit')) {
+      showStatus(`Error: ${error.message}`, 'error');
+      throw error;
+    }
+
+    // Otherwise retry with a delay and simplified payload
+    showStatus(`API busy (attempt ${retryCount + 1}/${MAX_RETRIES + 1}). Retrying...`, 'info');
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    return generateCSSDirectly(apiKey, prompt, portalClassTree, tailwindData, currentCSS, retryCount + 1);
   }
 }
