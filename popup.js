@@ -10,6 +10,7 @@ import {
   generateCSSDirectly
 } from './js/modules/api.js';
 import { safeSendMessage } from './js/utils/chrome-utils.js';
+import { initStatusBar, showLoading, STATUS_TYPES, PROCESS_STAGES, setProcessStage } from './js/components/status-bar.js';
 
 // Function to create a text representation of the tree node
 function createTreeNode(node, level = 0, isLast = true) {
@@ -448,8 +449,11 @@ async function loadTreeData() {
   }
 }
 
-// When popup is opened, request portal class tree from content script
+// Initialize the status bar when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+  // Initialize the statusbar
+  initStatusBar();
+
   // Initialize Monaco editor for CSS
   let monacoEditor;
 
@@ -560,10 +564,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Set a loading message
       promptField.value = "Analyzing image to identify visual differences...";
-      showStatus('Analyzing reference image to identify visual differences...', 'info');
 
-      // Disable UI while processing image
+      // Update status bar with analyzing message and set the stage to ANALYZING
+      setProcessStage('ANALYZING', true);
+      showStatus('Analyzing reference image to identify visual differences...', 'info', 0, true);
+
+      // Disable UI while processing image - specifically target the upload and generate buttons
       setUIProcessingState(true, 'image-analysis');
+
+      // Explicitly disable the upload reference button and generate CSS button
+      const uploadButton = document.getElementById('upload-image-btn');
+      const generateButton = document.getElementById('generate-btn');
+      if (uploadButton) uploadButton.disabled = true;
+      if (generateButton) generateButton.disabled = true;
 
       // Get API key from storage
       chrome.storage.local.get(['openAIApiKey'], async (result) => {
@@ -574,11 +587,14 @@ document.addEventListener('DOMContentLoaded', () => {
           showStatus('API key is missing. Please add it in Settings tab.', 'error');
           // Re-enable UI
           setUIProcessingState(false);
+          if (uploadButton) uploadButton.disabled = false;
+          if (generateButton) generateButton.disabled = false;
           return;
         }
 
         try {
           // Get current page data for context
+          showStatus('Getting current page context for comparison...', 'info');
           const tabs = await new Promise((resolve) => {
             chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
               resolve(tabs);
@@ -586,6 +602,7 @@ document.addEventListener('DOMContentLoaded', () => {
           });
 
           // Get the DOM structure
+          showStatus('Retrieving page structure for analysis...', 'info');
           const treeResponse = await safeSendMessage(tabs[0].id, {action: 'getPortalClassTree'});
           if (!treeResponse.success) {
             throw new Error('Failed to get portal class structure');
@@ -596,6 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
           let pageScreenshot = null;
           try {
             // Show detailed status message
+            setProcessStage('CAPTURING', true);
             showStatus('Capturing screenshot of current viewport...', 'info');
 
             // Increase the timeout for screenshot capture
@@ -666,6 +684,8 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           // Call the API function to analyze the reference image
+          setProcessStage('ANALYZING', true);
+          showStatus('AI analyzing reference image against current design...', 'info');
           const generatedPrompt = await analyzeReferenceImage(apiKey, imageData, pageScreenshot);
 
           // Update the prompt field with the generated prompt
@@ -681,6 +701,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
           // Re-enable UI no matter what happened
           setUIProcessingState(false);
+          setProcessStage('IDLE', false);
+
+          // Explicitly re-enable buttons
+          if (uploadButton) uploadButton.disabled = false;
+          if (generateButton) generateButton.disabled = false;
         }
       });
     }
@@ -715,6 +740,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Save current CSS as a version before generating new one if it's not the initial placeholder
         if (currentCSS && currentCSS !== "/* CSS will appear here after generation */") {
           saveCSSVersion(currentCSS, `Before: ${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
+          showStatus('Saved current CSS version for reference', 'info');
         }
 
         // Check if we have reference images
@@ -723,7 +749,9 @@ document.addEventListener('DOMContentLoaded', () => {
           showStatus(`Using ${window.referenceImages.length} reference image(s) for design inspiration`, 'info');
         }
 
-        showStatus('Fetching page data...', 'info');
+        // Explicitly set process stage to ANALYZING
+        setProcessStage('ANALYZING', true);
+        showStatus('Fetching page data for styling...', 'info');
 
         // Fetch the latest DOM data before generating CSS
         // This ensures we have the most up-to-date data if the user navigated to a different page
@@ -737,6 +765,7 @@ document.addEventListener('DOMContentLoaded', () => {
               }
 
               try {
+                showStatus('Retrieving page structure for styling...', 'info');
                 const response = await safeSendMessage(tabs[0].id, {action: 'getPortalClassTree'});
                 if (!response || !response.success) {
                   reject(new Error('Failed to get portal class data'));
@@ -751,10 +780,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
           portalClassTree = treeResponse.data;
           allPortalClasses = [...new Set(extractPortalClasses(portalClassTree))];
+          showStatus(`Found ${allPortalClasses.length} portal classes to style`, 'info');
 
           // Get tailwind classes
-          showStatus('Analyzing page styles...', 'info');
+          showStatus('Analyzing current page styling...', 'info');
           tailwindClassData = await collectTailwindClasses();
+          showStatus('Page style analysis complete', 'success');
 
           // Attach tailwind classes to the portal class tree
           const attachTailwindClasses = (node) => {
@@ -776,8 +807,11 @@ document.addEventListener('DOMContentLoaded', () => {
           };
 
           attachTailwindClasses(portalClassTree);
+          showStatus('Preparing AI request with detailed styling context...', 'info');
 
           // --- BEGIN ITERATIVE FEEDBACK LOOP ---
+          setProcessStage('GENERATING', true);
+          showStatus('Generating initial CSS based on your request...', 'info');
           let css = await generateCSSDirectly(
             apiKey,
             // Improved prompt for pixel-perfect matching
@@ -794,10 +828,33 @@ document.addEventListener('DOMContentLoaded', () => {
           // Save the new CSS as a version
           saveCSSVersion(css, `${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
 
-          showStatus('CSS generated successfully!', 'success');
+          showStatus('Initial CSS generated successfully!', 'success');
+
+          // Explicitly set process stage to APPLYING
+          setProcessStage('APPLYING', true);
+          showStatus('Applying CSS to page...', 'info');
+
+          // Apply the initial CSS
+          await new Promise((resolve) => {
+            chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: 'applyCSS',
+                css: css
+              }, (response) => {
+                if (chrome.runtime.lastError || !response || !response.success) {
+                  showStatus('Warning: Could not apply CSS to page.', 'error');
+                  resolve();
+                  return;
+                }
+                showStatus('CSS has been applied to the page', 'success');
+                resolve();
+              });
+            });
+          });
 
           // AUTOMATIC FEEDBACK LOOP - Apply CSS, take screenshot, get feedback
-          showStatus('Running AI review of applied styles...', 'info');
+          setProcessStage('REVIEW', true);
+          showStatus('Starting AI review of applied styles...', 'info', 3000, true);
 
           // Create a visual progress indicator for the feedback rounds
           const progressIndicator = document.createElement('div');
@@ -845,7 +902,9 @@ document.addEventListener('DOMContentLoaded', () => {
               // Update progress indicator for current round
               updateProgressIndicator(feedbackRound);
 
-              showStatus(`Analyzing style match... (Round ${feedbackRound + 1}/${MAX_FEEDBACK_ITERATIONS})`, 'info');
+              // Explicitly set stage for visual review
+              setProcessStage('VERIFYING', true);
+              showStatus(`Starting visual review cycle ${feedbackRound + 1}/${MAX_FEEDBACK_ITERATIONS}...`, 'info');
 
               // Apply the CSS and get feedback
               const feedback = await analyzeCSSAndGetFeedback(
@@ -862,7 +921,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const changeSize = Math.abs(feedback.length - improvedCSS.length);
                 lastChangeSignificance = Math.min(1.0, changeSize / (improvedCSS.length * 0.3)); // Normalize to 0-1
 
-                showStatus(`Visual improvements identified! Applying changes... (Round ${feedbackRound}/${MAX_FEEDBACK_ITERATIONS})`, 'info');
+                setProcessStage('APPLYING', true);
+                showStatus(`Round ${feedbackRound}: Visual improvements identified! Applying changes...`, 'info');
 
                 // Update the editor with improved CSS
                 window.cssEditor.setValue(feedback);
@@ -870,8 +930,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Save as a new version with round number
                 saveCSSVersion(feedback, `AI-improved (Round ${feedbackRound}/${MAX_FEEDBACK_ITERATIONS}): ${prompt.substring(0, 30)}${prompt.length > 30 ? '...' : ''}`);
+                showStatus(`Saved improvement round ${feedbackRound} CSS version`, 'info');
 
                 // Apply the improved CSS
+                showStatus(`Applying round ${feedbackRound} improvements to page...`, 'info');
                 await new Promise((resolve) => {
                   chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
                     chrome.tabs.sendMessage(tabs[0].id, {
@@ -885,7 +947,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         return;
                       }
                       updateProgressIndicator(feedbackRound);
-                      showStatus(`✅ Improved styles applied! (Round ${feedbackRound}/${MAX_FEEDBACK_ITERATIONS})`, 'success');
+                      showStatus(`✅ Improved styles from round ${feedbackRound} applied!`, 'success');
                       resolve();
                     });
                   });
@@ -895,20 +957,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Early termination if changes are very minor (indicating we're close to perfect)
                 if (lastChangeSignificance < 0.05 && feedbackRound >= 2) {
-                  showStatus('✅ Achieved high-quality visual match! Further improvements would be minimal.', 'success');
+                  showStatus('✅ Achieved high-quality visual match! Further improvements would be minimal.', 'success', 0, true);
                   feedbackNeeded = false;
                 }
               } else {
                 // No improvements needed
                 updateProgressIndicator(feedbackRound);
-                showStatus('✅ AI review complete - visual match achieved!', 'success');
+                showStatus('✅ AI review complete - visual match achieved!', 'success', 0, true);
                 feedbackNeeded = false;
               }
             }
 
             // Final message after all iterations
             if (feedbackRound >= MAX_FEEDBACK_ITERATIONS) {
-              showStatus(`Completed ${MAX_FEEDBACK_ITERATIONS} rounds of visual refinement. Final result applied.`, 'success');
+              setProcessStage('IDLE', false);
+              showStatus(`Completed all ${MAX_FEEDBACK_ITERATIONS} rounds of visual refinement. Final result applied.`, 'success', 0, true);
             }
 
           } catch (error) {
@@ -951,6 +1014,8 @@ document.addEventListener('DOMContentLoaded', () => {
       } finally {
         // Re-enable UI elements
         setUIProcessingState(false);
+        // Reset process stage
+        setProcessStage('IDLE', false);
       }
     };
 

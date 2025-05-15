@@ -59,9 +59,18 @@ export function safeSendMessage(tabId, message, callback, timeout = 30000) {
           if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
             console.warn('Extension context was invalidated. Attempting recovery...');
 
-            // Show a user-friendly error and advice
-            if (typeof showStatus === 'function') {
-              showStatus('Connection to page was lost. Try refreshing the page.', 'error');
+            // Show a user-friendly error and advice using the status bar if possible
+            try {
+              // Attempt to dynamically import the status bar - this helps avoid circular dependencies
+              import('../components/status-bar.js')
+                .then(statusBarModule => {
+                  statusBarModule.showStatus('Connection to page was lost. Try refreshing the page.', statusBarModule.STATUS_TYPES.ERROR);
+                })
+                .catch(() => {
+                  console.warn('Could not show status message - status bar module not available');
+                });
+            } catch (e) {
+              console.warn('Could not show status message:', e);
             }
 
             // Attempt to recover basic functionality

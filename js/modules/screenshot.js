@@ -1,5 +1,5 @@
 import { safeSendMessage } from '../utils/messaging.js';
-import { showStatus } from './ui.js';
+import { showStatus, showLoading } from '../components/status-bar.js';
 
 /**
  * Capture a screenshot of the current page

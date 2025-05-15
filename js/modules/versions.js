@@ -2,8 +2,8 @@
  * CSS version management module
  */
 import { saveToStorage, getFromStorage } from '../utils/storage.js';
-import { safeSendMessage } from '../utils/messaging.js';
-import { showStatus } from './ui.js';
+import { safeSendMessage } from '../utils/chrome-utils.js';
+import { showStatus } from '../components/status-bar.js';
 
 // Store CSS versions
 let cssVersions = [];

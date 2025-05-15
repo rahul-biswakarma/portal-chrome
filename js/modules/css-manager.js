@@ -1,6 +1,6 @@
 // CSS generation and management
 import { safeSendMessage } from '../utils/chrome-utils.js';
-import { showStatus } from '../utils/ui-utils.js';
+import { showStatus, showLoading } from '../components/status-bar.js';
 import { simplifyTree } from './tree.js';
 
 /**

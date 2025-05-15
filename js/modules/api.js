@@ -1,4 +1,4 @@
-import { showStatus } from './ui.js';
+import { showStatus, showLoading } from '../components/status-bar.js';
 import { simplifyTree } from './tree.js';
 import { dataURLtoBlob, captureScreenshot, saveScreenshot, captureAndSaveScreenshot } from './screenshot.js';
 import { safeSendMessage } from '../utils/chrome-utils.js';
@@ -306,6 +306,9 @@ export async function analyzeCSSAndGetFeedback(apiKey, generatedCSS, prompt, scr
   try {
     const url = 'https://api.openai.com/v1/chat/completions';
 
+    // Update status with more detailed message
+    showStatus('Analyzing applied CSS to verify visual match...', 'info');
+
     // Prepare the messages for OpenAI
     const messages = [
       {
@@ -346,6 +349,7 @@ I REPEAT: Return ONLY "No" or the complete CSS code with no other text.`
 
     // Add screenshot if available
     if (screenshot && isValidImageData(screenshot)) {
+      showStatus('Analyzing screenshot of current styling...', 'info');
       messages[1].content.push({
         type: "image_url",
         image_url: {
@@ -356,6 +360,7 @@ I REPEAT: Return ONLY "No" or the complete CSS code with no other text.`
 
     // Add reference images if available
     if (window.referenceImages && window.referenceImages.length > 0) {
+      showStatus(`Comparing with ${window.referenceImages.length} reference image(s)...`, 'info');
       const referenceContent = {
         role: "user",
         content: [
@@ -378,6 +383,8 @@ I REPEAT: Return ONLY "No" or the complete CSS code with no other text.`
       messages.push(referenceContent);
     }
 
+    showStatus('Sending to AI for visual verification and feedback...', 'info');
+
     // Make the API request
     const response = await fetch(url, {
       method: 'POST',
@@ -396,6 +403,7 @@ I REPEAT: Return ONLY "No" or the complete CSS code with no other text.`
       throw new Error(`API error: ${errorData.error?.message || response.statusText}`);
     }
 
+    showStatus('Processing AI feedback on visual design...', 'info');
     const data = await response.json();
 
     if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
@@ -406,25 +414,25 @@ I REPEAT: Return ONLY "No" or the complete CSS code with no other text.`
         showStatus('AI review: No improvements needed! The CSS looks good.', 'success');
         return null; // No improvements needed
       } else if (feedbackText.includes('{') && feedbackText.includes('}')) {
-        showStatus('AI suggested CSS improvements! Applying updated styles...', 'info');
+        showStatus('AI identified visual improvements - preparing enhanced CSS...', 'info');
 
         // Extract CSS if it's wrapped in code blocks
         const cssMatch = feedbackText.match(/```css\n([\s\S]*?)\n```/) ||
                          feedbackText.match(/```\n([\s\S]*?)\n```/);
 
         if (cssMatch && cssMatch[1]) {
-          showStatus('Applied AI-suggested CSS improvements', 'success');
+          showStatus('Processing AI-suggested style improvements...', 'success');
           return cssMatch[1]; // Return the extracted CSS
         }
 
         // Otherwise, return the full text assuming it's all CSS
-        showStatus('Applied AI-suggested CSS improvements', 'success');
+        showStatus('Processing AI-suggested style improvements...', 'success');
         return feedbackText;
       } else if (feedbackText.toLowerCase().includes("unchanged") ||
                 feedbackText.toLowerCase().includes("no changes") ||
                 feedbackText.toLowerCase().startsWith("no")) {
         // Handle variant "no change needed" responses
-        showStatus('AI review: No improvements needed! The CSS looks good.', 'success');
+        showStatus('AI review: Current CSS perfectly matches design goals!', 'success');
         return null;
       } else {
         // If we got here, the response format was unexpected
@@ -465,6 +473,7 @@ export async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailw
 
   // Try to capture the screenshot using the content script
   try {
+    showStatus('Capturing current page for reference...', 'info');
     const tabResponse = await new Promise((resolve, reject) => {
       chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
         if (!tabs || !tabs[0]) {
@@ -492,7 +501,7 @@ export async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailw
 
     if (tabResponse && tabResponse.success && tabResponse.data) {
       screenshot = tabResponse.data;
-      showStatus('Screenshot captured successfully!', 'success');
+      showStatus('Screenshot captured for AI analysis!', 'success');
     }
   } catch (error) {
     console.warn('Could not capture screenshot:', error);
@@ -500,7 +509,7 @@ export async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailw
   }
 
   // Show a status before generating CSS
-  showStatus('Generating CSS based on your request...', 'info');
+  showStatus('Preparing AI for CSS generation...', 'info');
 
   // Simplify the tailwind data to only show essential information
   const simplifiedTailwindData = {};
@@ -511,6 +520,8 @@ export async function generateCSSDirectly(apiKey, prompt, portalClassTree, tailw
       }
     });
   }
+
+  showStatus('Analyzing portal class hierarchy...', 'info');
 
   // Prepare the messages for OpenAI
   const messages = [
