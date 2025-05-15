@@ -1,7 +1,5 @@
-import { useState, useEffect } from 'react';
-
-import { getFromStorage } from './utils/storage';
 import './globals.css';
+
 import { ViewTabs } from './components/view-tabs';
 import { StatusBar } from './components/status-bar';
 import { CustomizeView } from './components/views/customize-view';

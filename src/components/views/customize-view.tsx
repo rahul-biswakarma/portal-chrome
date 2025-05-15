@@ -14,14 +14,6 @@ import {
 } from '@/components/ui/popover';
 import { X, ImageIcon, ArrowUp } from 'lucide-react';
 
-// Helper to truncate string
-const truncateString = (str: string, num: number) => {
-  if (str.length <= num) {
-    return str;
-  }
-  return str.slice(0, num) + '...';
-};
-
 export const CustomizeView = () => {
   const {
     selectedImage,
@@ -130,8 +122,8 @@ export const CustomizeView = () => {
                     size="sm"
                     className="flex items-center gap-1.5 h-8 px-3"
                   >
-                    <span>Generate</span>
-                    <ArrowUp size={16} />
+                    <span className="text-xs">Generate</span>
+                    <ArrowUp size={14} />
                   </Button>
                 </div>
               </div>
