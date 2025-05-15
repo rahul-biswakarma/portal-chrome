@@ -2,7 +2,7 @@ import './globals.css';
 
 import { ViewTabs } from './components/view-tabs';
 import { StatusBar } from './components/status-bar';
-import { CustomizeView } from './components/views/customize-view';
+import { CustomizeView } from './components/views/customize-view/customize-view';
 import type { ViewTabsSchema } from './types';
 import { AppProvider } from './contexts/app-context';
 
@@ -32,7 +32,7 @@ function App() {
   return (
     <AppProvider>
       <div className="grid grid-rows-[1fr_auto] h-screen bg-background text-foreground overflow-hidden">
-        <div className="h-full">
+        <div className="h-full overflow-hidden">
           <ViewTabs config={views} />
         </div>
         <StatusBar />

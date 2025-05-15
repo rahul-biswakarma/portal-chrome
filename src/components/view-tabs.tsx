@@ -3,7 +3,7 @@ import { Separator } from './ui/separator';
 
 export const ViewTabs = ({ config }: { config: ViewTabsSchema[] }) => {
   return (
-    <div>
+    <div className="h-full flex-1">
       <div className="flex flex-wrap gap-2 justify-center items-center p-2">
         {config.map((tab) => (
           <div
@@ -17,7 +17,9 @@ export const ViewTabs = ({ config }: { config: ViewTabsSchema[] }) => {
       <Separator />
       <div className="p-2 h-full">
         {config.map((tab) => (
-          <div key={tab.id}>{tab.content}</div>
+          <div className="h-full" key={tab.id}>
+            {tab.content}
+          </div>
         ))}
       </div>
     </div>
