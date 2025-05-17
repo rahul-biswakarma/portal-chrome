@@ -1,51 +1,90 @@
-import type { ChromeMessage } from '../types'
+/**
+ * Utility functions for Chrome extension API operations
+ */
 
 /**
- * Send a message to a specific tab with safety checks
+ * Get the currently active tab
+ * @returns Promise resolving to the active tab
+ */
+export function getActiveTab(): Promise<chrome.tabs.Tab> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (chrome.runtime.lastError) {
+        return reject(
+          new Error(
+            `Error getting active tab: ${chrome.runtime.lastError.message}`,
+          ),
+        );
+      }
+
+      if (!tabs || tabs.length === 0) {
+        return reject(new Error('No active tab found'));
+      }
+
+      resolve(tabs[0]);
+    });
+  });
+}
+
+/**
+ * Safely send a message to a tab with error handling
  * @param tabId The ID of the tab to send the message to
  * @param message The message to send
- * @returns Promise that resolves with the response
+ * @returns Promise resolving to the response
  */
-export const safeSendMessage = (
+export function safeSendMessage<T = any>(
   tabId: number,
-  message: ChromeMessage,
-): Promise<any> => {
+  message: any,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     try {
       chrome.tabs.sendMessage(tabId, message, (response) => {
         if (chrome.runtime.lastError) {
-          // Handle potential error gracefully
-          console.error('Chrome message error:', chrome.runtime.lastError)
-          reject(new Error(chrome.runtime.lastError.message))
-          return
+          return reject(
+            new Error(
+              `Error sending message: ${chrome.runtime.lastError.message}`,
+            ),
+          );
         }
-        resolve(response)
-      })
+        resolve(response as T);
+      });
     } catch (error) {
-      console.error('Error sending message:', error)
-      reject(error)
+      reject(error);
     }
-  })
+  });
 }
 
 /**
- * Get the active tab
- * @returns Promise that resolves with the active tab
+ * Execute a script in a specific tab
+ * @param tabId The ID of the tab to execute the script in
+ * @param func The function to execute
+ * @returns Promise resolving to the result of the script execution
  */
-export const getActiveTab = async (): Promise<chrome.tabs.Tab> => {
+export function executeScript<T = any>(
+  tabId: number,
+  func: () => T,
+): Promise<T> {
   return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message))
-        return
-      }
+    chrome.scripting.executeScript(
+      {
+        target: { tabId },
+        func,
+      },
+      (results) => {
+        if (chrome.runtime.lastError) {
+          return reject(
+            new Error(
+              `Error executing script: ${chrome.runtime.lastError.message}`,
+            ),
+          );
+        }
 
-      if (!tabs || tabs.length === 0) {
-        reject(new Error('No active tab found'))
-        return
-      }
+        if (!results || results.length === 0) {
+          return reject(new Error('Script execution failed'));
+        }
 
-      resolve(tabs[0])
-    })
-  })
+        resolve(results[0].result as T);
+      },
+    );
+  });
 }

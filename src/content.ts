@@ -1,10 +1,47 @@
-import type { TreeNode } from './types'
+import type { TreeNode } from './types';
+import { hasPortalClasses } from './utils/dom/dom-utils';
 
-console.log('Portal Design Customizer content script loaded')
+console.log('Portal Design Customizer content script loaded');
+
+// Types for element styling
+interface ElementStyles {
+  outline: string;
+  outlineOffset: string;
+  zIndex: string;
+  position: string;
+}
+
+interface HTMLElementWithStyles extends HTMLElement {
+  _originalStyles?: ElementStyles;
+}
 
 // Current status
-let activeHighlights: HTMLElement[] = []
-const styleId = 'portal-design-customizer-css'
+let activeHighlights: HTMLElementWithStyles[] = [];
+const styleId = 'portal-design-customizer-css';
+
+// Check compatibility when content script loads
+checkPageCompatibility();
+
+/**
+ * Check if the current page is compatible with the extension
+ */
+function checkPageCompatibility() {
+  // Check if the page has portal-* classes
+  const compatible = hasPortalClasses();
+
+  // Notify the background script of compatibility status
+  chrome.runtime
+    .sendMessage({
+      action: 'checkCompatibility',
+      data: { compatible },
+    })
+    .catch((error) => {
+      console.error('Error sending compatibility status:', error);
+    });
+
+  // If not compatible, we'll let the background script handle it
+  // This keeps the notification logic in one place
+}
 
 /**
  * Get all elements with portal-* classes
@@ -16,15 +53,15 @@ function getPortalTreeData(): TreeNode {
     element: 'body',
     portalClasses: [],
     children: [],
-  }
+  };
 
   // Get all elements with classes starting with "portal-"
-  const portalElements = document.querySelectorAll('[class*="portal-"]')
+  const portalElements = document.querySelectorAll('[class*="portal-"]');
 
   // Build a tree of portal-class elements
-  buildTreeFromElements(rootNode, portalElements)
+  buildTreeFromElements(rootNode, portalElements);
 
-  return rootNode
+  return rootNode;
 }
 
 /**
@@ -37,54 +74,54 @@ function buildTreeFromElements(
   elements: NodeListOf<Element>,
 ): void {
   // Convert NodeList to array for easier manipulation
-  const elementsArray = Array.from(elements)
+  const elementsArray = Array.from(elements);
 
   // Find direct children of the root node
   const childElements = elementsArray.filter((el) => {
-    if (!el.parentElement) return false
+    if (!el.parentElement) return false;
 
     // If the element's parent is the body, it's a direct child of root
     if (root.element === 'body' && el.parentElement === document.body) {
-      return true
+      return true;
     }
 
     // For other nodes, check if parent has the same class as root node
     if (root.portalClasses.length > 0) {
-      const parentClasses = Array.from(el.parentElement.classList)
-      return root.portalClasses.some((cls) => parentClasses.includes(cls))
+      const parentClasses = Array.from(el.parentElement.classList);
+      return root.portalClasses.some((cls) => parentClasses.includes(cls));
     }
 
-    return false
-  })
+    return false;
+  });
 
   // Create nodes for direct children
   childElements.forEach((el) => {
     // Extract portal-* classes
-    const allClasses = Array.from(el.classList)
-    const portalClasses = allClasses.filter((cls) => cls.startsWith('portal-'))
+    const allClasses = Array.from(el.classList);
+    const portalClasses = allClasses.filter((cls) => cls.startsWith('portal-'));
 
     // Create child node
     const childNode: TreeNode = {
       element: el.tagName.toLowerCase(),
       portalClasses,
       children: [],
-    }
+    };
 
     // Add to root's children
-    root.children.push(childNode)
+    root.children.push(childNode);
 
     // Remove this element from the array to avoid duplicate processing
-    const index = elementsArray.indexOf(el)
+    const index = elementsArray.indexOf(el);
     if (index > -1) {
-      elementsArray.splice(index, 1)
+      elementsArray.splice(index, 1);
     }
 
     // Recursively build tree for this child
     buildTreeFromElements(
       childNode,
       elementsArray as unknown as NodeListOf<Element>,
-    )
-  })
+    );
+  });
 }
 
 /**
@@ -92,34 +129,34 @@ function buildTreeFromElements(
  * @returns Object with class mappings
  */
 function getTailwindClasses() {
-  const result: Record<string, string[]> = {}
+  const result: Record<string, string[]> = {};
 
   // Get all elements with classes starting with "portal-"
-  const portalElements = document.querySelectorAll('[class*="portal-"]')
+  const portalElements = document.querySelectorAll('[class*="portal-"]');
 
   portalElements.forEach((el) => {
-    const classList = Array.from(el.classList)
-    const portalClasses = classList.filter((cls) => cls.startsWith('portal-'))
+    const classList = Array.from(el.classList);
+    const portalClasses = classList.filter((cls) => cls.startsWith('portal-'));
     const tailwindClasses = classList.filter(
       (cls) => !cls.startsWith('portal-'),
-    )
+    );
 
     // Add each portal class with its associated tailwind classes
     portalClasses.forEach((portalClass) => {
       if (!result[portalClass]) {
-        result[portalClass] = []
+        result[portalClass] = [];
       }
 
       // Add any non-duplicate tailwind classes
       tailwindClasses.forEach((twClass) => {
         if (!result[portalClass].includes(twClass)) {
-          result[portalClass].push(twClass)
+          result[portalClass].push(twClass);
         }
-      })
-    })
-  })
+      });
+    });
+  });
 
-  return result
+  return result;
 }
 
 /**
@@ -127,8 +164,8 @@ function getTailwindClasses() {
  * @returns Current CSS string
  */
 function getCurrentCSS(): string {
-  const styleElement = document.getElementById(styleId)
-  return styleElement ? styleElement.textContent || '' : ''
+  const styleElement = document.getElementById(styleId);
+  return styleElement ? styleElement.textContent || '' : '';
 }
 
 /**
@@ -139,21 +176,21 @@ function getCurrentCSS(): string {
 function applyCSS(css: string): boolean {
   try {
     // Remove existing style element if it exists
-    const existingStyle = document.getElementById(styleId)
+    const existingStyle = document.getElementById(styleId);
     if (existingStyle) {
-      existingStyle.remove()
+      existingStyle.remove();
     }
 
     // Create new style element
-    const styleElement = document.createElement('style')
-    styleElement.id = styleId
-    styleElement.textContent = css
-    document.head.appendChild(styleElement)
+    const styleElement = document.createElement('style');
+    styleElement.id = styleId;
+    styleElement.textContent = css;
+    document.head.appendChild(styleElement);
 
-    return true
+    return true;
   } catch (error) {
-    console.error('Error applying CSS:', error)
-    return false
+    console.error('Error applying CSS:', error);
+    return false;
   }
 }
 
@@ -163,37 +200,37 @@ function applyCSS(css: string): boolean {
  */
 function highlightElements(classes: string[]): void {
   // Remove existing highlights first
-  removeHighlight()
+  removeHighlight();
 
   // Find all elements with the specified classes
   classes.forEach((className) => {
-    const elements = document.querySelectorAll('.' + className)
+    const elements = document.querySelectorAll('.' + className);
 
     elements.forEach((el) => {
-      const element = el as HTMLElement
+      const element = el as HTMLElementWithStyles;
 
       // Store original styles
-      const originalOutline = element.style.outline
-      const originalOutlineOffset = element.style.outlineOffset
-      const originalZIndex = element.style.zIndex
-      const originalPosition = element.style.position
+      const originalOutline = element.style.outline;
+      const originalOutlineOffset = element.style.outlineOffset;
+      const originalZIndex = element.style.zIndex;
+      const originalPosition = element.style.position;
 
       // Apply highlight styles
-      element.style.outline = '2px solid rgba(66, 133, 244, 0.8)'
-      element.style.outlineOffset = '2px'
-      element.style.position = 'relative'
-      element.style.zIndex = '9999'
+      element.style.outline = '2px solid rgba(66, 133, 244, 0.8)';
+      element.style.outlineOffset = '2px';
+      element.style.position = 'relative';
+      element.style.zIndex = '9999';
 
       // Store element and its original styles for later restoration
-      activeHighlights.push(element)
-      ;(element as any)._originalStyles = {
+      activeHighlights.push(element);
+      element._originalStyles = {
         outline: originalOutline,
         outlineOffset: originalOutlineOffset,
         zIndex: originalZIndex,
         position: originalPosition,
-      }
-    })
-  })
+      };
+    });
+  });
 }
 
 /**
@@ -202,81 +239,81 @@ function highlightElements(classes: string[]): void {
 function removeHighlight(): void {
   // Restore original styles
   activeHighlights.forEach((element) => {
-    const originalStyles = (element as any)._originalStyles
+    const originalStyles = element._originalStyles;
     if (originalStyles) {
-      element.style.outline = originalStyles.outline
-      element.style.outlineOffset = originalStyles.outlineOffset
-      element.style.zIndex = originalStyles.zIndex
-      element.style.position = originalStyles.position
+      element.style.outline = originalStyles.outline;
+      element.style.outlineOffset = originalStyles.outlineOffset;
+      element.style.zIndex = originalStyles.zIndex;
+      element.style.position = originalStyles.position;
     }
-  })
+  });
 
   // Clear active highlights array
-  activeHighlights = []
+  activeHighlights = [];
 }
 
 // Listen for messages from the extension
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  console.log('Content script received message:', request.action)
+  console.log('Content script received message:', request.action);
 
   try {
     // Handle getting portal class tree
     if (request.action === 'getPortalClassTree') {
-      const treeData = getPortalTreeData()
-      sendResponse({ success: true, data: treeData })
-      return true
+      const treeData = getPortalTreeData();
+      sendResponse({ success: true, data: treeData });
+      return true;
     }
 
     // Handle getting tailwind classes
     if (request.action === 'getTailwindClasses') {
-      const tailwindData = getTailwindClasses()
-      sendResponse({ success: true, data: tailwindData })
-      return true
+      const tailwindData = getTailwindClasses();
+      sendResponse({ success: true, data: tailwindData });
+      return true;
     }
 
     // Handle getting current CSS
     if (request.action === 'getCurrentCSS') {
-      const css = getCurrentCSS()
-      sendResponse({ success: true, data: css })
-      return true
+      const css = getCurrentCSS();
+      sendResponse({ success: true, data: css });
+      return true;
     }
 
     // Handle applying CSS
     if (request.action === 'applyCSS') {
-      const success = applyCSS(request.data.css)
-      sendResponse({ success })
-      return true
+      const success = applyCSS(request.data.css);
+      sendResponse({ success });
+      return true;
     }
 
     // Handle highlighting elements
     if (request.action === 'highlightElements') {
-      highlightElements(request.data.classes)
-      sendResponse({ success: true })
-      return true
+      highlightElements(request.data.classes);
+      sendResponse({ success: true });
+      return true;
     }
 
     // Handle removing highlight
     if (request.action === 'removeHighlight') {
-      removeHighlight()
-      sendResponse({ success: true })
-      return true
+      removeHighlight();
+      sendResponse({ success: true });
+      return true;
     }
 
     // Handle ping
     if (request.action === 'ping') {
-      sendResponse({ success: true, message: 'content script connected' })
-      return true
+      sendResponse({ success: true, message: 'content script connected' });
+      return true;
     }
 
     // Handle unknown action
-    sendResponse({ success: false, error: 'Unknown action' })
-    return true
+    sendResponse({ success: false, error: 'Unknown action' });
+    return true;
   } catch (error) {
-    console.error('Error handling message:', error)
+    console.error('Error handling message:', error);
     sendResponse({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-    })
-    return true
+    });
+    return true;
   }
-})
+});

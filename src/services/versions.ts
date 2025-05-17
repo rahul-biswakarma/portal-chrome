@@ -1,8 +1,8 @@
-import type { CSSVersion } from '../types'
-import { getFromStorage, saveToStorage } from '../utils/storage'
-import { getActiveTab, safeSendMessage } from '../utils/chrome-utils'
+import { getFromStorage, saveToStorage } from '@/utils/storage';
+import type { CSSVersion } from '../types';
+import { getActiveTab, safeSendMessage } from '@/utils/chrome-utils';
 
-const VERSIONS_STORAGE_KEY = 'css_versions'
+const VERSIONS_STORAGE_KEY = 'css_versions';
 
 /**
  * Get all saved CSS versions
@@ -10,12 +10,12 @@ const VERSIONS_STORAGE_KEY = 'css_versions'
  */
 export const getAllVersions = async (): Promise<CSSVersion[]> => {
   try {
-    return await getFromStorage<CSSVersion[]>(VERSIONS_STORAGE_KEY, [])
+    return await getFromStorage<CSSVersion[]>(VERSIONS_STORAGE_KEY, []);
   } catch (error) {
-    console.error('Error getting CSS versions:', error)
-    return []
+    console.error('Error getting CSS versions:', error);
+    return [];
   }
-}
+};
 
 /**
  * Save a new CSS version
@@ -30,7 +30,7 @@ export const saveCSSVersion = async (
   prompt?: string,
 ): Promise<CSSVersion> => {
   try {
-    const versions = await getAllVersions()
+    const versions = await getAllVersions();
 
     const newVersion: CSSVersion = {
       id: generateVersionId(),
@@ -38,17 +38,17 @@ export const saveCSSVersion = async (
       description,
       css,
       prompt,
-    }
+    };
 
-    const updatedVersions = [newVersion, ...versions]
-    await saveToStorage(VERSIONS_STORAGE_KEY, updatedVersions)
+    const updatedVersions = [newVersion, ...versions];
+    await saveToStorage(VERSIONS_STORAGE_KEY, updatedVersions);
 
-    return newVersion
+    return newVersion;
   } catch (error) {
-    console.error('Error saving CSS version:', error)
-    throw error
+    console.error('Error saving CSS version:', error);
+    throw error;
   }
-}
+};
 
 /**
  * Delete a CSS version
@@ -57,19 +57,19 @@ export const saveCSSVersion = async (
  */
 export const deleteCSSVersion = async (versionId: string): Promise<void> => {
   try {
-    const versions = await getAllVersions()
-    const filteredVersions = versions.filter((v) => v.id !== versionId)
+    const versions = await getAllVersions();
+    const filteredVersions = versions.filter((v) => v.id !== versionId);
 
     if (versions.length === filteredVersions.length) {
-      throw new Error(`Version with ID ${versionId} not found`)
+      throw new Error(`Version with ID ${versionId} not found`);
     }
 
-    await saveToStorage(VERSIONS_STORAGE_KEY, filteredVersions)
+    await saveToStorage(VERSIONS_STORAGE_KEY, filteredVersions);
   } catch (error) {
-    console.error('Error deleting CSS version:', error)
-    throw error
+    console.error('Error deleting CSS version:', error);
+    throw error;
   }
-}
+};
 
 /**
  * Apply a CSS version to the current tab
@@ -78,29 +78,29 @@ export const deleteCSSVersion = async (versionId: string): Promise<void> => {
  */
 export const applyVersion = async (versionId: string): Promise<void> => {
   try {
-    const versions = await getAllVersions()
-    const version = versions.find((v) => v.id === versionId)
+    const versions = await getAllVersions();
+    const version = versions.find((v) => v.id === versionId);
 
     if (!version) {
-      throw new Error(`Version with ID ${versionId} not found`)
+      throw new Error(`Version with ID ${versionId} not found`);
     }
 
-    const tab = await getActiveTab()
+    const tab = await getActiveTab();
 
     await safeSendMessage(tab.id!, {
       action: 'applyCSS',
       data: { css: version.css },
-    })
+    });
   } catch (error) {
-    console.error('Error applying CSS version:', error)
-    throw error
+    console.error('Error applying CSS version:', error);
+    throw error;
   }
-}
+};
 
 /**
  * Generate a unique version ID
  * @returns A unique version ID
  */
 const generateVersionId = (): string => {
-  return 'v_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
-}
+  return 'v_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+};
