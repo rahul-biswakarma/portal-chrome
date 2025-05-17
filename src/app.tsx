@@ -33,7 +33,7 @@ function App() {
 
   return (
     <AppProvider>
-      <div className="grid grid-rows-[1fr_auto] h-screen bg-background text-foreground overflow-hidden">
+      <div className="grid gap-1.5 grid-rows-[1fr_auto] h-screen bg-background text-foreground overflow-hidden">
         <div className="h-full overflow-hidden">
           <ViewTabs
             config={views}
