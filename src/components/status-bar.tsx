@@ -57,7 +57,9 @@ export const StatusBar = () => {
             ) : (
               <>
                 <Clock size={16} className="text-muted-foreground" />
-                <span className="text-muted-foreground">Ready</span>
+                <span className="text-muted-foreground text-xs truncate max-w-full">
+                  Ready
+                </span>
               </>
             )}
           </div>

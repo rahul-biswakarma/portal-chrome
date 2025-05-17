@@ -236,6 +236,14 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 async function captureVisibleTab(): Promise<string> {
   return new Promise((resolve, reject) => {
     try {
+      // Check if the tabs API and captureVisibleTab are available
+      if (!chrome.tabs || !chrome.tabs.captureVisibleTab) {
+        reject(
+          new Error('Screenshot API not available in this browser context'),
+        );
+        return;
+      }
+
       chrome.tabs.captureVisibleTab(
         { format: 'png', quality: 100 },
         (dataUrl) => {

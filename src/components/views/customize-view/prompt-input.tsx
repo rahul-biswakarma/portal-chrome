@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppContext } from '@/contexts';
 import { getActiveTab } from '@/utils/chrome-utils';
 import { processReferenceImage } from '@/utils/image-to-css';
-import { getPageStructure } from '@/utils/dom-utils';
+import { getPageStructure, extractTailwindClasses } from '@/utils/dom-utils';
+import type { TreeNode, TailwindClassData } from '@/types';
+import { useLogger, LogMessages } from '@/services/logger';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -29,16 +31,26 @@ export const PromptInput = () => {
   const [prompt, setPrompt] = useState('');
   const [status, setStatus] = useState('');
   const [iterations, setIterations] = useState(0);
+  const { addLog } = useLogger();
+
+  // Effect to auto-generate prompt when reference image is uploaded
+  useEffect(() => {
+    if (imageFile && generationStage === 'idle') {
+      // Could add auto-prompt generation here if needed
+    }
+  }, [imageFile, generationStage]);
 
   const handleGenerate = async () => {
     if (!imageFile) {
       setStatus('Please upload a reference image first');
+      addLog('Please upload a reference image first', 'warning');
       return;
     }
 
     try {
       setGenerationStage('generating');
       setStatus('Processing reference image...');
+      addLog(LogMessages.SCREENSHOT_TAKING || 'Taking screenshot...', 'info');
       setIterations(0);
 
       // Get active tab
@@ -49,26 +61,61 @@ export const PromptInput = () => {
 
       // Extract the page structure
       setStatus('Analyzing page structure...');
-      const classHierarchy = await getPageStructure(tab.id);
+      addLog('Analyzing page structure...', 'info');
+      const pageStructureStr = await getPageStructure(tab.id);
+
+      // Create a proper classHierarchy object from the structure data
+      // Instead of trying to parse as JSON, create the structure directly
+      const classHierarchy: TreeNode = {
+        element: 'body',
+        portalClasses: [],
+        children: [],
+      };
+
+      // Extract any relevant portal classes from the page structure
+      // This approach doesn't rely on JSON parsing which was failing
+      const portalClassMatches =
+        pageStructureStr.match(/portal-[a-zA-Z0-9-_]+/g) || [];
+      if (portalClassMatches.length > 0) {
+        classHierarchy.portalClasses = [...new Set(portalClassMatches)];
+      }
+
+      // Get Tailwind classes data
+      const rawTailwindData = (await extractTailwindClasses(tab.id)) || {};
+
+      // Convert to proper TailwindClassData format
+      const tailwindData: TailwindClassData = {};
+      Object.entries(rawTailwindData).forEach(([selector, classes]) => {
+        if (Array.isArray(classes)) {
+          tailwindData[selector] = classes;
+        }
+      });
 
       // Set up a listener to track iterations
       const messageListener = (message: {
         action: string;
         iteration: number;
       }) => {
-        if (message.action === 'iteration-update') {
+        if (
+          message.action === 'css-iteration-update' ||
+          message.action === 'iteration-update'
+        ) {
           setIterations(message.iteration);
-          setStatus(`Iteration ${message.iteration}/5: Refining CSS...`);
+          const iterationMsg = `Iteration ${message.iteration}/5: Refining CSS...`;
+          setStatus(iterationMsg);
+          addLog(iterationMsg, 'info');
         }
       };
       chrome.runtime.onMessage.addListener(messageListener);
 
-      // Process the reference image
+      // Process the reference image - start the full workflow
       setStatus('Generating initial CSS...');
+      addLog(LogMessages.API_GENERATING_CSS || 'Generating CSS...', 'info');
       const result = await processReferenceImage(
         imageFile,
         tab.id,
         classHierarchy,
+        tailwindData,
       );
 
       // Remove listener
@@ -78,16 +125,22 @@ export const PromptInput = () => {
 
       if (result.success) {
         setGenerationStage('success');
+        addLog('CSS generated and applied successfully', 'success');
         // Fetch the current CSS to display in the editor
         const appliedCss = await getCurrentCSS(tab.id);
         setCssContent(appliedCss);
       } else {
         setGenerationStage('error');
+        addLog(`Failed to generate CSS: ${result.message}`, 'error');
       }
     } catch (error) {
       console.error('Error generating CSS:', error);
       setStatus('Error generating CSS');
       setGenerationStage('error');
+      addLog(
+        `Error generating CSS: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'error',
+      );
     }
   };
 
@@ -159,7 +212,12 @@ export const PromptInput = () => {
                 className="w-auto border-border border shadow-xl p-1 flex flex-col gap-2"
                 side="bottom"
                 align="start"
+                aria-label="Reference image preview"
+                aria-describedby="image-preview-description"
               >
+                <div id="image-preview-description" className="sr-only">
+                  Reference image preview showing your uploaded design
+                </div>
                 <img
                   src={selectedImage}
                   alt="Reference Preview"
