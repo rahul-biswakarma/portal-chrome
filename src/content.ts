@@ -380,56 +380,81 @@ function buildTreeFromElements(
  * @returns Object with class mappings
  */
 function getTailwindClasses() {
+  console.log('DEBUG: Starting getTailwindClasses()');
   const result: Record<string, string[]> = {};
 
-  // First try standard selector
-  let portalElements = document.querySelectorAll('[class*="portal-"]');
+  // Get all elements with classes
+  const allElements = document.querySelectorAll('[class]');
+  console.log('DEBUG: Found', allElements.length, 'elements with classes');
 
-  // If no elements found, try a more thorough approach
-  if (portalElements.length === 0) {
-    const allElementsWithClass = document.querySelectorAll('[class]');
-    const elementsWithPortalClass: Element[] = [];
-
-    for (const element of allElementsWithClass) {
-      const classList = element.classList;
-      for (const className of classList) {
-        if (className.startsWith('portal-')) {
-          elementsWithPortalClass.push(element);
-          break; // Found a portal class on this element, move to next element
-        }
-      }
-    }
-
-    if (elementsWithPortalClass.length > 0) {
-      portalElements =
-        elementsWithPortalClass as unknown as NodeListOf<Element>;
-    }
-  }
-
-  // Process all portal elements to extract classes
-  portalElements.forEach((el) => {
+  // Process each element to find portal classes and associated non-portal classes
+  allElements.forEach((el) => {
     const classList = Array.from(el.classList);
+
+    // For very verbose debugging, uncomment this
+    // console.log(
+    //   `DEBUG: Element ${index} (${el.tagName.toLowerCase()}) has classes:`,
+    //   classList,
+    // );
+
     const portalClasses = classList.filter((cls) => cls.startsWith('portal-'));
-    const tailwindClasses = classList.filter(
+    const nonPortalClasses = classList.filter(
       (cls) => !cls.startsWith('portal-'),
     );
 
-    // Add each portal class with its associated tailwind classes
+    // Skip if no portal classes found on this element
+    if (portalClasses.length === 0) {
+      return;
+    }
+
+    // Add each portal class with its associated non-portal classes
     portalClasses.forEach((portalClass) => {
       if (!result[portalClass]) {
         result[portalClass] = [];
+        console.log(`DEBUG: Created entry for portal class: ${portalClass}`);
       }
 
-      // Add any non-duplicate tailwind classes
-      tailwindClasses.forEach((twClass) => {
-        if (!result[portalClass].includes(twClass)) {
-          result[portalClass].push(twClass);
+      // Add all non-portal classes to the result
+      nonPortalClasses.forEach((cls) => {
+        if (!result[portalClass].includes(cls)) {
+          result[portalClass].push(cls);
+          console.log(
+            `DEBUG: Added class "${cls}" to portal class "${portalClass}"`,
+          );
         }
       });
     });
   });
 
-  return result;
+  console.log('DEBUG: Final tailwind classes result:', result);
+  console.log(
+    'DEBUG: Final tailwind classes count:',
+    Object.keys(result).length,
+  );
+
+  // Add a test value if everything is empty
+  if (Object.keys(result).length > 0) {
+    let hasAnyClasses = false;
+    Object.values(result).forEach((classes) => {
+      if (classes.length > 0) hasAnyClasses = true;
+    });
+
+    if (!hasAnyClasses) {
+      console.log(
+        'DEBUG: No Tailwind classes found for any portal classes, adding test data',
+      );
+      // Add test data to diagnose rendering issue
+      Object.keys(result).forEach((portalClass) => {
+        result[portalClass] = ['test-class-1', 'test-class-2'];
+      });
+    }
+  }
+
+  // Ensure response is properly structured for JSON serialization
+  const serializedResult = JSON.parse(JSON.stringify(result));
+  console.log('DEBUG: Serialized tailwind classes result:', serializedResult);
+
+  return serializedResult;
 }
 
 /**
@@ -528,6 +553,8 @@ function removeHighlight(): void {
 // Listen for messages from the extension
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   try {
+    console.log('DEBUG: Received message with action:', request.action);
+
     // Handle getting portal class tree
     if (request.action === 'getPortalClassTree') {
       const treeData = getPortalTreeData();
@@ -537,7 +564,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
     // Handle getting tailwind classes
     if (request.action === 'getTailwindClasses') {
+      console.log('DEBUG: Processing getTailwindClasses request');
       const tailwindData = getTailwindClasses();
+      console.log('DEBUG: Tailwind data to be sent in response:', tailwindData);
       sendResponse({ success: true, data: tailwindData });
       return true;
     }

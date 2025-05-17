@@ -5,6 +5,7 @@ export interface ArboristNode {
   isElement: boolean;
   tagName?: string; // HTML tag name if isElement is true
   portalClasses?: string[];
+  tailwindClasses?: Record<string, string[]>; // Map of portal classes to their associated Tailwind classes
   children?: ArboristNode[];
 }
 

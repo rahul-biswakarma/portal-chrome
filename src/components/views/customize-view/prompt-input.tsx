@@ -215,15 +215,19 @@ export const PromptInput = () => {
 
       // Get Tailwind classes data
       setProgress(30);
+      addLog('Extracting Tailwind classes...', 'info');
       const rawTailwindData = (await extractTailwindClasses(tab.id)) || {};
 
-      // Convert to proper TailwindClassData format
+      // Convert to proper TailwindClassData format and log for debugging
       const tailwindData: TailwindClassData = {};
       Object.entries(rawTailwindData).forEach(([selector, classes]) => {
         if (Array.isArray(classes)) {
           tailwindData[selector] = classes;
         }
       });
+
+      console.log('DEBUG: Class hierarchy structure:', classHierarchy);
+      console.log('DEBUG: Tailwind data structure:', tailwindData);
 
       // Get OpenAI API key
       const apiKey = await getOpenAIApiKey();
@@ -241,6 +245,9 @@ export const PromptInput = () => {
       // Initial CSS Generation
       setProgress(40);
       addLog(`Generating initial CSS...`, 'info');
+
+      // Debug tailwind data before passing to AI
+      console.log('DEBUG: Tailwind data being passed to OpenAI:', tailwindData);
 
       // Generate initial CSS with AI
       const initialCss = await generateCSSWithAI(

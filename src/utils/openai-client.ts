@@ -207,18 +207,39 @@ export const generateCSSWithAI = async (
   const url = 'https://api.openai.com/v1/chat/completions';
   const { model, temperature, maxTokensCss } = await getApiParameters();
 
-  // Simplify the tailwind data to only show essential information
+  // Debug log to check incoming tailwind data
+  console.log('DEBUG: Incoming tailwind data:', tailwindData);
+
+  // Process the tailwind data without additional filtering
   const simplifiedTailwindData: Record<string, string[]> = {};
   if (tailwindData) {
     Object.keys(tailwindData).forEach((selector) => {
-      if (/^portal-.*$/.test(selector)) {
-        simplifiedTailwindData[selector] = tailwindData[selector];
-      }
+      // Don't filter out any selector - the filtering was done in the content script
+      console.log(
+        `DEBUG: Processing classes for ${selector}:`,
+        tailwindData[selector],
+      );
+      simplifiedTailwindData[selector] = Array.isArray(tailwindData[selector])
+        ? tailwindData[selector]
+        : [];
     });
   }
 
-  // Create a simplified version of the tree for the prompt
-  const simplifiedTree = JSON.stringify(portalClassTree, null, 2);
+  console.log('DEBUG: Simplified tailwind data:', simplifiedTailwindData);
+
+  // Create a hierarchical representation of the Tailwind classes
+  const enhancedTree = createEnhancedClassTree(
+    portalClassTree,
+    simplifiedTailwindData,
+  );
+
+  console.log(
+    'DEBUG: Enhanced tree for prompt:',
+    JSON.stringify(enhancedTree, null, 2),
+  );
+
+  // Create a more readable hierarchical representation for the prompt
+  const hierarchyText = formatHierarchyForPrompt(enhancedTree);
 
   // Improved prompt for pixel-perfect matching and visual fidelity
   let improvedPrompt = `${prompt}\n\nIMPORTANT: The goal is to make the current design visually match the desired outcome. Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences. Only use the provided class names. If unsure, err on the side of making more changes.`;
@@ -232,37 +253,40 @@ export const generateCSSWithAI = async (
   const contentArray: MessageContent[] = [
     {
       type: 'text',
-      text: `USER REQUEST: "${improvedPrompt}"
+      text: `You are an expert CSS generator. Your task is to write CSS to transform a current design to visually match a reference design based on the user's request.
 
-DOM STRUCTURE:
-The following is a tree of elements with their portal-* classes. Use these class names in your CSS selectors.
-${simplifiedTree}
+USER REQUEST:
+"${improvedPrompt}"
 
-TAILWIND DATA:
-Some elements already have Tailwind classes applied. Your CSS needs to override these when necessary.
-${Object.keys(simplifiedTailwindData).length > 0 ? JSON.stringify(simplifiedTailwindData, null, 2) : 'No Tailwind data available.'}
+DOM AND CLASS STRUCTURE:
+The following is a hierarchical tree of elements with their portal-* classes and associated Tailwind classes. You MUST use these portal-* class names in your CSS selectors.
 
-CURRENT CSS FILE:
-${currentCSS ? currentCSS : 'No CSS applied yet.'}
+HIERARCHICAL VIEW:
+${hierarchyText}
 
-INSTRUCTIONS:
-1. Write CSS that will transform the current design to match the target design.
-2. ONLY create selectors that target classes matching the pattern ^portal-.*$ (classes that start with "portal-")
-3. Ensure your CSS is pixel-perfect and precisely matches the visual design.
-4. Do not use element selectors, IDs, or non-portal- classes.
-5. Include !important where necessary to override existing styles.
-6. Your output must be a COMPLETE CSS file including:
-   - ${currentCSS ? 'All existing styles with your necessary modifications and improvements' : 'All necessary styles to match the reference design'}
-   - New styles organized in logical sections
-   - Comments explaining your styling approach and changes
-7. Focus on ALL visual aspects:
-   - Colors (backgrounds, text, borders, etc.)
-   - Typography (size, weight, family, spacing)
-   - Padding, margins, alignment
-   - Shadows, effects, and transitions
-   - Border radius and border styling
-8. RESPOND ONLY WITH VALID CSS CODE. No explanations, no markdown, only the CSS code.
-${retryCount > 0 ? '9. This is iteration ' + (retryCount + 1) + '. Improve upon the previous CSS to better match the reference image.' : ''}`,
+FULL CLASS DATA (for context on existing Tailwind classes):
+${JSON.stringify(enhancedTree, null, 2)}
+
+CURRENT CSS (if any, to be built upon or replaced):
+${currentCSS ? currentCSS : 'No pre-existing CSS. Generate all necessary styles.'}
+
+CRITICAL INSTRUCTIONS:
+1.  **Output Format:** RESPOND ONLY WITH VALID CSS CODE. Do NOT include any explanations, markdown (like \`\`\`css), or any text other than the CSS itself.
+2.  **Selectors:** ONLY use selectors targeting classes that start with "portal-" (e.g., \`.portal-header\`, \`.portal-button--primary\`). Do NOT invent new class names.
+3.  **Override Tailwind:** Your primary goal is to override existing Tailwind CSS utility classes. Ensure your CSS rules have enough specificity or use \`!important\` strategically if absolutely necessary to ensure styles are applied correctly over Tailwind.
+4.  **Completeness:**
+    *   If \`CURRENT CSS\` is provided, your response should be the COMPLETE CSS file, including all existing styles from \`CURRENT CSS\` with your necessary modifications, improvements, and additions.
+    *   If \`CURRENT CSS\` is 'No pre-existing CSS', generate all styles required to meet the USER REQUEST.
+5.  **Pixel-Perfect:** Aim for a pixel-perfect match to the reference design, paying close attention to:
+    *   Colors (backgrounds, text, borders)
+    *   Typography (font-family, size, weight, line-height, letter-spacing)
+    *   Sizing and Spacing (width, height, padding, margins, alignment)
+    *   Layout (Flexbox, Grid, positioning)
+    *   Visual Effects (shadows, borders, border-radius, transitions)
+6.  **Structure and Comments:** Organize your CSS logically (e.g., by component or section). Include comments to explain complex styles or rationale for changes, especially when overriding.
+7.  **Iterative Refinement (if applicable):** ${retryCount > 0 ? `This is iteration ${retryCount + 1}. Review the previous attempt and the user's feedback to make precise adjustments for a better match.` : 'This is the first attempt.'}
+
+Based on all the above, generate the complete CSS code now.`,
     },
   ];
 
@@ -347,6 +371,103 @@ ${retryCount > 0 ? '9. This is iteration ' + (retryCount + 1) + '. Improve upon 
     throw error;
   }
 };
+
+// Define types for enhanced tree structure
+interface EnhancedPortalClass {
+  name: string;
+  tailwindClasses: string[];
+}
+
+interface EnhancedTreeNode {
+  element: string;
+  portalClasses: EnhancedPortalClass[];
+  children?: EnhancedTreeNode[];
+}
+
+/**
+ * Create an enhanced tree that includes Tailwind classes for each portal class
+ * @param node The portal class tree node
+ * @param tailwindData Tailwind class data
+ * @returns Enhanced tree with Tailwind classes
+ */
+function createEnhancedClassTree(
+  node: TreeNode,
+  tailwindData: Record<string, string[]>,
+): EnhancedTreeNode {
+  // Debug logging to inspect the inputs
+  console.log('DEBUG: Creating enhanced class tree with node:', node);
+  console.log('DEBUG: Tailwind data available:', tailwindData);
+
+  // Create the base node
+  const enhancedNode: EnhancedTreeNode = {
+    element: node.element,
+    portalClasses: [],
+  };
+
+  // Add portal classes with associated tailwind classes
+  if (node.portalClasses && node.portalClasses.length > 0) {
+    enhancedNode.portalClasses = node.portalClasses.map((cls) => {
+      const tailwindClasses = tailwindData[cls] || [];
+      console.log(
+        `DEBUG: Portal class ${cls} has Tailwind classes:`,
+        tailwindClasses,
+      );
+      return {
+        name: cls,
+        tailwindClasses: tailwindClasses,
+      };
+    });
+  }
+
+  // Process child nodes recursively
+  if (node.children && node.children.length > 0) {
+    enhancedNode.children = node.children.map((child) =>
+      createEnhancedClassTree(child, tailwindData),
+    );
+  }
+
+  return enhancedNode;
+}
+
+/**
+ * Format hierarchy for prompt
+ * @param node The enhanced tree node
+ * @param depth Current depth level for indentation
+ * @returns Formatted hierarchy string
+ */
+function formatHierarchyForPrompt(
+  node: EnhancedTreeNode,
+  depth: number = 0,
+): string {
+  let result = '';
+  const indent = '  '.repeat(depth);
+
+  // Add element with its depth
+  result += `${indent}${node.element}\n`;
+
+  // Add portal classes
+  if (node.portalClasses && node.portalClasses.length > 0) {
+    node.portalClasses.forEach((cls) => {
+      result += `${indent}  • ${cls.name}`;
+
+      // Show count of tailwind classes
+      if (cls.tailwindClasses && cls.tailwindClasses.length > 0) {
+        result += ` (${cls.tailwindClasses.length} Tailwind classes: ${cls.tailwindClasses.join(', ')})`;
+      }
+
+      result += '\n';
+    });
+  }
+
+  // Process children with increased depth
+  if (node.children && node.children.length > 0) {
+    node.children.forEach((child) => {
+      result += formatHierarchyForPrompt(child, depth + 1);
+    });
+  }
+
+  return result;
+}
 
 /**
  * Evaluate CSS results using OpenAI API

@@ -1,4 +1,4 @@
-import type { TreeNode } from '@/types';
+import type { TreeNode, TailwindClassData } from '@/types';
 import type { ArboristNode } from '../types';
 
 // Simplified function to check if we can access this page
@@ -18,6 +18,7 @@ export const canAccessPage = (url: string): boolean => {
 // Convert TreeNode to format used by our custom tree
 export const convertToArboristFormat = (
   node: TreeNode,
+  tailwindClasses: TailwindClassData = {},
   parentId = '',
 ): ArboristNode => {
   const nodeId = parentId ? `${parentId}-${node.element}` : node.element;
@@ -30,12 +31,28 @@ export const convertToArboristFormat = (
     children: [],
   };
 
-  // Add portal classes as children of the element node
+  // Create a mapping of portal classes to their tailwind classes for this node
   if (node.portalClasses.length > 0) {
+    const portalToTailwind: Record<string, string[]> = {};
+
+    node.portalClasses.forEach((className) => {
+      if (tailwindClasses[className]) {
+        portalToTailwind[className] = tailwindClasses[className];
+      } else {
+        portalToTailwind[className] = [];
+      }
+    });
+
+    // Add this data to the element node
+    elementNode.portalClasses = node.portalClasses;
+    elementNode.tailwindClasses = portalToTailwind;
+
+    // Add portal classes as children of the element node with their tailwind classes
     elementNode.children = node.portalClasses.map((cls) => ({
       id: `${nodeId}-${cls}`,
       name: cls,
       portalClasses: [cls],
+      tailwindClasses: { [cls]: portalToTailwind[cls] || [] },
       isElement: false,
     }));
   }
@@ -45,7 +62,7 @@ export const convertToArboristFormat = (
     const childrenNodes: ArboristNode[] = [];
 
     node.children.forEach((child) => {
-      const childNode = convertToArboristFormat(child, nodeId);
+      const childNode = convertToArboristFormat(child, tailwindClasses, nodeId);
       childrenNodes.push(childNode);
     });
 

@@ -43,6 +43,30 @@
   margin-top: 2px;
 }
 
+.refresh-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.refresh-button:hover {
+  background-color: var(--hover-bg);
+}
+
+.refresh-button:active {
+  transform: scale(0.95);
+}
+
+.refresh-button:disabled {
+  cursor: not-allowed;
+}
+
 .tree-actions {
   display: flex;
   gap: 8px;
@@ -84,7 +108,7 @@
 /* Content area styles */
 .tree-content {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   padding: 2px 0;
   flex-grow: 1;
 }
@@ -92,7 +116,9 @@
 /* Element node styling */
 .tree-element {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-direction: column;
+  width: 100%;
 }
 
 .tree-element-tag {
@@ -107,9 +133,14 @@
 /* Class styling */
 .tree-class-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  width: 100%;
   gap: 4px;
-  padding-left: 4px;
+  margin-top: 4px;
+}
+
+.tree-class-container {
+  margin-top: 2px;
 }
 
 .tree-class {
@@ -134,6 +165,33 @@
 .tree-class.active {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   transform: translateY(-1px);
+}
+
+.tree-class-toggle {
+  background: transparent;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+}
+
+.tree-class-toggle:hover {
+  color: #000;
+}
+
+.tailwind-classes {
+  background-color: rgba(0, 0, 0, 0.03);
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+
+.tailwind-class {
+  color: #2563eb;
+  background-color: rgba(219, 234, 254, 0.5);
+  border: 1px solid rgba(191, 219, 254, 0.5);
 }
 
 /* Children container */

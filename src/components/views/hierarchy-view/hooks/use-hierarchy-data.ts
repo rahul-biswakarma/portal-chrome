@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { TreeNode } from '@/types';
+import type { TreeNode, TailwindClassData } from '@/types';
 
 import {
   canAccessPage,
@@ -15,6 +15,7 @@ export function useHierarchyData() {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [classColors, setClassColors] = useState<Record<string, string>>({});
+  const [tailwindClasses, setTailwindClasses] = useState<TailwindClassData>({});
 
   // Fetch class hierarchy data
   const fetchTreeData = async (tabId: number) => {
@@ -34,6 +35,29 @@ export function useHierarchyData() {
       }
 
       setTreeData(response.data);
+
+      // Now fetch Tailwind classes associated with portal classes
+      const tailwindResponse = await chrome.tabs
+        .sendMessage(tabId, {
+          action: 'getTailwindClasses',
+        })
+        .catch((err) => {
+          console.error('Message send error for Tailwind classes:', err);
+          return { success: false, error: 'Failed to get Tailwind classes' };
+        });
+
+      if (tailwindResponse?.success) {
+        console.log(
+          'DEBUG: Received Tailwind classes from content script:',
+          tailwindResponse.data,
+        );
+        setTailwindClasses(tailwindResponse.data);
+      } else {
+        console.warn(
+          'DEBUG: Failed to get Tailwind classes:',
+          tailwindResponse?.error,
+        );
+      }
     } catch (err) {
       console.error('Error fetching class tree:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -128,10 +152,10 @@ export function useHierarchyData() {
       setClassColors(colors);
 
       // Start conversion from root
-      const rootNode = convertToArboristFormat(treeData);
+      const rootNode = convertToArboristFormat(treeData, tailwindClasses);
       setArboristData([rootNode]);
     }
-  }, [treeData]);
+  }, [treeData, tailwindClasses]);
 
   // Highlight elements when hovering over a class in the tree
   const handleClassHover = async (className: string | null) => {
@@ -175,5 +199,6 @@ export function useHierarchyData() {
     classColors,
     handleClassHover,
     refreshData,
+    tailwindClasses,
   };
 }

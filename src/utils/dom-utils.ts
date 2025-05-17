@@ -59,48 +59,85 @@ export const extractClassHierarchy = async (tabId: number): Promise<string> => {
 };
 
 /**
- * Extracts Tailwind classes used in the document
+ * Extracts Tailwind classes used with portal classes in the document
  */
 export const extractTailwindClasses = async (
   tabId: number,
-): Promise<string[]> => {
+): Promise<Record<string, string[]>> => {
   try {
+    // Use the content script's getTailwindClasses function
+    const response = await chrome.tabs
+      .sendMessage(tabId, {
+        action: 'getTailwindClasses',
+      })
+      .catch((err) => {
+        console.error('Error getting Tailwind classes:', err);
+        return { success: false, error: 'Failed to get Tailwind classes' };
+      });
+
+    if (response?.success) {
+      console.log(
+        'DEBUG: Tailwind classes from content script:',
+        response.data,
+      );
+      return response.data;
+    }
+
+    console.warn(
+      'Failed to get Tailwind classes from content script, falling back to direct extraction',
+    );
+
+    // Fall back to direct extraction if content script is not available
     const result = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => {
-        const allClasses: Set<string> = new Set();
+        const tailwindByPortalClass: Record<string, string[]> = {};
 
-        // Find all elements
-        const allElements = document.querySelectorAll('*');
+        // Find all elements with portal classes
+        const elementsWithPortalClass =
+          document.querySelectorAll('[class*="portal-"]');
 
         // Extract classes from each element
-        allElements.forEach((el) => {
+        elementsWithPortalClass.forEach((el) => {
           if (el.classList && el.classList.length > 0) {
-            el.classList.forEach((cls) => {
-              // Only collect classes that look like Tailwind classes
-              if (
-                /^(bg|text|font|p|m|flex|grid|justify|items|rounded|shadow|border|w|h)-/.test(
-                  cls,
-                )
-              ) {
-                allClasses.add(cls);
+            // Find portal classes on this element
+            const portalClasses = Array.from(el.classList).filter((cls) =>
+              cls.startsWith('portal-'),
+            );
+
+            // Find non-portal classes (potential Tailwind classes)
+            const nonPortalClasses = Array.from(el.classList).filter(
+              (cls) => !cls.startsWith('portal-'),
+            );
+
+            // Associate Tailwind classes with each portal class
+            portalClasses.forEach((portalClass) => {
+              if (!tailwindByPortalClass[portalClass]) {
+                tailwindByPortalClass[portalClass] = [];
               }
+
+              // Add non-duplicate classes
+              nonPortalClasses.forEach((cls) => {
+                if (!tailwindByPortalClass[portalClass].includes(cls)) {
+                  tailwindByPortalClass[portalClass].push(cls);
+                }
+              });
             });
           }
         });
 
-        return Array.from(allClasses);
+        return tailwindByPortalClass;
       },
     });
 
     if (!result || result.length === 0) {
-      return [];
+      return {};
     }
 
-    return result[0].result as string[];
+    return result[0].result as Record<string, string[]>;
   } catch (error) {
     console.error('Error extracting Tailwind classes:', error);
-    return [];
+    return {};
   }
 };
 
@@ -112,16 +149,23 @@ export const getPageStructure = async (tabId: number): Promise<string> => {
     // Get class hierarchy
     const hierarchy = await extractClassHierarchy(tabId);
 
-    // Get Tailwind classes
+    // Get Tailwind classes associated with portal classes
     const tailwindClasses = await extractTailwindClasses(tabId);
+
+    // Format the Tailwind classes in a hierarchical structure
+    const tailwindClassesStr = Object.entries(tailwindClasses)
+      .map(([portalClass, classes]) => {
+        return `${portalClass}:\n  ${classes.join('\n  ')}`;
+      })
+      .join('\n\n');
 
     // Format the output
     return `
 DOM STRUCTURE:
 ${hierarchy}
 
-AVAILABLE TAILWIND CLASSES:
-${tailwindClasses.join(', ')}
+PORTAL CLASSES WITH ASSOCIATED TAILWIND CLASSES:
+${tailwindClassesStr}
 `;
   } catch (error) {
     console.error('Error getting page structure:', error);
