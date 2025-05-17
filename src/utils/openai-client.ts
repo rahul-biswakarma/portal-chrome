@@ -181,7 +181,12 @@ export const generateCSSWithAI = async (
   const simplifiedTree = JSON.stringify(portalClassTree, null, 2);
 
   // Improved prompt for pixel-perfect matching and visual fidelity
-  const improvedPrompt = `${prompt}\n\nIMPORTANT: The goal is to make the current design visually match the desired outcome. Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences. Only use the provided class names. If unsure, err on the side of making more changes.`;
+  let improvedPrompt = `${prompt}\n\nIMPORTANT: The goal is to make the current design visually match the desired outcome. Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences. Only use the provided class names. If unsure, err on the side of making more changes.`;
+
+  // Add iteration context if this isn't the first attempt
+  if (retryCount > 0) {
+    improvedPrompt += `\n\nThis is iteration ${retryCount + 1}. The previous CSS didn't fully match the reference image. Please make additional refinements to achieve better visual matching.`;
+  }
 
   // Build the content array
   const contentArray: MessageContent[] = [
@@ -191,14 +196,14 @@ export const generateCSSWithAI = async (
 
 DOM STRUCTURE:
 The following is a tree of elements with their portal-* classes. Use these class names in your CSS selectors.
-${retryCount === 0 ? simplifiedTree : simplifiedTree}
+${simplifiedTree}
 
 TAILWIND DATA:
 Some elements already have Tailwind classes applied. Your CSS needs to override these when necessary.
 ${Object.keys(simplifiedTailwindData).length > 0 ? JSON.stringify(simplifiedTailwindData, null, 2) : 'No Tailwind data available.'}
 
 CURRENT CSS FILE:
-${currentCSS}
+${currentCSS ? currentCSS : 'No CSS applied yet.'}
 
 INSTRUCTIONS:
 1. Write CSS that will transform the current design to match the target design.
@@ -207,7 +212,7 @@ INSTRUCTIONS:
 4. Do not use element selectors, IDs, or non-portal- classes.
 5. Include !important where necessary to override existing styles.
 6. Your output must be a COMPLETE CSS file including:
-   - All existing styles with your necessary modifications
+   - ${currentCSS ? 'All existing styles with your necessary modifications and improvements' : 'All necessary styles to match the reference design'}
    - New styles organized in logical sections
    - Comments explaining your styling approach and changes
 7. Focus on ALL visual aspects:
@@ -216,7 +221,8 @@ INSTRUCTIONS:
    - Padding, margins, alignment
    - Shadows, effects, and transitions
    - Border radius and border styling
-8. RESPOND ONLY WITH VALID CSS CODE. No explanations, no markdown, only the CSS code.`,
+8. RESPOND ONLY WITH VALID CSS CODE. No explanations, no markdown, only the CSS code.
+${retryCount > 0 ? '9. This is iteration ' + (retryCount + 1) + '. Improve upon the previous CSS to better match the reference image.' : ''}`,
     },
   ];
 
@@ -289,6 +295,7 @@ INSTRUCTIONS:
       content = content
         .replace(/```css\s*/g, '')
         .replace(/```\s*$/g, '')
+        .replace(/```/g, '')
         .trim();
 
       return content;
@@ -322,21 +329,30 @@ export const evaluateCSSResultWithAI = async (
     {
       role: 'system',
       content:
-        'You are an expert in visual design analysis and CSS. Your task is to evaluate if the applied CSS has successfully transformed the page to match the reference design.',
+        'You are an expert in visual design analysis and CSS. Your task is to evaluate if the applied CSS has successfully transformed the page to match the reference design. Be thorough in your analysis but constructive in your feedback for what needs improvement.',
     },
     {
       role: 'user',
       content: [
         {
           type: 'text',
-          text: `I've applied CSS to a page to make it match a reference design. I need you to evaluate how well the transformation worked.
+          text: `I've applied CSS to a page to make it match a reference design. I need you to evaluate how well the transformation worked and provide feedback for any needed improvements.
 
 INSTRUCTIONS:
 1. The FIRST image is the REFERENCE design (what we want to achieve)
 2. The SECOND image is the CURRENT state (with the applied CSS)
 3. Analyze both images and determine if they visually match closely enough
-4. If they don't match well enough, provide specific feedback on what still needs to be improved
-5. Here is the CSS that was applied:
+4. Use a high standard for "match" - look for pixel-perfect matching of:
+   - Colors (backgrounds, text, borders)
+   - Typography (size, weight, family, spacing)
+   - Spacing (padding, margins, alignment)
+   - Size and position of elements
+   - Visual effects (shadows, borders, etc.)
+5. If they don't match well enough, provide specific, actionable feedback focusing on:
+   - What elements need to be changed
+   - What specific CSS properties need to be adjusted
+   - How they need to be adjusted (be specific with color values, sizes, etc.)
+6. Here is the CSS that was applied:
 
 \`\`\`css
 ${currentCSS}
@@ -345,7 +361,7 @@ ${currentCSS}
 RESPOND IN THE FOLLOWING JSON FORMAT:
 {
   "isMatch": true/false,
-  "feedback": "Your detailed feedback here, or 'DevRev' if it matches"
+  "feedback": "If isMatch is true, simply return 'DevRev'. If isMatch is false, provide specific, detailed feedback on what still needs to be improved."
 }`,
         },
         {
@@ -375,8 +391,8 @@ RESPOND IN THE FOLLOWING JSON FORMAT:
       body: JSON.stringify({
         model: 'gpt-4o',
         messages: messages,
-        temperature: 0.7,
-        max_tokens: 1000,
+        temperature: 0.5, // Lower temperature for more precise evaluation
+        max_tokens: 1500, // Increased for more detailed feedback
         response_format: { type: 'json_object' },
       }),
     });
