@@ -5,8 +5,6 @@ type TreeNode = {
   children: TreeNode[];
 };
 
-console.log('Portal Design Customizer content script loaded');
-
 // Types for element styling
 interface ElementStyles {
   outline: string;
@@ -56,7 +54,7 @@ function hasPortalClasses(): boolean {
     }
 
     // First attempt with standard selector
-    let portalElements = document.querySelectorAll('[class*="portal-"]');
+    const portalElements = document.querySelectorAll('[class*="portal-"]');
 
     if (portalElements.length > 0) {
       portalClassesFound = true;
