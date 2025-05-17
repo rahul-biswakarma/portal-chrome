@@ -5,51 +5,36 @@ interface TreeNodeProps {
   node: ArboristNode;
   depth?: number;
   isLastChild?: boolean;
-  parentIsLastChild?: boolean[];
   classColors: Record<string, string>;
   hoveredClass: string | null;
   onClassHover: (className: string | null) => void;
+  isRootNode?: boolean;
 }
 
 export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
   node,
   depth = 0,
   isLastChild = false,
-  parentIsLastChild = [],
   classColors,
   hoveredClass,
   onClassHover,
+  isRootNode = depth === 0,
 }) => {
   const hasClasses = node.portalClasses && node.portalClasses.length > 0;
   const hasChildren = node.children && node.children.length > 0;
 
-  // Create array to track which parent levels need connectors
-  const childParentIsLastChild = [...parentIsLastChild];
-  if (depth > 0) {
-    childParentIsLastChild[depth - 1] = isLastChild;
-  }
-
   return (
-    <div className="tree-node">
+    <div
+      className={`
+      tree-node
+      ${isRootNode ? 'root-node' : ''}
+      ${isLastChild ? 'last-child' : ''}
+      ${hasChildren ? 'has-children' : ''}
+    `}
+    >
       <div className="tree-node-row">
-        {/* Generate connector areas for each depth level */}
-        {Array.from({ length: depth }).map((_, index) => (
-          <div key={`connector-${index}`} className="tree-connector-area">
-            {parentIsLastChild[index] ? null : (
-              <div className="tree-connector-line" />
-            )}
-          </div>
-        ))}
-
         {/* Only show connector for non-root nodes */}
-        {depth > 0 && (
-          <div className="tree-connector-area">
-            <div
-              className={`tree-connector-line ${isLastChild ? 'last-child' : ''}`}
-            />
-            <div className="tree-horizontal-line" />
-          </div>
-        )}
+        {depth > 0 && <div className="tree-connector" />}
 
         {/* Content area with element or class node */}
         <div className="tree-content">
@@ -102,7 +87,7 @@ export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
         </div>
       </div>
 
-      {/* Render children */}
+      {/* Render children with proper indentation */}
       {hasChildren && (
         <div className="tree-children">
           {node.children!.map((child, index, array) => (
@@ -111,10 +96,10 @@ export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
               node={child}
               depth={depth + 1}
               isLastChild={index === array.length - 1}
-              parentIsLastChild={childParentIsLastChild}
               classColors={classColors}
               hoveredClass={hoveredClass}
               onClassHover={onClassHover}
+              isRootNode={false}
             />
           ))}
         </div>

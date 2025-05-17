@@ -70,8 +70,13 @@ export const HierarchyView = () => {
     );
   }
 
-  // Render empty state
-  if (!treeData || !hasPortalClasses(treeData)) {
+  // Make sure we have valid tree data and arboristData has elements
+  if (
+    !treeData ||
+    !hasPortalClasses(treeData) ||
+    !arboristData ||
+    arboristData.length === 0
+  ) {
     return (
       <div className="hierarchy-tree">
         <div className="tree-header">
@@ -94,9 +99,12 @@ export const HierarchyView = () => {
   // Count total portal classes
   const portalClassCount = Object.keys(classColors).length;
 
+  // If we have only one root node, use it directly, otherwise wrap in a container
+  const hasMultipleRootNodes = arboristData.length > 1;
+
   // Render tree data using our custom tree component
   return (
-    <div className="hierarchy-tree">
+    <div className="hierarchy-tree max-h-[calc(100%-5vh)]">
       <div className="tree-header">
         <div>
           <h2 className="tree-header-title">Class Hierarchy</h2>
@@ -108,15 +116,30 @@ export const HierarchyView = () => {
       </div>
 
       <div className="tree-container">
-        {arboristData.map((node) => (
+        {hasMultipleRootNodes ? (
+          // Multiple root nodes - treat as children of an invisible container
+          arboristData.map((node, index) => (
+            <TreeNodeComponent
+              key={node.id}
+              node={node}
+              classColors={classColors}
+              hoveredClass={hoveredClass}
+              onClassHover={onClassHover}
+              isRootNode={false}
+              isLastChild={index === arboristData.length - 1}
+            />
+          ))
+        ) : (
+          // Single root node - treat as the true root
           <TreeNodeComponent
-            key={node.id}
-            node={node}
+            key={arboristData[0].id}
+            node={arboristData[0]}
             classColors={classColors}
             hoveredClass={hoveredClass}
             onClassHover={onClassHover}
+            isRootNode={true}
           />
-        ))}
+        )}
       </div>
     </div>
   );
