@@ -1,6 +1,44 @@
 import type { TreeNode, TailwindClassData } from '../types';
 import { getEnvVariable } from '../utils/environment';
 
+// Default API parameters
+const DEFAULT_MODEL = 'gpt-4o';
+const DEFAULT_TEMPERATURE = 0.7;
+const DEFAULT_MAX_TOKENS_PROMPT = 3000;
+const DEFAULT_MAX_TOKENS_CSS = 4000;
+const DEFAULT_MAX_TOKENS_EVAL = 1500;
+
+// Get environment variables or use defaults
+const getApiParameters = async () => {
+  const model = (await getEnvVariable('OPENAI_MODEL')) || DEFAULT_MODEL;
+  const temperatureStr = await getEnvVariable('OPENAI_TEMPERATURE');
+  const maxTokensPromptStr = await getEnvVariable('OPENAI_MAX_TOKENS_PROMPT');
+  const maxTokensCssStr = await getEnvVariable('OPENAI_MAX_TOKENS_CSS');
+  const maxTokensEvalStr = await getEnvVariable('OPENAI_MAX_TOKENS_EVAL');
+
+  // Parse numeric values with fallbacks
+  const temperature = temperatureStr
+    ? parseFloat(temperatureStr)
+    : DEFAULT_TEMPERATURE;
+  const maxTokensPrompt = maxTokensPromptStr
+    ? parseInt(maxTokensPromptStr, 10)
+    : DEFAULT_MAX_TOKENS_PROMPT;
+  const maxTokensCss = maxTokensCssStr
+    ? parseInt(maxTokensCssStr, 10)
+    : DEFAULT_MAX_TOKENS_CSS;
+  const maxTokensEval = maxTokensEvalStr
+    ? parseInt(maxTokensEvalStr, 10)
+    : DEFAULT_MAX_TOKENS_EVAL;
+
+  return {
+    model,
+    temperature,
+    maxTokensPrompt,
+    maxTokensCss,
+    maxTokensEval,
+  };
+};
+
 /**
  * Get the stored OpenAI API key
  * @returns Promise resolving to the API key or null if not set
@@ -43,6 +81,7 @@ export const generatePromptWithAI = async (
   currentScreenshot: string,
 ): Promise<string> => {
   const url = 'https://api.openai.com/v1/chat/completions';
+  const { model, temperature, maxTokensPrompt } = await getApiParameters();
 
   // Prepare the messages for OpenAI
   const messages = [
@@ -98,10 +137,10 @@ GENERATE ONLY THE PROMPT TEXT with no additional explanations or markdown format
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model,
         messages: messages,
-        temperature: 0.7,
-        max_tokens: 1000,
+        temperature,
+        max_tokens: maxTokensPrompt,
       }),
     });
 
@@ -166,6 +205,7 @@ export const generateCSSWithAI = async (
   currentScreenshot?: string,
 ): Promise<string> => {
   const url = 'https://api.openai.com/v1/chat/completions';
+  const { model, temperature, maxTokensCss } = await getApiParameters();
 
   // Simplify the tailwind data to only show essential information
   const simplifiedTailwindData: Record<string, string[]> = {};
@@ -267,10 +307,10 @@ ${retryCount > 0 ? '9. This is iteration ' + (retryCount + 1) + '. Improve upon 
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model,
         messages: messages,
-        temperature: 0.7,
-        max_tokens: 4000,
+        temperature,
+        max_tokens: maxTokensCss,
       }),
     });
 
@@ -323,6 +363,10 @@ export const evaluateCSSResultWithAI = async (
   currentCSS: string,
 ): Promise<{ isMatch: boolean; feedback: string }> => {
   const url = 'https://api.openai.com/v1/chat/completions';
+  const { model, maxTokensEval } = await getApiParameters();
+
+  // Use a lower temperature for evaluation for more consistent results
+  const evaluationTemperature = 0.5;
 
   // Prepare the messages for OpenAI
   const messages = [
@@ -336,7 +380,7 @@ export const evaluateCSSResultWithAI = async (
       content: [
         {
           type: 'text',
-          text: `I've applied CSS to a page to make it match a reference design. I need you to evaluate how well the transformation worked and provide feedback for any needed improvements.
+          text: `I've applied CSS to a page to make it match a reference design. I need you to evaluate how well the transformation worked and either return DONE if it's good enough or provide improved CSS.
 
 INSTRUCTIONS:
 1. The FIRST image is the REFERENCE design (what we want to achieve)
@@ -348,21 +392,15 @@ INSTRUCTIONS:
    - Spacing (padding, margins, alignment)
    - Size and position of elements
    - Visual effects (shadows, borders, etc.)
-5. If they don't match well enough, provide specific, actionable feedback focusing on:
-   - What elements need to be changed
-   - What specific CSS properties need to be adjusted
-   - How they need to be adjusted (be specific with color values, sizes, etc.)
-6. Here is the CSS that was applied:
+5. If the current state matches the reference design well enough, respond with ONLY the text "DONE" (no JSON, no explanation)
+6. If they don't match well enough, respond with COMPLETE, VALID CSS (no explanations, no markdown, just CSS code) that would improve the current state to better match the reference.
+7. Here is the CSS that was applied:
 
 \`\`\`css
 ${currentCSS}
 \`\`\`
 
-RESPOND IN THE FOLLOWING JSON FORMAT:
-{
-  "isMatch": true/false,
-  "feedback": "If isMatch is true, simply return 'DevRev'. If isMatch is false, provide specific, detailed feedback on what still needs to be improved."
-}`,
+DO NOT respond with JSON format. If it's a good match, respond ONLY with the word "DONE". If improvements are needed, respond ONLY with the complete CSS.`,
         },
         {
           type: 'image_url',
@@ -389,11 +427,10 @@ RESPOND IN THE FOLLOWING JSON FORMAT:
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model,
         messages: messages,
-        temperature: 0.5, // Lower temperature for more precise evaluation
-        max_tokens: 1500, // Increased for more detailed feedback
-        response_format: { type: 'json_object' },
+        temperature: evaluationTemperature,
+        max_tokens: maxTokensEval,
       }),
     });
 
@@ -412,19 +449,19 @@ RESPOND IN THE FOLLOWING JSON FORMAT:
       data.choices[0].message &&
       data.choices[0].message.content
     ) {
-      try {
-        const result = JSON.parse(data.choices[0].message.content);
+      const result = data.choices[0].message.content.trim();
+
+      if (result === 'DONE') {
         return {
-          isMatch: result.isMatch,
-          feedback: result.isMatch ? 'DevRev' : result.feedback,
-        };
-      } catch (error) {
-        console.error('Error parsing JSON response:', error);
-        return {
-          isMatch: false,
-          feedback: 'Error parsing evaluation result',
+          isMatch: true,
+          feedback: 'CSS matches reference design',
         };
       }
+
+      return {
+        isMatch: false,
+        feedback: result,
+      };
     } else {
       throw new Error('Invalid response format from API');
     }

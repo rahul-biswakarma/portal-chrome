@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { X, ImageIcon, ArrowUp, Loader2 } from 'lucide-react';
+import { useProgressStore } from '@/stores/progress-store';
 
 export const PromptInput = () => {
   const {
@@ -34,21 +35,20 @@ export const PromptInput = () => {
 
   const [isImageTagHovered, setIsImageTagHovered] = useState(false);
   const [prompt, setPrompt] = useState('');
-  const [status, setStatus] = useState('');
-  const [iterations, setIterations] = useState(0);
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const [currentScreenshot, setCurrentScreenshot] = useState<string | null>(
     null,
   );
   const { addLog } = useLogger();
+  const { setProgress } = useProgressStore();
 
   // Custom image change handler that will also reset the prompt state
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Reset prompt-related states when a new image is uploaded
     setPrompt('');
-    setStatus('');
     setCurrentScreenshot(null);
     setGenerationStage('idle');
+    setProgress(0);
 
     // Call the original handler from context
     originalHandleImageChange(e);
@@ -82,7 +82,7 @@ export const PromptInput = () => {
 
     try {
       setIsGeneratingPrompt(true);
-      setStatus('Generating prompt...');
+      setProgress(25); // Show initial progress
       addLog('Generating prompt from reference image...', 'info');
 
       // Get active tab
@@ -92,6 +92,7 @@ export const PromptInput = () => {
       }
 
       // Take screenshot of current page
+      setProgress(50);
       const screenshot = await takeScreenshot();
       setCurrentScreenshot(screenshot);
 
@@ -102,6 +103,7 @@ export const PromptInput = () => {
       }
 
       // Generate prompt using AI
+      setProgress(75);
       const generatedPrompt = await generatePromptWithAI(
         apiKey,
         selectedImage as string,
@@ -110,15 +112,27 @@ export const PromptInput = () => {
 
       // Set the generated prompt
       setPrompt(generatedPrompt);
+      setProgress(100);
       addLog('Prompt generated successfully', 'success');
-      setStatus('Prompt generated');
+
+      // Reset progress after a delay
+      setTimeout(() => {
+        setProgress(0);
+      }, 1000);
     } catch (error) {
       console.error('Error generating prompt:', error);
-      setStatus('Error generating prompt');
-      addLog(
-        `Error generating prompt: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'error',
-      );
+      let errorMessage = 'Unknown error';
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object') {
+        errorMessage = 'API error - please check console for details';
+      }
+
+      addLog(`Error generating prompt: ${errorMessage}`, 'error');
+      setProgress(0);
     } finally {
       setIsGeneratingPrompt(false);
     }
@@ -165,16 +179,14 @@ export const PromptInput = () => {
 
   const handleGenerate = async () => {
     if (!imageFile) {
-      setStatus('Please upload a reference image first');
       addLog('Please upload a reference image first', 'warning');
       return;
     }
 
     try {
       setGenerationStage('generating');
-      setStatus('Processing reference image...');
+      setProgress(10);
       addLog(LogMessages.SCREENSHOT_TAKING || 'Taking screenshot...', 'info');
-      setIterations(0);
 
       // Get active tab
       const tab = await getActiveTab();
@@ -183,7 +195,7 @@ export const PromptInput = () => {
       }
 
       // Extract the page structure
-      setStatus('Analyzing page structure...');
+      setProgress(20);
       addLog('Analyzing page structure...', 'info');
       const pageStructureStr = await getPageStructure(tab.id);
 
@@ -202,6 +214,7 @@ export const PromptInput = () => {
       }
 
       // Get Tailwind classes data
+      setProgress(30);
       const rawTailwindData = (await extractTailwindClasses(tab.id)) || {};
 
       // Convert to proper TailwindClassData format
@@ -225,87 +238,131 @@ export const PromptInput = () => {
         setCurrentScreenshot(screenshot);
       }
 
+      // Initial CSS Generation
+      setProgress(40);
+      addLog(`Generating initial CSS...`, 'info');
+
+      // Generate initial CSS with AI
+      const initialCss = await generateCSSWithAI(
+        apiKey,
+        prompt,
+        classHierarchy,
+        tailwindData,
+        '',
+        0,
+        selectedImage as string,
+        screenshot,
+      );
+
+      // Clean and apply the CSS
+      setProgress(50);
+      let currentCss = cleanCSSResponse(initialCss);
+
+      // Set the CSS content in the editor
+      setCssContent(currentCss);
+
+      // Apply CSS to page
+      await applyCSS(tab.id, currentCss);
+
+      // Take a new screenshot after applying CSS
+      setProgress(60);
+      addLog(`Taking screenshot after CSS application...`, 'info');
+      let newScreenshot = await takeScreenshot();
+      setCurrentScreenshot(newScreenshot);
+
       // Start the iterative CSS generation process
       let isSuccessful = false;
       const maxIterations = 5;
-      let currentCss = '';
 
-      for (let i = 0; i < maxIterations && !isSuccessful; i++) {
-        setIterations(i + 1);
-        setStatus(`Iteration ${i + 1}/${maxIterations}: Generating CSS...`);
-        addLog(`Iteration ${i + 1}: Generating CSS...`, 'info');
+      // Evaluate after first application
+      setProgress(70);
+      addLog(`Evaluating initial result...`, 'info');
+      let evaluation = await evaluateCSSResultWithAI(
+        apiKey,
+        selectedImage as string,
+        newScreenshot,
+        currentCss,
+      );
 
-        // Generate CSS with AI
-        const generatedCss = await generateCSSWithAI(
-          apiKey,
-          prompt,
-          classHierarchy,
-          tailwindData,
-          currentCss,
-          i,
-          selectedImage as string,
-          screenshot,
-        );
+      if (evaluation.isMatch) {
+        addLog('CSS generated and applied successfully', 'success');
+        setGenerationStage('success');
+        setProgress(100);
+        return;
+      }
 
-        // Clean and apply the CSS
-        const cleanedCss = cleanCSSResponse(generatedCss);
-        currentCss = cleanedCss;
+      // Begin iteration loop if initial CSS needs improvement
+      for (let i = 0; i < maxIterations - 1 && !isSuccessful; i++) {
+        // Calculate progress for iterations
+        const iterationProgress =
+          70 + Math.round((i + 1) * (30 / maxIterations));
+        setProgress(iterationProgress);
 
-        // Set the CSS content in the editor
-        setCssContent(cleanedCss);
+        // If feedback is just a string, it's the new CSS
+        if (!evaluation.isMatch && evaluation.feedback) {
+          addLog(`Iteration ${i + 1}: Applying improved CSS...`, 'info');
 
-        // Apply CSS to page
-        await applyCSS(tab.id, cleanedCss);
+          // Apply the improved CSS from the feedback
+          currentCss = evaluation.feedback;
+          setCssContent(currentCss);
+          await applyCSS(tab.id, currentCss);
 
-        // Take a new screenshot after applying CSS
-        setStatus(`Iteration ${i + 1}/${maxIterations}: Taking screenshot...`);
-        addLog(
-          `Iteration ${i + 1}: Taking screenshot after CSS application...`,
-          'info',
-        );
-        const newScreenshot = await takeScreenshot();
-
-        // Evaluate the result
-        setStatus(`Iteration ${i + 1}/${maxIterations}: Evaluating result...`);
-        addLog(`Iteration ${i + 1}: Evaluating result...`, 'info');
-        const evaluation = await evaluateCSSResultWithAI(
-          apiKey,
-          selectedImage as string,
-          newScreenshot,
-          cleanedCss,
-        );
-
-        // Update status based on evaluation
-        if (evaluation.isMatch) {
-          setStatus('DevRev');
-          addLog('CSS generated and applied successfully', 'success');
-          isSuccessful = true;
-          break;
-        } else {
-          setStatus(
-            `Iteration ${i + 1}/${maxIterations}: ${evaluation.feedback}`,
+          // Take a new screenshot after applying updated CSS
+          addLog(
+            `Iteration ${i + 1}: Taking screenshot after CSS application...`,
+            'info',
           );
-          addLog(`Iteration ${i + 1}: ${evaluation.feedback}`, 'info');
+          newScreenshot = await takeScreenshot();
+          setCurrentScreenshot(newScreenshot);
 
-          // Update screenshot for next iteration
-          screenshot = newScreenshot;
-          setCurrentScreenshot(screenshot);
+          // Evaluate the result
+          addLog(`Iteration ${i + 1}: Evaluating result...`, 'info');
+          evaluation = await evaluateCSSResultWithAI(
+            apiKey,
+            selectedImage as string,
+            newScreenshot,
+            currentCss,
+          );
+
+          if (evaluation.isMatch) {
+            addLog('CSS generated and applied successfully', 'success');
+            isSuccessful = true;
+            break;
+          }
+        } else {
+          // Shouldn't typically get here, but just in case
+          break;
         }
       }
 
       // Set final status
       setGenerationStage(isSuccessful ? 'success' : 'error');
+      setProgress(100);
+
       if (!isSuccessful) {
         addLog('Reached maximum iterations without perfect match', 'warning');
       }
+
+      // Reset progress after a delay
+      setTimeout(() => {
+        setProgress(0);
+      }, 1500);
     } catch (error) {
       console.error('Error generating CSS:', error);
-      setStatus('Error generating CSS');
       setGenerationStage('error');
-      addLog(
-        `Error generating CSS: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'error',
-      );
+      setProgress(0);
+
+      let errorMessage = 'Unknown error';
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object') {
+        errorMessage = 'API error - please check console for details';
+      }
+
+      addLog(`Error generating CSS: ${errorMessage}`, 'error');
     }
   };
 
@@ -402,60 +459,31 @@ export const PromptInput = () => {
             </span>
           </Button>
 
-          <div className="flex flex-col items-end">
-            {status && (
-              <span
-                className={`text-xs mb-1 ${
-                  status === 'DevRev'
-                    ? 'text-green-600'
-                    : status.includes('Failed') || status.includes('Error')
-                      ? 'text-red-600'
-                      : 'text-blue-600'
-                }`}
-              >
-                {status}
-              </span>
+          <Button
+            size="sm"
+            className="flex items-center gap-1.5 h-8 px-3"
+            onClick={handleGenerate}
+            disabled={
+              generationStage === 'generating' ||
+              isGeneratingPrompt ||
+              !imageFile ||
+              !prompt
+            }
+          >
+            {generationStage === 'generating' || isGeneratingPrompt ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                <span className="text-xs">
+                  {isGeneratingPrompt ? 'Generating Prompt' : 'Generating CSS'}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-xs">Generate</span>
+                <ArrowUp size={14} />
+              </>
             )}
-
-            {(generationStage === 'generating' || isGeneratingPrompt) && (
-              <div className="w-36 bg-gray-200 rounded-full h-1.5 mb-1">
-                <div
-                  className="bg-blue-600 h-1.5 rounded-full"
-                  style={{
-                    width: `${isGeneratingPrompt ? 50 : Math.min((iterations / 5) * 100, 100)}%`,
-                  }}
-                />
-              </div>
-            )}
-
-            <Button
-              size="sm"
-              className="flex items-center gap-1.5 h-8 px-3"
-              onClick={handleGenerate}
-              disabled={
-                generationStage === 'generating' ||
-                isGeneratingPrompt ||
-                !imageFile ||
-                !prompt
-              }
-            >
-              {generationStage === 'generating' || isGeneratingPrompt ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" />
-                  <span className="text-xs">
-                    {isGeneratingPrompt
-                      ? 'Generating Prompt'
-                      : 'Generating CSS'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="text-xs">Generate</span>
-                  <ArrowUp size={14} />
-                </>
-              )}
-            </Button>
-          </div>
+          </Button>
         </div>
       </div>
     </div>

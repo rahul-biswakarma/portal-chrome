@@ -102,3 +102,58 @@ export const deleteStyle = async (id: string): Promise<boolean> => {
     throw error;
   }
 };
+
+/**
+ * Save CSS to storage for the CSS editor
+ * @param siteName Site domain name for naming the saved style
+ * @param css CSS content to save
+ * @returns Name of the saved style
+ */
+export const saveCssToStorage = async (
+  siteName: string,
+  css: string,
+): Promise<string> => {
+  try {
+    const timestamp = new Date().toLocaleString().replace(/[\/\s:,]/g, '-');
+    const name = `${siteName}-${timestamp}`;
+
+    // Save using the existing saveStyle function
+    await saveStyle(name, css);
+
+    // Also save as the last edited CSS for quick loading
+    await chrome.storage.local.set({ lastEditedCSS: css });
+
+    return name;
+  } catch (error) {
+    console.error('Error saving CSS to storage:', error);
+    throw error;
+  }
+};
+
+/**
+ * Load CSS from storage for the CSS editor
+ * Shows a prompt to select from saved styles or loads the last edited CSS
+ * @returns Promise resolving to the loaded CSS or null if cancelled
+ */
+export const loadCssFromStorage = async (): Promise<string | null> => {
+  try {
+    // First, try to get all saved styles
+    const styles = await getSavedStyles();
+
+    if (styles.length === 0) {
+      // If no saved styles, check for last edited CSS
+      const result = await chrome.storage.local.get('lastEditedCSS');
+      return result.lastEditedCSS || null;
+    }
+
+    // Sort styles by creation date (newest first)
+    const sortedStyles = [...styles].sort((a, b) => b.createdAt - a.createdAt);
+
+    // For now, just return the most recent style's CSS
+    // In a future enhancement, this could display a modal for selection
+    return sortedStyles[0].css;
+  } catch (error) {
+    console.error('Error loading CSS from storage:', error);
+    throw error;
+  }
+};

@@ -80,9 +80,20 @@ export default defineConfig({
             ? '[name].js'
             : 'assets/[name]-[hash].js';
         },
+        // Prevent variable name collisions
+        manualChunks: undefined,
       },
     },
     outDir: 'dist',
     emptyOutDir: true,
+    // Add terser options to prevent variable name conflicts
+    minify: 'terser',
+    terserOptions: {
+      mangle: {
+        // Prevent variable name collisions
+        keep_fnames: true,
+        toplevel: false,
+      },
+    },
   },
 });

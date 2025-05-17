@@ -25,7 +25,7 @@ export const CustomizeView = () => {
   }, [setApiKey, apiKey]);
 
   return (
-    <div className="pb-4 h-full flex flex-col gap-2">
+    <div className="pb-4 h-full flex flex-col gap-2 overflow-y-auto">
       {apiKeyMissing && (
         <div className="bg-amber-50 border border-amber-200 rounded-md p-2 mb-2 flex items-center gap-2">
           <AlertCircle size={16} className="text-amber-500" />

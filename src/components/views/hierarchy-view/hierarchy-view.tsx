@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useHierarchyData } from './hooks/use-hierarchy-data';
 import { hasPortalClasses } from './utils/tree-data-utils';
+import { RefreshCw } from 'lucide-react';
 
 import './tree.css';
 import { TreeNodeComponent } from './components/tree-node';
+import { Button } from '@/components/ui/button';
 
 export const HierarchyView = () => {
   const {
@@ -13,6 +15,7 @@ export const HierarchyView = () => {
     error,
     classColors,
     handleClassHover,
+    refreshData,
   } = useHierarchyData();
 
   const [hoveredClass, setHoveredClass] = useState<string | null>(null);
@@ -21,6 +24,11 @@ export const HierarchyView = () => {
   const onClassHover = (className: string | null) => {
     setHoveredClass(className);
     handleClassHover(className);
+  };
+
+  // Handle refresh button click
+  const handleRefresh = () => {
+    refreshData();
   };
 
   // Render loading state
@@ -32,6 +40,14 @@ export const HierarchyView = () => {
             <h2 className="tree-header-title">Class Hierarchy</h2>
             <div className="tree-header-stats">Loading...</div>
           </div>
+          <button
+            className="refresh-button text-gray-500 hover:text-gray-700 disabled:opacity-50"
+            onClick={handleRefresh}
+            disabled={true}
+            title="Refresh hierarchy"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
         <div className="tree-container flex items-center justify-center h-full">
           <div className="animate-pulse">Loading class hierarchy...</div>
@@ -49,6 +65,13 @@ export const HierarchyView = () => {
             <h2 className="tree-header-title">Class Hierarchy</h2>
             <div className="tree-header-stats">Error loading</div>
           </div>
+          <button
+            className="refresh-button text-gray-500 hover:text-gray-700"
+            onClick={handleRefresh}
+            title="Refresh hierarchy"
+          >
+            <RefreshCw size={16} />
+          </button>
         </div>
         <div className="tree-container">
           <div className="text-red-500 font-bold mb-2">
@@ -84,6 +107,9 @@ export const HierarchyView = () => {
             <h2 className="tree-header-title">Class Hierarchy</h2>
             <div className="tree-header-stats">No portal classes found</div>
           </div>
+          <Button onClick={handleRefresh} title="Refresh hierarchy">
+            <RefreshCw size={16} />
+          </Button>
         </div>
         <div className="tree-container">
           <div className="font-bold">No portal classes found</div>
@@ -113,6 +139,13 @@ export const HierarchyView = () => {
             {portalClassCount === 1 ? 'class' : 'classes'} found
           </div>
         </div>
+        <button
+          className="refresh-button text-gray-500 hover:text-gray-700"
+          onClick={handleRefresh}
+          title="Refresh hierarchy"
+        >
+          <RefreshCw size={16} />
+        </button>
       </div>
 
       <div className="tree-container">
