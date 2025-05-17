@@ -64,7 +64,7 @@ export const CssEditor = () => {
   return (
     <div
       ref={editorRef}
-      className="w-full max-h-[calc(100%-14vh)] h-full rounded-md overflow-hidden"
+      className="w-full max-h-[calc(100%-20vh)] h-full rounded-md overflow-hidden"
     />
   );
 };

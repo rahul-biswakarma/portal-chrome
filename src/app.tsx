@@ -4,6 +4,7 @@ import { ViewTabs } from './components/view-tabs';
 import { StatusBar } from './components/status-bar';
 import { CustomizeView } from './components/views/customize-view/customize-view';
 import { HierarchyView } from './components/views/hierarchy-view/hierarchy-view';
+import { Settings } from './components/views/settings/settings';
 
 import type { ViewTabsSchema } from './types';
 import { AppProvider } from './contexts/app-context';
@@ -20,23 +21,15 @@ const views: ViewTabsSchema[] = [
     trigger: 'Class Hierarchy',
     content: <HierarchyView />,
   },
+  {
+    id: 'settings',
+    trigger: 'Settings',
+    content: <Settings />,
+  },
 ];
 
 function App() {
   const [activeTab, setActiveTab] = useState<string>('customize');
-  // const [, setApiKey] = useState<string | null>(null); // API key will be managed by context
-
-  // useEffect(() => {
-  //   const loadApiKey = async () => {
-  //     try {
-  //       const key = await getFromStorage<string | null>('openAIApiKey', null);
-  //       // setApiKey(key); // This will be handled in context if needed for persistence
-  //     } catch (error) {
-  //       console.error('Error loading API key:', error);
-  //     }
-  //   };
-  //   loadApiKey();
-  // }, []);
 
   return (
     <AppProvider>
