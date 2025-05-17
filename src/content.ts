@@ -1,5 +1,5 @@
 import type { TreeNode } from './types';
-import { hasPortalClasses } from './utils/dom/dom-utils';
+import { hasPortalClasses, isRestrictedUrl } from './utils/dom/dom-utils';
 
 console.log('Portal Design Customizer content script loaded');
 
@@ -26,6 +26,19 @@ checkPageCompatibility();
  * Check if the current page is compatible with the extension
  */
 function checkPageCompatibility() {
+  // Skip if we're on a restricted URL
+  if (isRestrictedUrl(window.location.href)) {
+    chrome.runtime
+      .sendMessage({
+        action: 'checkCompatibility',
+        data: { compatible: false, restricted: true },
+      })
+      .catch((error) => {
+        console.error('Error sending compatibility status:', error);
+      });
+    return;
+  }
+
   // Check if the page has portal-* classes
   const compatible = hasPortalClasses();
 
@@ -33,7 +46,7 @@ function checkPageCompatibility() {
   chrome.runtime
     .sendMessage({
       action: 'checkCompatibility',
-      data: { compatible },
+      data: { compatible, restricted: false },
     })
     .catch((error) => {
       console.error('Error sending compatibility status:', error);

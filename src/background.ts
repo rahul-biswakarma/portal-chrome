@@ -1,4 +1,5 @@
 // Background script for Portal Chrome Extension
+import { isRestrictedUrl } from './utils/dom/dom-utils';
 
 // Configure side panel when extension is installed
 chrome.runtime.onInstalled.addListener(() => {
@@ -28,29 +29,53 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
  */
 async function checkTabCompatibility(tabId: number) {
   try {
-    // Inject a content script to check for portal classes
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: checkForPortalClasses,
-    });
+    // Get the tab information first
+    const tab = await chrome.tabs.get(tabId);
 
-    const hasPortalClasses = results[0]?.result || false;
-
-    // Update the extension icon and popup based on compatibility
-    if (!hasPortalClasses) {
-      // Set badge to indicate extension won't work
-      chrome.action.setBadgeText({ text: '✗', tabId });
+    // Check if it's a restricted URL (chrome://, etc.)
+    if (tab.url && isRestrictedUrl(tab.url)) {
+      chrome.action.setBadgeText({ text: '!', tabId });
       chrome.action.setBadgeBackgroundColor({ color: '#E53E3E', tabId });
       chrome.action.setTitle({
-        title:
-          'Portal Extension: Not compatible with this page. No portal-* classes found.',
+        title: 'Portal Extension: Cannot access this page (restricted URL)',
         tabId,
       });
-    } else {
-      // Clear badge when portal classes are found
-      chrome.action.setBadgeText({ text: '', tabId });
+      return;
+    }
+
+    // For non-restricted URLs, try to inject content script
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: checkForPortalClasses,
+      });
+
+      const hasPortalClasses = results[0]?.result || false;
+
+      // Update the extension icon and popup based on compatibility
+      if (!hasPortalClasses) {
+        // Set badge to indicate extension won't work
+        chrome.action.setBadgeText({ text: '✗', tabId });
+        chrome.action.setBadgeBackgroundColor({ color: '#E53E3E', tabId });
+        chrome.action.setTitle({
+          title:
+            'Portal Extension: Not compatible with this page. No portal-* classes found.',
+          tabId,
+        });
+      } else {
+        // Clear badge when portal classes are found
+        chrome.action.setBadgeText({ text: '', tabId });
+        chrome.action.setTitle({
+          title: 'Portal Design Customizer',
+          tabId,
+        });
+      }
+    } catch (scriptError) {
+      console.warn('Could not execute script in tab:', scriptError);
+      chrome.action.setBadgeText({ text: '!', tabId });
+      chrome.action.setBadgeBackgroundColor({ color: '#E53E3E', tabId });
       chrome.action.setTitle({
-        title: 'Portal Design Customizer',
+        title: 'Portal Extension: Cannot access page content',
         tabId,
       });
     }
@@ -72,6 +97,20 @@ async function checkTabCompatibility(tabId: number) {
  */
 function checkForPortalClasses(): boolean {
   try {
+    // First check if we're on a restricted URL
+    if (
+      window.location.href.startsWith('chrome://') ||
+      window.location.href.startsWith('chrome-extension://') ||
+      window.location.href.startsWith('chrome-search://') ||
+      window.location.href.startsWith('about:')
+    ) {
+      console.warn(
+        'Cannot check for portal classes on restricted URL:',
+        window.location.href,
+      );
+      return false;
+    }
+
     // Use querySelector with attribute selector that matches class names containing 'portal-'
     const portalElements = document.querySelectorAll('[class*="portal-"]');
     return portalElements.length > 0;
@@ -82,47 +121,65 @@ function checkForPortalClasses(): boolean {
 }
 
 // Enable side panel when extension icon is clicked
-chrome.action.onClicked.addListener((tab) => {
+chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id) {
-    // Check if the page is compatible first
-    chrome.scripting
-      .executeScript({
-        target: { tabId: tab.id },
-        func: checkForPortalClasses,
-      })
-      .then((results) => {
-        const hasPortalClasses = results[0]?.result || false;
-
-        if (hasPortalClasses) {
-          // Get current window ID then open side panel
-          chrome.windows.getCurrent().then((window) => {
-            if (window && window.id !== undefined) {
-              chrome.sidePanel.open({
-                tabId: tab.id,
-                windowId: window.id,
-              });
-            }
-          });
-        } else {
-          // Show a notification if portal classes don't exist
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: '/icon-48.png',
-            title: 'Portal Extension',
-            message:
-              'This extension only works on pages with portal-* classes.',
-            priority: 1,
-          });
-        }
-      })
-      .catch((error) => {
-        console.error('Error checking for portal classes:', error);
+    // Use tab.url directly to check if it's a restricted URL
+    if (tab.url && isRestrictedUrl(tab.url)) {
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon-48.png',
+        title: 'Portal Extension',
+        message: 'This extension cannot access restricted Chrome pages.',
+        priority: 1,
       });
+      return;
+    }
+
+    // Open side panel directly in response to click
+    try {
+      // Get the window ID directly from the tab
+      const windowId = tab.windowId;
+      if (windowId !== undefined) {
+        // Open side panel in the specified window
+        chrome.sidePanel.open({ windowId });
+      } else {
+        console.error('Unable to determine window ID from tab');
+      }
+    } catch (error) {
+      console.error('Failed to open side panel:', error);
+    }
   }
 });
 
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  // Handle compatibility status update from content script
+  if (request.action === 'checkCompatibility') {
+    if (_sender.tab?.id) {
+      // If content script reports this is a restricted URL, update badge accordingly
+      if (request.data?.restricted) {
+        chrome.action.setBadgeText({ text: '!', tabId: _sender.tab.id });
+        chrome.action.setBadgeBackgroundColor({
+          color: '#E53E3E',
+          tabId: _sender.tab.id,
+        });
+        chrome.action.setTitle({
+          title: 'Portal Extension: Cannot access this page (restricted URL)',
+          tabId: _sender.tab.id,
+        });
+        sendResponse({ success: true });
+        return true;
+      }
+
+      // Otherwise proceed with normal compatibility check
+      checkTabCompatibility(_sender.tab.id);
+      sendResponse({ success: true });
+    } else {
+      sendResponse({ success: false, error: 'No tab ID found' });
+    }
+    return true;
+  }
+
   // Handle ping request (used for checking connection health)
   if (request.action === 'ping') {
     sendResponse({ success: true, message: 'background connected' });
@@ -151,17 +208,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       });
     }
     return true; // Keep message channel open for async response
-  }
-
-  // Handle check compatibility request from content scripts
-  if (request.action === 'checkCompatibility') {
-    if (_sender.tab?.id) {
-      checkTabCompatibility(_sender.tab.id);
-      sendResponse({ success: true });
-    } else {
-      sendResponse({ success: false, error: 'No tab ID found' });
-    }
-    return true;
   }
 });
 
