@@ -22,6 +22,7 @@ interface HTMLElementWithStyles extends HTMLElement {
 // Current status
 let activeHighlights: HTMLElementWithStyles[] = [];
 const styleId = 'portal-design-customizer-css';
+let portalClassesFound = false;
 
 // Utility functions inlined to avoid imports
 /**
@@ -51,26 +52,124 @@ function hasPortalClasses(): boolean {
   try {
     // First check if we're on a restricted page
     if (isRestrictedUrl(window.location.href)) {
-      console.warn(
-        'Cannot check for portal classes on restricted URL:',
-        window.location.href,
-      );
       return false;
     }
 
-    // Use querySelector with a CSS attribute selector to find elements with classes starting with 'portal-'
-    const portalElements = document.querySelectorAll('[class*="portal-"]');
+    // First attempt with standard selector
+    let portalElements = document.querySelectorAll('[class*="portal-"]');
 
-    // Check if we found any elements
-    return portalElements.length > 0;
+    if (portalElements.length > 0) {
+      portalClassesFound = true;
+      return true;
+    }
+
+    // Try alternative specific selectors
+    const withExactClass = document.querySelectorAll(
+      '.portal-public, .portal-home-page',
+    );
+
+    if (withExactClass.length > 0) {
+      portalClassesFound = true;
+      return true;
+    }
+
+    // If not found, try with a more thorough approach by checking all elements with classes
+    const allElementsWithClass = document.querySelectorAll('[class]');
+
+    // Check for partial string match in class attribute
+    for (const element of allElementsWithClass) {
+      // Check if the className string contains 'portal-'
+      const classStr = element.getAttribute('class');
+      if (classStr && classStr.includes('portal-')) {
+        portalClassesFound = true;
+        return true;
+      }
+
+      // Also check through classList to be thorough
+      const classList = element.classList;
+      for (const className of classList) {
+        if (className.startsWith('portal-')) {
+          portalClassesFound = true;
+          return true;
+        }
+      }
+    }
+
+    return false;
   } catch (error) {
     console.error('Error checking for portal classes:', error);
     return false;
   }
 }
 
-// Check compatibility when content script loads
+// Check compatibility when content script loads, but with a delay to allow for page to fully render
 checkPageCompatibility();
+
+// Short delay for initial page render
+setTimeout(() => {
+  checkPageCompatibility();
+}, 500);
+
+// Longer delay for slower pages
+setTimeout(() => {
+  checkPageCompatibility();
+}, 2000);
+
+// Also observe DOM changes to detect dynamically added portal classes
+setupPortalClassObserver();
+
+/**
+ * Set up a MutationObserver to detect portal classes added dynamically
+ */
+function setupPortalClassObserver() {
+  // Don't observe if we already found portal classes
+  if (portalClassesFound) {
+    return;
+  }
+
+  // Create a observer to watch for DOM changes
+  const observer = new MutationObserver((_mutations) => {
+    // Skip check if we already found portal classes
+    if (portalClassesFound) {
+      observer.disconnect();
+      return;
+    }
+
+    // Check if we need to notify about newly found portal classes
+    if (hasPortalClasses()) {
+      // Notify the background script
+      chrome.runtime
+        .sendMessage({
+          action: 'checkCompatibility',
+          data: { compatible: true, restricted: false },
+        })
+        .catch((error) => {
+          console.error('Error sending compatibility status:', error);
+        });
+
+      // Disconnect the observer once we've found portal classes
+      observer.disconnect();
+    }
+  });
+
+  // Start observing the document body for DOM changes
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+
+  // Set a timeout to disconnect the observer after 20 seconds
+  setTimeout(() => {
+    observer.disconnect();
+
+    // One final check
+    if (!portalClassesFound) {
+      checkPageCompatibility();
+    }
+  }, 20000);
+}
 
 /**
  * Check if the current page is compatible with the extension
@@ -101,9 +200,6 @@ function checkPageCompatibility() {
     .catch((error) => {
       console.error('Error sending compatibility status:', error);
     });
-
-  // If not compatible, we'll let the background script handle it
-  // This keeps the notification logic in one place
 }
 
 /**
@@ -118,11 +214,60 @@ function getPortalTreeData(): TreeNode {
     children: [],
   };
 
-  // Get all elements with classes starting with "portal-"
-  const portalElements = document.querySelectorAll('[class*="portal-"]');
+  // Use a combination of approaches to find all portal elements
+  let portalElements: Element[] = [];
+
+  // First try standard selector
+  const directMatches = document.querySelectorAll('[class*="portal-"]');
+
+  if (directMatches.length > 0) {
+    portalElements = Array.from(directMatches);
+  } else {
+    // Try with exact class selectors
+    const exactMatches = document.querySelectorAll(
+      '.portal-public, .portal-home-page',
+    );
+
+    if (exactMatches.length > 0) {
+      portalElements = Array.from(exactMatches);
+    } else {
+      // Try with thorough approach
+      const allElementsWithClass = document.querySelectorAll('[class]');
+      const elementsWithPortalClass: Element[] = [];
+
+      for (const element of allElementsWithClass) {
+        // Check attribute directly
+        const classStr = element.getAttribute('class');
+        if (classStr && classStr.includes('portal-')) {
+          elementsWithPortalClass.push(element);
+          continue;
+        }
+
+        // Check through classList
+        const classList = element.classList;
+        for (const className of classList) {
+          if (className.startsWith('portal-')) {
+            elementsWithPortalClass.push(element);
+            break;
+          }
+        }
+      }
+
+      if (elementsWithPortalClass.length > 0) {
+        portalElements = elementsWithPortalClass;
+      }
+    }
+  }
+
+  if (portalElements.length === 0) {
+    return rootNode;
+  }
 
   // Build a tree of portal-class elements
-  buildTreeFromElements(rootNode, portalElements);
+  buildTreeFromElements(
+    rootNode,
+    portalElements as unknown as NodeListOf<Element>,
+  );
 
   return rootNode;
 }
@@ -136,8 +281,25 @@ function buildTreeFromElements(
   root: TreeNode,
   elements: NodeListOf<Element>,
 ): void {
+  // Special handling for body element - add portal classes directly
+  if (root.element === 'body') {
+    // Check if body has portal classes
+    const bodyClasses = Array.from(document.body.classList);
+    const bodyPortalClasses = bodyClasses.filter((cls) =>
+      cls.startsWith('portal-'),
+    );
+    if (bodyPortalClasses.length > 0) {
+      root.portalClasses = bodyPortalClasses;
+    }
+  }
+
   // Convert NodeList to array for easier manipulation
   const elementsArray = Array.from(elements);
+
+  // If no elements to process, return early
+  if (elementsArray.length === 0) {
+    return;
+  }
 
   // Find direct children of the root node
   const childElements = elementsArray.filter((el) => {
@@ -151,7 +313,10 @@ function buildTreeFromElements(
     // For other nodes, check if parent has the same class as root node
     if (root.portalClasses.length > 0) {
       const parentClasses = Array.from(el.parentElement.classList);
-      return root.portalClasses.some((cls) => parentClasses.includes(cls));
+      const isChild = root.portalClasses.some((cls) =>
+        parentClasses.includes(cls),
+      );
+      return isChild;
     }
 
     return false;
@@ -185,6 +350,31 @@ function buildTreeFromElements(
       elementsArray as unknown as NodeListOf<Element>,
     );
   });
+
+  // If we couldn't find any direct children but there are remaining elements,
+  // add them all as children of the current root as a fallback
+  if (
+    root.children.length === 0 &&
+    root.element === 'body' &&
+    elementsArray.length > 0
+  ) {
+    elementsArray.forEach((el) => {
+      const allClasses = Array.from(el.classList);
+      const portalClasses = allClasses.filter((cls) =>
+        cls.startsWith('portal-'),
+      );
+
+      if (portalClasses.length > 0) {
+        const childNode: TreeNode = {
+          element: el.tagName.toLowerCase(),
+          portalClasses,
+          children: [],
+        };
+
+        root.children.push(childNode);
+      }
+    });
+  }
 }
 
 /**
@@ -194,9 +384,31 @@ function buildTreeFromElements(
 function getTailwindClasses() {
   const result: Record<string, string[]> = {};
 
-  // Get all elements with classes starting with "portal-"
-  const portalElements = document.querySelectorAll('[class*="portal-"]');
+  // First try standard selector
+  let portalElements = document.querySelectorAll('[class*="portal-"]');
 
+  // If no elements found, try a more thorough approach
+  if (portalElements.length === 0) {
+    const allElementsWithClass = document.querySelectorAll('[class]');
+    const elementsWithPortalClass: Element[] = [];
+
+    for (const element of allElementsWithClass) {
+      const classList = element.classList;
+      for (const className of classList) {
+        if (className.startsWith('portal-')) {
+          elementsWithPortalClass.push(element);
+          break; // Found a portal class on this element, move to next element
+        }
+      }
+    }
+
+    if (elementsWithPortalClass.length > 0) {
+      portalElements =
+        elementsWithPortalClass as unknown as NodeListOf<Element>;
+    }
+  }
+
+  // Process all portal elements to extract classes
   portalElements.forEach((el) => {
     const classList = Array.from(el.classList);
     const portalClasses = classList.filter((cls) => cls.startsWith('portal-'));
@@ -317,8 +529,6 @@ function removeHighlight(): void {
 
 // Listen for messages from the extension
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-  console.log('Content script received message:', request.action);
-
   try {
     // Handle getting portal class tree
     if (request.action === 'getPortalClassTree') {

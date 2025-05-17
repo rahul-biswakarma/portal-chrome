@@ -221,11 +221,29 @@ export const HierarchyView = () => {
     );
   }
 
+  // Improved check for empty tree data - look for any portal classes in the entire tree
+  const hasPortalClasses = (node: TreeNode | null): boolean => {
+    if (!node) return false;
+
+    // Check if current node has portal classes
+    if (node.portalClasses && node.portalClasses.length > 0) {
+      return true;
+    }
+
+    // Check children recursively
+    if (node.children && node.children.length > 0) {
+      for (const child of node.children) {
+        if (hasPortalClasses(child)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
   // Render empty state
-  if (
-    !treeData ||
-    (treeData.children.length === 0 && treeData.portalClasses.length === 0)
-  ) {
+  if (!treeData || !hasPortalClasses(treeData)) {
     return (
       <div className="p-4">
         <div className="font-bold">No portal classes found</div>
