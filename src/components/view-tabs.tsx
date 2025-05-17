@@ -1,14 +1,27 @@
 import type { ViewTabsSchema } from '@/types';
 import { Separator } from './ui/separator';
+import clsx from 'clsx';
 
-export const ViewTabs = ({ config }: { config: ViewTabsSchema[] }) => {
+export const ViewTabs = ({
+  config,
+  activeTab,
+  setActiveTab,
+}: {
+  config: ViewTabsSchema[];
+  activeTab: string | null;
+  setActiveTab: React.Dispatch<React.SetStateAction<string>>;
+}) => {
   return (
     <div className="h-full flex-1">
       <div className="flex flex-wrap gap-2 justify-center items-center p-2">
         {config.map((tab) => (
           <div
-            className="p-2 hover:bg-card rounded cursor-pointer select-none"
+            className={clsx(
+              'p-2 hover:bg-mute rounded cursor-pointer select-none',
+              activeTab === tab.id && 'bg-secondary',
+            )}
             key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
           >
             {tab.trigger}
           </div>
@@ -17,7 +30,10 @@ export const ViewTabs = ({ config }: { config: ViewTabsSchema[] }) => {
       <Separator />
       <div className="p-2 h-full">
         {config.map((tab) => (
-          <div className="h-full" key={tab.id}>
+          <div
+            className={clsx('h-full', activeTab !== tab.id && 'hidden')}
+            key={tab.id}
+          >
             {tab.content}
           </div>
         ))}

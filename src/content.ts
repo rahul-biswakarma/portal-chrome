@@ -1,5 +1,9 @@
-import type { TreeNode } from './types';
-import { hasPortalClasses, isRestrictedUrl } from './utils/dom/dom-utils';
+// Inline the type and utility functions directly instead of importing
+type TreeNode = {
+  element: string;
+  portalClasses: string[];
+  children: TreeNode[];
+};
 
 console.log('Portal Design Customizer content script loaded');
 
@@ -18,6 +22,52 @@ interface HTMLElementWithStyles extends HTMLElement {
 // Current status
 let activeHighlights: HTMLElementWithStyles[] = [];
 const styleId = 'portal-design-customizer-css';
+
+// Utility functions inlined to avoid imports
+/**
+ * Check if the current URL is a restricted URL that cannot be accessed by extensions
+ * @returns {boolean} True if the URL is restricted
+ */
+function isRestrictedUrl(url: string): boolean {
+  // Check if URL starts with any of these restricted protocols
+  return (
+    url.startsWith('chrome://') ||
+    url.startsWith('chrome-extension://') ||
+    url.startsWith('chrome-search://') ||
+    url.startsWith('chrome-devtools://') ||
+    url.startsWith('devtools://') ||
+    url.startsWith('view-source:') ||
+    url.startsWith('about:') ||
+    url.startsWith('edge:') || // For Edge
+    url.startsWith('data:')
+  );
+}
+
+/**
+ * Check if the current DOM contains elements with class names starting with 'portal-'
+ * @returns {boolean} True if portal classes are found, false otherwise
+ */
+function hasPortalClasses(): boolean {
+  try {
+    // First check if we're on a restricted page
+    if (isRestrictedUrl(window.location.href)) {
+      console.warn(
+        'Cannot check for portal classes on restricted URL:',
+        window.location.href,
+      );
+      return false;
+    }
+
+    // Use querySelector with a CSS attribute selector to find elements with classes starting with 'portal-'
+    const portalElements = document.querySelectorAll('[class*="portal-"]');
+
+    // Check if we found any elements
+    return portalElements.length > 0;
+  } catch (error) {
+    console.error('Error checking for portal classes:', error);
+    return false;
+  }
+}
 
 // Check compatibility when content script loads
 checkPageCompatibility();

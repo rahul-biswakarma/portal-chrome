@@ -1,5 +1,23 @@
 // Background script for Portal Chrome Extension
-import { isRestrictedUrl } from './utils/dom/dom-utils';
+// Inline utility functions instead of importing
+/**
+ * Check if the current URL is a restricted URL that cannot be accessed by extensions
+ * @returns {boolean} True if the URL is restricted
+ */
+function isRestrictedUrl(url: string): boolean {
+  // Check if URL starts with any of these restricted protocols
+  return (
+    url.startsWith('chrome://') ||
+    url.startsWith('chrome-extension://') ||
+    url.startsWith('chrome-search://') ||
+    url.startsWith('chrome-devtools://') ||
+    url.startsWith('devtools://') ||
+    url.startsWith('view-source:') ||
+    url.startsWith('about:') ||
+    url.startsWith('edge:') || // For Edge
+    url.startsWith('data:')
+  );
+}
 
 // Configure side panel when extension is installed
 chrome.runtime.onInstalled.addListener(() => {
