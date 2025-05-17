@@ -32,9 +32,9 @@ export function getActiveTab(): Promise<chrome.tabs.Tab> {
  * @param message The message to send
  * @returns Promise resolving to the response
  */
-export function safeSendMessage<T = any>(
+export function safeSendMessage<T = unknown>(
   tabId: number,
-  message: any,
+  message: Record<string, unknown>,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     try {
@@ -60,7 +60,7 @@ export function safeSendMessage<T = any>(
  * @param func The function to execute
  * @returns Promise resolving to the result of the script execution
  */
-export function executeScript<T = any>(
+export function executeScript<T = unknown>(
   tabId: number,
   func: () => T,
 ): Promise<T> {

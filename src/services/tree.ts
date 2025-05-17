@@ -1,5 +1,30 @@
-import type { TreeNode } from '../types'
-import { getActiveTab, safeSendMessage } from '../utils/chrome-utils'
+import { getActiveTab, safeSendMessage } from '@/utils/chrome-utils';
+import type { TreeNode } from '../types';
+
+interface TreeResponse {
+  success: boolean;
+  data: TreeNode;
+  error?: string;
+}
+
+interface TailwindClassesResponse {
+  success: boolean;
+  data: Record<string, string[]>;
+  error?: string;
+}
+
+interface CSSResponse {
+  success: boolean;
+  data: string;
+  error?: string;
+}
+
+// Define interface for the simplified tree node
+interface SimplifiedTreeNode {
+  element: string;
+  portalClasses: string[];
+  children: SimplifiedTreeNode[];
+}
 
 /**
  * Load the portal class tree from the active tab
@@ -7,35 +32,35 @@ import { getActiveTab, safeSendMessage } from '../utils/chrome-utils'
  */
 export const loadTreeData = async (): Promise<TreeNode> => {
   try {
-    const tab = await getActiveTab()
+    const tab = await getActiveTab();
 
-    const response = await safeSendMessage(tab.id!, {
+    const response = await safeSendMessage<TreeResponse>(tab.id!, {
       action: 'getPortalClassTree',
-    })
+    });
 
     if (!response || !response.success) {
-      throw new Error('Failed to get portal class tree data')
+      throw new Error('Failed to get portal class tree data');
     }
 
-    return response.data
+    return response.data;
   } catch (error) {
-    console.error('Error loading tree data:', error)
-    throw error
+    console.error('Error loading tree data:', error);
+    throw error;
   }
-}
+};
 
 /**
  * Simplify a tree node for display or API use
  * @param node The node to simplify
  * @returns A simplified representation of the node
  */
-export const simplifyTree = (node: TreeNode): any => {
+export const simplifyTree = (node: TreeNode): SimplifiedTreeNode => {
   return {
     element: node.element,
     portalClasses: node.portalClasses,
     children: node.children.map(simplifyTree),
-  }
-}
+  };
+};
 
 /**
  * Collect all portal classes from a tree
@@ -43,13 +68,13 @@ export const simplifyTree = (node: TreeNode): any => {
  * @returns Array of all portal classes
  */
 export const extractPortalClasses = (node: TreeNode): string[] => {
-  let classes = [...node.portalClasses]
+  let classes = [...node.portalClasses];
   node.children.forEach((child) => {
-    classes = classes.concat(extractPortalClasses(child))
-  })
+    classes = classes.concat(extractPortalClasses(child));
+  });
   // Remove duplicates
-  return [...new Set(classes)]
-}
+  return [...new Set(classes)];
+};
 
 /**
  * Collect tailwind classes from the current tab
@@ -59,23 +84,23 @@ export const collectTailwindClasses = async (): Promise<
   Record<string, string[]>
 > => {
   try {
-    const tab = await getActiveTab()
+    const tab = await getActiveTab();
 
-    const response = await safeSendMessage(tab.id!, {
+    const response = await safeSendMessage<TailwindClassesResponse>(tab.id!, {
       action: 'getTailwindClasses',
-    })
+    });
 
     if (!response || !response.success) {
-      throw new Error('Failed to collect tailwind classes')
+      throw new Error('Failed to collect tailwind classes');
     }
 
-    return response.data || {}
+    return response.data || {};
   } catch (error) {
-    console.error('Error collecting tailwind classes:', error)
+    console.error('Error collecting tailwind classes:', error);
     // Return empty object as fallback
-    return {}
+    return {};
   }
-}
+};
 
 /**
  * Get the current CSS from the page
@@ -83,19 +108,19 @@ export const collectTailwindClasses = async (): Promise<
  */
 export const getCurrentCSS = async (): Promise<string> => {
   try {
-    const tab = await getActiveTab()
+    const tab = await getActiveTab();
 
-    const response = await safeSendMessage(tab.id!, {
+    const response = await safeSendMessage<CSSResponse>(tab.id!, {
       action: 'getCurrentCSS',
-    })
+    });
 
     if (!response || !response.success) {
-      throw new Error('Failed to get current CSS')
+      throw new Error('Failed to get current CSS');
     }
 
-    return response.data || ''
+    return response.data || '';
   } catch (error) {
-    console.error('Error getting current CSS:', error)
-    return ''
+    console.error('Error getting current CSS:', error);
+    return '';
   }
-}
+};

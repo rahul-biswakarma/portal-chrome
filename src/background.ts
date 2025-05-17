@@ -19,13 +19,16 @@ function isRestrictedUrl(url: string): boolean {
   );
 }
 
-// Configure side panel when extension is installed
+// Configure side panel when extension is installed - only if sidePanel API exists
 chrome.runtime.onInstalled.addListener(() => {
-  // Set the default side panel path
-  chrome.sidePanel.setOptions({
-    path: 'index.html',
-    enabled: true,
-  });
+  // Check if sidePanel API is available (Chrome 114+)
+  if (chrome.sidePanel) {
+    // Set the default side panel path
+    chrome.sidePanel.setOptions({
+      path: 'index.html',
+      enabled: true,
+    });
+  }
 });
 
 // Listen for tab activation changes
@@ -143,25 +146,31 @@ chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id) {
     // Use tab.url directly to check if it's a restricted URL
     if (tab.url && isRestrictedUrl(tab.url)) {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon-48.png',
-        title: 'Portal Extension',
-        message: 'This extension cannot access restricted Chrome pages.',
-        priority: 1,
-      });
+      // Check if notifications API is available
+      if (chrome.notifications) {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icons/icon-48.png',
+          title: 'Portal Extension',
+          message: 'This extension cannot access restricted Chrome pages.',
+          priority: 1,
+        });
+      }
       return;
     }
 
-    // Open side panel directly in response to click
+    // Open side panel directly in response to click if sidePanel API exists
     try {
-      // Get the window ID directly from the tab
-      const windowId = tab.windowId;
-      if (windowId !== undefined) {
-        // Open side panel in the specified window
-        chrome.sidePanel.open({ windowId });
-      } else {
-        console.error('Unable to determine window ID from tab');
+      // Check if sidePanel API is available
+      if (chrome.sidePanel) {
+        // Get the window ID directly from the tab
+        const windowId = tab.windowId;
+        if (windowId !== undefined) {
+          // Open side panel in the specified window
+          chrome.sidePanel.open({ windowId });
+        } else {
+          console.error('Unable to determine window ID from tab');
+        }
       }
     } catch (error) {
       console.error('Failed to open side panel:', error);
@@ -206,60 +215,55 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
   // Handle capture visible tab
   if (request.action === 'captureVisibleTab') {
-    try {
-      captureCurrentTab()
-        .then((dataUrl) => {
-          sendResponse({ success: true, data: dataUrl });
-        })
-        .catch((error) => {
-          console.error('Tab capture error:', error);
-          sendResponse({ success: false, error: error.message });
-        });
-    } catch (error) {
-      console.error('Error starting visible capture:', error);
-      sendResponse({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unknown error in background script',
+    captureVisibleTab()
+      .then((dataUrl) => {
+        sendResponse({ success: true, data: dataUrl });
+      })
+      .catch((error) => {
+        console.error('Error capturing tab:', error);
+        sendResponse({ success: false, error: error.message });
       });
-    }
-    return true; // Keep message channel open for async response
+    return true; // Required to use sendResponse asynchronously
   }
+
+  // Add other message handlers here as needed
+  return false;
 });
 
 /**
- * Capture the current tab as a screenshot
- * @returns Promise resolving to the screenshot data URL
+ * Capture the visible tab as a screenshot
  */
-async function captureCurrentTab(): Promise<string> {
-  try {
-    // Get the current tab
-    const [activeTab] = await chrome.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!activeTab || !activeTab.id) {
-      throw new Error('No active tab found for screenshot');
+async function captureVisibleTab(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    try {
+      chrome.tabs.captureVisibleTab(
+        { format: 'png', quality: 100 },
+        (dataUrl) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else if (!dataUrl) {
+            reject(new Error('Failed to capture screenshot'));
+          } else {
+            resolve(dataUrl);
+          }
+        },
+      );
+    } catch (error) {
+      reject(error);
     }
-
-    // Try with a slight delay first to ensure the page is rendered completely
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
-    // Simple direct capture with highest quality
-    const dataUrl = await chrome.tabs.captureVisibleTab(activeTab.windowId, {
-      format: 'png',
-      quality: 100,
-    });
-
-    if (!dataUrl || !dataUrl.startsWith('data:image')) {
-      throw new Error('Invalid data URL format');
-    }
-
-    return dataUrl;
-  } catch (error) {
-    console.error('Error capturing screenshot:', error);
-    throw error;
-  }
+  });
 }
+
+// Add iteration tracking to communicate with the UI
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.action === 'css-iteration-update') {
+    // Forward the iteration update to the popup
+    chrome.runtime.sendMessage({
+      action: 'iteration-update',
+      iteration: message.iteration,
+    });
+    sendResponse({ success: true });
+    return true;
+  }
+  return false;
+});
