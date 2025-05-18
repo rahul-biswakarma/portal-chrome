@@ -97,6 +97,17 @@ export const CssEditor = () => {
   const handleApplyCss = async () => {
     if (viewRef.current) {
       const content = viewRef.current.state.doc.toString();
+      console.log('Applying CSS, content length:', content.length);
+
+      if (
+        !content ||
+        content.trim() === '' ||
+        content.trim() === '/* CSS will appear here when generated */'
+      ) {
+        addLog('No CSS content to apply', 'error');
+        return;
+      }
+
       addLog('Applying modified CSS...', 'info');
       await applyCSS(content);
       addLog('CSS applied successfully', 'success');
@@ -112,8 +123,13 @@ export const CssEditor = () => {
 
       // Get current CSS from editor
       const content = viewRef.current.state.doc.toString();
+      console.log('Current editor content:', content);
 
-      if (!content.trim()) {
+      if (
+        !content ||
+        content.trim() === '' ||
+        content.trim() === '/* CSS will appear here when generated */'
+      ) {
         throw new Error('No CSS content found in editor');
       }
 
@@ -249,7 +265,14 @@ export const CssEditor = () => {
           EditorView.lineWrapping,
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
-              setCurrentEditorContent(update.state.doc.toString());
+              const content = update.state.doc.toString();
+              setCurrentEditorContent(content);
+              // Update the appContext cssContent when editor content changes
+              setCssContent(content);
+              console.log(
+                'Editor content updated:',
+                content.substring(0, 50) + (content.length > 50 ? '...' : ''),
+              );
             }
           }),
         ],

@@ -123,12 +123,23 @@ export const Settings = () => {
       let cssContent = '';
 
       if (appContext.cssContent) {
+        // Log the content for debugging
+        console.log(
+          'App context CSS content length:',
+          appContext.cssContent.length,
+        );
+        console.log('CSS preview:', appContext.cssContent.substring(0, 50));
+
         // Clean CSS (remove markdown if present)
         cssContent = appContext.cssContent
           .replace(/```css\s*/g, '')
           .replace(/```\s*$/g, '')
           .replace(/```/g, '')
           .trim();
+
+        console.log('Cleaned CSS content length:', cssContent.length);
+      } else {
+        console.error('No CSS content found in app context');
       }
 
       if (!cssContent) {

@@ -15,11 +15,18 @@ interface StylesheetInfo {
   [key: string]: unknown;
 }
 
+interface PortalConfiguration {
+  aat_keyring_id?: string;
+  org_favicon?: { id: string } | string;
+  [key: string]: unknown;
+}
+
 interface PreferencesGetResponse {
   type: string;
   object: string;
   preference: {
     stylesheet?: string | StylesheetInfo;
+    configuration?: PortalConfiguration;
     [key: string]: unknown;
   };
 }
@@ -55,6 +62,8 @@ export const getPortalPreferences =
       url.searchParams.append('type', 'portal_preferences');
       url.searchParams.append('object', donId);
 
+      console.log(`Fetching preferences from ${url.toString()}`);
+
       const response = await fetch(url.toString(), {
         method: 'GET',
         headers: {
@@ -64,12 +73,19 @@ export const getPortalPreferences =
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `Failed to get preferences: ${response.status} ${response.statusText}`,
+          errorText,
+        );
         throw new Error(
           `Failed to get preferences: ${response.status} ${response.statusText}`,
         );
       }
 
-      return await response.json();
+      const data = await response.json();
+      console.log('Received preferences data:', JSON.stringify(data, null, 2));
+      return data;
     } catch (error) {
       console.error('Error getting portal preferences:', error);
       return null;
@@ -97,6 +113,7 @@ export const prepareArtifact = async (
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        configuration_set: 'portal_css',
         file_name: fileName,
         file_type: fileType,
       }),
@@ -155,33 +172,32 @@ export const updatePortalPreferences = async (
   stylesheetArtifactId: string,
 ): Promise<boolean> => {
   try {
-    const { baseUrl, pat } = await getDevRevConfig();
+    const { baseUrl, pat, donId } = await getDevRevConfig();
 
     if (!pat) {
       throw new Error('DevRev PAT is missing');
     }
 
-    // Update the stylesheet value - keep the same format (string or object) as received
-    const currentStylesheet = preferences.preference.stylesheet;
-    let updatedStylesheet: string | StylesheetInfo;
+    // Create a new preferences object with the updated stylesheet
+    // and remove the modified_by field if it exists
+    const { modified_by, modified_date, id, ...preferenceWithoutModifiedBy } =
+      preferences.preference;
 
-    if (typeof currentStylesheet === 'object' && currentStylesheet !== null) {
-      // Preserve the object structure but update the artifact ID
-      updatedStylesheet = {
-        ...currentStylesheet,
-        id: stylesheetArtifactId,
-      };
-    } else {
-      // Use simple string format if that's what was received or if nothing was there
-      updatedStylesheet = stylesheetArtifactId;
-    }
+    // Process configuration to remove aat_keyring_id and fix org_favicon
+    const configuration =
+      preferenceWithoutModifiedBy.configuration || ({} as PortalConfiguration);
+    const { aat_keyring_id, org_favicon, ...restConfig } = configuration;
 
     const updatedPreferences = {
-      ...preferences,
-      value: {
-        ...preferences.preference,
-        stylesheet: updatedStylesheet,
+      ...preferenceWithoutModifiedBy,
+      object: donId,
+      configuration: {
+        ...restConfig,
+        ...(org_favicon && typeof org_favicon === 'object'
+          ? { org_favicon: org_favicon.id }
+          : {}),
       },
+      stylesheet: stylesheetArtifactId,
     };
 
     const response = await fetch(`${baseUrl}/internal/preferences.update`, {
@@ -193,7 +209,13 @@ export const updatePortalPreferences = async (
       body: JSON.stringify(updatedPreferences),
     });
 
-    return response.ok;
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error updating preferences:', errorText);
+      return false;
+    }
+
+    return true;
   } catch (error) {
     console.error('Error updating portal preferences:', error);
     return false;
@@ -207,6 +229,11 @@ export const uploadCssToDevRev = async (
   cssContent: string,
 ): Promise<boolean> => {
   try {
+    if (!cssContent || cssContent.trim() === '') {
+      console.error('Empty CSS content provided');
+      return false;
+    }
+
     // Step 1: Get current preferences
     const preferences = await getPortalPreferences();
     if (!preferences) {
@@ -232,7 +259,13 @@ export const uploadCssToDevRev = async (
     }
 
     // Step 4: Update preferences with new artifact ID
-    return await updatePortalPreferences(preferences, artifactResponse.id);
+    const updateSuccess = await updatePortalPreferences(
+      preferences,
+      artifactResponse.id,
+    );
+
+    console.log('Preferences update result:', updateSuccess);
+    return updateSuccess;
   } catch (error) {
     console.error('Error uploading CSS to DevRev:', error);
     return false;
