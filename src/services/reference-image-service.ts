@@ -63,7 +63,7 @@ export class ReferenceImageService {
       this.isProcessing = true;
 
       // Capture current page screenshot
-      const currentScreenshot = await captureScreenshot();
+      const currentScreenshot = await captureScreenshot({ fullPage: true });
 
       // Get active tab
       const tab = await chrome.tabs.query({
@@ -321,7 +321,7 @@ export class ReferenceImageService {
       // Start the feedback loop
       for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
         // Capture current screenshot for this iteration
-        const currentScreenshot = await captureScreenshot();
+        const currentScreenshot = await captureScreenshot({ fullPage: true });
 
         // Get computed styles before CSS application
         const getComputedStyles = async (): Promise<
@@ -432,7 +432,7 @@ export class ReferenceImageService {
         this.lastGeneratedCSS = css;
 
         // Capture screenshot with applied CSS
-        const resultScreenshot = await captureScreenshot();
+        const resultScreenshot = await captureScreenshot({ fullPage: true });
 
         // Get updated computed styles after CSS application
         const updatedComputedStyles = await getComputedStyles();

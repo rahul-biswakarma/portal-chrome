@@ -80,7 +80,7 @@ export const processReferenceImage = async (
     // Initial screenshot
     let initialScreenshot;
     try {
-      initialScreenshot = await captureScreenshot();
+      initialScreenshot = await captureScreenshot({ fullPage: true });
     } catch (error) {
       console.error('Error in image-to-CSS workflow:', error);
       return {
@@ -154,7 +154,7 @@ export const processReferenceImage = async (
         }
 
         // Take new screenshot after CSS applied
-        currentScreenshot = await captureScreenshot();
+        currentScreenshot = await captureScreenshot({ fullPage: true });
 
         // Evaluate result
         const evaluation = await evaluateCSSResult(

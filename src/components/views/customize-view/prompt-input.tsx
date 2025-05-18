@@ -15,6 +15,8 @@ import {
   getOpenAIApiKey,
   chatManager,
 } from '@/utils/openai-client';
+import { captureScreenshot } from '@/utils/screenshot';
+import type { ScreenshotOptions } from '@/utils/screenshot';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -65,18 +67,19 @@ export const PromptInput = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageFile, generationStage]);
 
-  // Function to take current screenshot
-  const takeScreenshot = async (): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      chrome.tabs.captureVisibleTab({ format: 'png' }, (dataUrl) => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          reject(error);
-        } else {
-          resolve(dataUrl);
-        }
-      });
-    });
+  // Function to take current screenshot (using enhanced screenshot utility)
+  const takeScreenshot = async (fullPage: boolean = true): Promise<string> => {
+    try {
+      const options: ScreenshotOptions = { fullPage };
+      return await captureScreenshot(options);
+    } catch (error) {
+      console.error('Error taking screenshot:', error);
+      addLog(
+        `Screenshot failed: ${error instanceof Error ? error.message : String(error)}`,
+        'error',
+      );
+      throw error;
+    }
   };
 
   // Function to generate prompt from reference image and current page screenshot
@@ -99,9 +102,10 @@ export const PromptInput = () => {
         throw new Error('No active tab found');
       }
 
-      // Take screenshot of current page
+      // Take full page screenshot
       setProgress(35);
-      const screenshot = await takeScreenshot();
+      addLog('Capturing full page screenshot...', 'info');
+      const screenshot = await takeScreenshot(true);
 
       // Get page structure
       setProgress(40);
@@ -241,7 +245,10 @@ export const PromptInput = () => {
     try {
       setGenerationStage('generating');
       setProgress(10);
-      addLog(LogMessages.SCREENSHOT_TAKING || 'Taking screenshot...', 'info');
+      addLog(
+        LogMessages.SCREENSHOT_TAKING || 'Taking full page screenshot...',
+        'info',
+      );
 
       // Create a new session ID if we don't have one yet
       const currentSessionId = sessionId || `session_${Date.now()}`;
@@ -306,11 +313,9 @@ export const PromptInput = () => {
         );
       }
 
-      // Always take a screenshot for the current state, even if no reference image
-      addLog('Taking current page screenshot for AI context...', 'info');
-      const currentScreenshotForAI = await takeScreenshot();
-      // We don't need to call setCurrentScreenshot here for this specific screenshot
-      // as it's for direct use in the AI call.
+      // Always take a full page screenshot for the current state
+      addLog('Taking full page screenshot for AI context...', 'info');
+      const currentScreenshotForAI = await takeScreenshot(true);
 
       setProgress(40);
       addLog(`Generating initial CSS...`, 'info');
@@ -370,10 +375,10 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
       // Proceed with evaluation and iteration only if a reference image was provided
       setProgress(60);
       addLog(
-        `Taking screenshot after CSS application for evaluation...`,
+        `Taking full page screenshot after CSS application for evaluation...`,
         'info',
       );
-      let newScreenshotAfterCSS = await takeScreenshot();
+      let newScreenshotAfterCSS = await takeScreenshot(true);
 
       // Get updated computed styles after CSS application
       addLog(
@@ -478,10 +483,10 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
             await applyCSS(tab.id, currentCss);
 
             addLog(
-              `Iteration ${i + 1}: Taking screenshot after CSS update...`,
+              `Iteration ${i + 1}: Taking full page screenshot after CSS update...`,
               'info',
             );
-            newScreenshotAfterCSS = await takeScreenshot();
+            newScreenshotAfterCSS = await takeScreenshot(true);
 
             // Get updated computed styles after this iteration
             addLog(
