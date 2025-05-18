@@ -13,6 +13,7 @@ import {
   generateCSSWithAI,
   evaluateCSSResultWithAI,
   getOpenAIApiKey,
+  chatManager,
 } from '@/utils/openai-client';
 
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ export const PromptInput = () => {
   const [isImageTagHovered, setIsImageTagHovered] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const { addLog } = useLogger();
   const { setProgress } = useProgressStore();
 
@@ -49,6 +51,7 @@ export const PromptInput = () => {
     setPrompt('');
     setGenerationStage('idle');
     setProgress(0);
+    setSessionId(null); // Reset the session ID when changing images
 
     // Call the original handler from context
     originalHandleImageChange(e);
@@ -84,6 +87,11 @@ export const PromptInput = () => {
       setIsGeneratingPrompt(true);
       setProgress(25); // Show initial progress
       addLog('Generating prompt from reference image...', 'info');
+
+      // Create a new session ID for this generation process
+      const newSessionId = `session_${Date.now()}`;
+      setSessionId(newSessionId);
+      addLog(`Created new chat session: ${newSessionId}`, 'info');
 
       // Get active tab
       const tab = await getActiveTab();
@@ -144,7 +152,7 @@ export const PromptInput = () => {
         throw new Error('OpenAI API key not found');
       }
 
-      // Generate prompt using AI
+      // Generate prompt using AI with the new session ID
       setProgress(75);
       const generatedPrompt = await generatePromptWithAI(
         apiKey,
@@ -154,6 +162,7 @@ export const PromptInput = () => {
         tailwindData,
         currentCSS,
         computedStyles,
+        newSessionId, // Pass the session ID
       );
 
       // Set the generated prompt
@@ -233,6 +242,15 @@ export const PromptInput = () => {
       setGenerationStage('generating');
       setProgress(10);
       addLog(LogMessages.SCREENSHOT_TAKING || 'Taking screenshot...', 'info');
+
+      // Create a new session ID if we don't have one yet
+      const currentSessionId = sessionId || `session_${Date.now()}`;
+      if (!sessionId) {
+        setSessionId(currentSessionId);
+        addLog(`Created new chat session: ${currentSessionId}`, 'info');
+      } else {
+        addLog(`Using existing chat session: ${currentSessionId}`, 'info');
+      }
 
       const tab = await getActiveTab();
       if (!tab.id) {
@@ -328,6 +346,7 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
         referenceImgForAI, // This can be undefined
         currentScreenshotForAI, // Screenshot of the page *before* changes
         computedStyles, // Computed styles
+        currentSessionId, // Pass the session ID
       );
 
       setProgress(50);
@@ -373,6 +392,7 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
         classHierarchy, // Add class hierarchy
         tailwindData, // Add tailwind data
         updatedComputedStyles, // Updated computed styles
+        currentSessionId, // Pass the session ID
       );
 
       if (evaluation.isMatch) {
@@ -388,7 +408,47 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
 
       // Begin iteration loop if initial CSS needs improvement
       let isSuccessful = false;
-      const maxIterations = 5; // Max iterations after the initial attempt
+      const maxIterations = 3; // Reduced from 5 to 3 iterations
+      let bestCss = currentCss; // Track the best CSS version
+
+      // Simple function to compare CSS lengths to detect potential overwrites
+      const isCssLikelyImprovement = (
+        oldCss: string,
+        newCss: string,
+      ): boolean => {
+        // Reject if new CSS is more than 50% larger (likely adding too much)
+        if (newCss.length > oldCss.length * 1.5) {
+          addLog(
+            'Proposed CSS changes appear too aggressive, being selective about changes',
+            'warning',
+          );
+          return false;
+        }
+
+        // Reject if new CSS is more than 25% smaller (likely lost content)
+        if (newCss.length < oldCss.length * 0.75) {
+          addLog(
+            'Proposed CSS changes appear to remove too much content, being selective',
+            'warning',
+          );
+          return false;
+        }
+
+        // Count the number of !important declarations as a metric
+        const oldImportantCount = (oldCss.match(/!important/g) || []).length;
+        const newImportantCount = (newCss.match(/!important/g) || []).length;
+
+        // Warn if there's a large increase in !important usage
+        if (newImportantCount > oldImportantCount + 5) {
+          addLog(
+            `Warning: Increasing !important usage from ${oldImportantCount} to ${newImportantCount}`,
+            'warning',
+          );
+        }
+
+        // Generally accept the change unless it's very different in size
+        return true;
+      };
 
       for (let i = 0; i < maxIterations && !isSuccessful; i++) {
         const iterationProgress =
@@ -396,46 +456,87 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
         setProgress(iterationProgress);
 
         if (!evaluation.isMatch && evaluation.feedback) {
-          addLog(
-            `Iteration ${i + 1}: Applying improved CSS based on AI feedback...`,
-            'info',
-          );
+          addLog(`Iteration ${i + 1}: Analyzing AI feedback...`, 'info');
 
-          currentCss = evaluation.feedback; // Feedback is the new CSS
-          setCssContent(currentCss);
-          await applyCSS(tab.id, currentCss);
-
-          addLog(
-            `Iteration ${i + 1}: Taking screenshot after CSS update...`,
-            'info',
-          );
-          newScreenshotAfterCSS = await takeScreenshot();
-
-          // Get updated computed styles after this iteration
-          addLog(
-            `Iteration ${i + 1}: Extracting updated computed styles...`,
-            'info',
-          );
-          const iterationComputedStyles = await extractComputedStyles(tab.id);
-
-          addLog(`Iteration ${i + 1}: Re-evaluating result...`, 'info');
-          evaluation = await evaluateCSSResultWithAI(
-            apiKey,
-            referenceImgForAI,
-            newScreenshotAfterCSS,
+          // Validate if the proposed CSS changes are likely improvements
+          const proposedCss = evaluation.feedback;
+          const isLikelyImprovement = isCssLikelyImprovement(
             currentCss,
-            classHierarchy, // Add class hierarchy
-            tailwindData, // Add tailwind data
-            iterationComputedStyles, // Updated computed styles
+            proposedCss,
           );
 
-          if (evaluation.isMatch) {
+          if (isLikelyImprovement) {
+            currentCss = proposedCss; // Apply the new CSS
+            bestCss = currentCss; // Track this as our best version so far
+
             addLog(
-              `AI evaluation complete after iteration ${i + 1}: CSS matches reference design!`,
-              'success',
+              `Iteration ${i + 1}: Applying improved CSS based on AI feedback...`,
+              'info',
             );
-            isSuccessful = true;
-            break;
+
+            setCssContent(currentCss);
+            await applyCSS(tab.id, currentCss);
+
+            addLog(
+              `Iteration ${i + 1}: Taking screenshot after CSS update...`,
+              'info',
+            );
+            newScreenshotAfterCSS = await takeScreenshot();
+
+            // Get updated computed styles after this iteration
+            addLog(
+              `Iteration ${i + 1}: Extracting updated computed styles...`,
+              'info',
+            );
+            const iterationComputedStyles = await extractComputedStyles(tab.id);
+
+            addLog(`Iteration ${i + 1}: Re-evaluating result...`, 'info');
+            evaluation = await evaluateCSSResultWithAI(
+              apiKey,
+              referenceImgForAI,
+              newScreenshotAfterCSS,
+              currentCss,
+              classHierarchy, // Add class hierarchy
+              tailwindData, // Add tailwind data
+              iterationComputedStyles, // Updated computed styles
+              currentSessionId, // Pass the session ID
+            );
+
+            if (evaluation.isMatch) {
+              addLog(
+                `AI evaluation complete after iteration ${i + 1}: CSS matches reference design!`,
+                'success',
+              );
+              isSuccessful = true;
+              break;
+            }
+          } else {
+            // Skip this iteration if the changes don't look like improvements
+            addLog(
+              `Iteration ${i + 1}: Proposed CSS changes may not be improvements. Proceeding carefully...`,
+              'warning',
+            );
+
+            // Use a more conservative approach for the next iteration
+            evaluation = await evaluateCSSResultWithAI(
+              apiKey,
+              referenceImgForAI,
+              newScreenshotAfterCSS,
+              currentCss, // Keep using current CSS instead of the rejected one
+              classHierarchy,
+              tailwindData,
+              updatedComputedStyles, // Use the last known good computed styles
+              currentSessionId, // Pass the session ID
+            );
+
+            if (evaluation.isMatch) {
+              addLog(
+                `AI evaluation complete after iteration ${i + 1}: CSS matches reference design!`,
+                'success',
+              );
+              isSuccessful = true;
+              break;
+            }
           }
         } else {
           // This case means evaluation didn't return new CSS, which is unexpected if isMatch is false.
@@ -447,6 +548,14 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
         }
       }
 
+      // Always use the best CSS we've seen
+      if (currentCss !== bestCss) {
+        addLog('Reverting to best CSS version seen during iterations', 'info');
+        currentCss = bestCss;
+        setCssContent(currentCss);
+        await applyCSS(tab.id, currentCss);
+      }
+
       setGenerationStage(isSuccessful ? 'success' : 'error');
       setProgress(100);
 
@@ -454,6 +563,15 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
         addLog(
           'Reached maximum iterations. The CSS may still need manual refinement.',
           'warning',
+        );
+      }
+
+      // Final logging of chat session status
+      const session = chatManager.getSession(currentSessionId);
+      if (session) {
+        addLog(
+          `Chat session ${currentSessionId} has ${session.getMessages().length} messages`,
+          'info',
         );
       }
 

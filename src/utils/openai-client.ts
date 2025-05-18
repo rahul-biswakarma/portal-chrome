@@ -1,41 +1,138 @@
 import type { TreeNode, TailwindClassData } from '../types';
 import { getEnvVariable } from '../utils/environment';
 
+// Define types for chat session management
+type Role = 'system' | 'user' | 'assistant';
+
+// Define a more specific type for metadata values
+type MetadataValue =
+  | string
+  | number
+  | boolean
+  | Date
+  | null
+  | Record<string, unknown>;
+
+interface ChatMessage {
+  role: Role;
+  content: string | MessageContent[];
+}
+
+// Chat session management
+class ChatSession {
+  id: string;
+  messages: ChatMessage[];
+  createdAt: Date;
+  lastUpdated: Date;
+  metadata: Record<string, MetadataValue>;
+  maxHistoryLength: number;
+
+  constructor(
+    id: string,
+    initialMessages: ChatMessage[] = [],
+    maxHistoryLength = 10,
+  ) {
+    this.id = id;
+    this.messages = initialMessages;
+    this.createdAt = new Date();
+    this.lastUpdated = new Date();
+    this.metadata = {};
+    this.maxHistoryLength = maxHistoryLength;
+  }
+
+  addMessage(role: Role, content: string | MessageContent[]) {
+    this.messages.push({ role, content });
+    this.lastUpdated = new Date();
+
+    // Prune history if needed
+    this.pruneHistory();
+  }
+
+  pruneHistory() {
+    // Keep system messages plus the last N messages to control token usage
+    if (this.messages.length > this.maxHistoryLength + 2) {
+      // Separate system messages
+      const systemMessages = this.messages.filter(
+        (msg) => msg.role === 'system',
+      );
+      const nonSystemMessages = this.messages.filter(
+        (msg) => msg.role !== 'system',
+      );
+
+      // Keep only the most recent messages
+      const recentMessages = nonSystemMessages.slice(-this.maxHistoryLength);
+
+      // Reconstruct messages with system messages first, then recent messages
+      this.messages = [...systemMessages, ...recentMessages];
+    }
+  }
+
+  getMessages(): ChatMessage[] {
+    return [...this.messages];
+  }
+
+  setMetadata(key: string, value: MetadataValue) {
+    this.metadata[key] = value;
+  }
+
+  getMetadata(key: string): MetadataValue | undefined {
+    return this.metadata[key];
+  }
+}
+
+// Singleton to manage chat sessions
+class ChatSessionManager {
+  private static instance: ChatSessionManager;
+  private sessions: Map<string, ChatSession> = new Map();
+
+  private constructor() {}
+
+  static getInstance(): ChatSessionManager {
+    if (!ChatSessionManager.instance) {
+      ChatSessionManager.instance = new ChatSessionManager();
+    }
+    return ChatSessionManager.instance;
+  }
+
+  createSession(id: string, initialMessages: ChatMessage[] = []): ChatSession {
+    const session = new ChatSession(id, initialMessages);
+    this.sessions.set(id, session);
+    return session;
+  }
+
+  getSession(id: string): ChatSession | undefined {
+    return this.sessions.get(id);
+  }
+
+  getOrCreateSession(id: string): ChatSession {
+    let session = this.getSession(id);
+    if (!session) {
+      session = this.createSession(id);
+    }
+    return session;
+  }
+
+  deleteSession(id: string): boolean {
+    return this.sessions.delete(id);
+  }
+
+  getAllSessions(): ChatSession[] {
+    return Array.from(this.sessions.values());
+  }
+}
+
+// Export the chat session manager for use across the application
+export const chatManager = ChatSessionManager.getInstance();
+
 // Default API parameters
-const DEFAULT_MODEL = 'gpt-4o';
-const DEFAULT_TEMPERATURE = 0.7;
-const DEFAULT_MAX_TOKENS_PROMPT = 8000;
-const DEFAULT_MAX_TOKENS_CSS = 4000;
-const DEFAULT_MAX_TOKENS_EVAL = 1500;
+const DEFAULT_MODEL = 'o4-mini-2025-04-16';
 
 // Get environment variables or use defaults
 const getApiParameters = async () => {
   const model = (await getEnvVariable('OPENAI_MODEL')) || DEFAULT_MODEL;
-  const temperatureStr = await getEnvVariable('OPENAI_TEMPERATURE');
-  const maxTokensPromptStr = await getEnvVariable('OPENAI_MAX_TOKENS_PROMPT');
-  const maxTokensCssStr = await getEnvVariable('OPENAI_MAX_TOKENS_CSS');
-  const maxTokensEvalStr = await getEnvVariable('OPENAI_MAX_TOKENS_EVAL');
-
-  // Parse numeric values with fallbacks
-  const temperature = temperatureStr
-    ? parseFloat(temperatureStr)
-    : DEFAULT_TEMPERATURE;
-  const maxTokensPrompt = maxTokensPromptStr
-    ? parseInt(maxTokensPromptStr, 10)
-    : DEFAULT_MAX_TOKENS_PROMPT;
-  const maxTokensCss = maxTokensCssStr
-    ? parseInt(maxTokensCssStr, 10)
-    : DEFAULT_MAX_TOKENS_CSS;
-  const maxTokensEval = maxTokensEvalStr
-    ? parseInt(maxTokensEvalStr, 10)
-    : DEFAULT_MAX_TOKENS_EVAL;
 
   return {
     model,
-    temperature,
-    maxTokensPrompt,
-    maxTokensCss,
-    maxTokensEval,
   };
 };
 
@@ -69,6 +166,136 @@ export const isValidImageData = (imageData: string): boolean => {
 };
 
 /**
+ * Make an OpenAI API request reusing chat history from an existing session
+ * @param apiKey The OpenAI API key
+ * @param newMessages New messages to add to the conversation
+ * @param model OpenAI model to use
+ * @param sessionId Optional session ID to use (creates new if not provided)
+ * @returns The API response content
+ */
+async function makeOpenAIRequest(
+  apiKey: string,
+  newMessages: ChatMessage[],
+  model: string,
+  sessionId?: string,
+): Promise<string> {
+  const url = 'https://api.openai.com/v1/chat/completions';
+  const session = sessionId
+    ? chatManager.getOrCreateSession(sessionId)
+    : chatManager.createSession(`session_${Date.now()}`);
+
+  // Add new messages to the session
+  newMessages.forEach((msg) => {
+    session.addMessage(msg.role, msg.content);
+  });
+
+  const messages = session.getMessages();
+
+  // Estimate message token count and log warning if extremely large
+  const estimatedTokens = estimateTokenCount(messages);
+  if (estimatedTokens > 15000) {
+    console.warn(
+      `WARNING: Message token count is approximately ${estimatedTokens}, which is very high and may cause issues.`,
+    );
+  }
+
+  try {
+    // Make the API request
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        `API error: ${errorData.error?.message || response.statusText}`,
+      );
+    }
+
+    const data = await response.json();
+
+    if (
+      data.choices &&
+      data.choices[0] &&
+      data.choices[0].message &&
+      data.choices[0].message.content
+    ) {
+      const content = data.choices[0].message.content.trim();
+
+      // Add the assistant's response to the session
+      session.addMessage('assistant', content);
+
+      return content;
+    } else if (
+      data.choices &&
+      data.choices[0] &&
+      data.choices[0].finish_reason === 'length'
+    ) {
+      // Handle token limit errors
+      console.warn(
+        'Model hit token limit. Pruning history and returning placeholder content.',
+      );
+
+      // Force stronger history pruning
+      if (session.maxHistoryLength > 3) {
+        session.maxHistoryLength = Math.max(
+          3,
+          Math.floor(session.maxHistoryLength / 2),
+        );
+        session.pruneHistory();
+      }
+
+      return 'ERROR: Hit token limit. Please try again with a simpler request or less context.';
+    } else {
+      console.error('Unexpected API response:', data);
+      throw new Error('Invalid response format from API');
+    }
+  } catch (error) {
+    console.error('Error making OpenAI request:', error);
+    throw error;
+  }
+}
+
+// Simple function to estimate token count from messages
+// This is a rough estimate based on common heuristics
+function estimateTokenCount(messages: ChatMessage[]): number {
+  let count = 0;
+
+  messages.forEach((msg) => {
+    // Count tokens in text content
+    if (typeof msg.content === 'string') {
+      // Roughly 4 chars per token for English text
+      count += Math.ceil(msg.content.length / 4);
+    }
+    // Count tokens in complex content (text + images)
+    else if (Array.isArray(msg.content)) {
+      msg.content.forEach((item) => {
+        if (item.type === 'text') {
+          count += Math.ceil(item.text.length / 4);
+        } else if (item.type === 'image_url') {
+          // Images are expensive in tokens, add a reasonable estimate
+          // Low-res ~1000, high-res ~3000
+          count += 2000;
+        }
+      });
+    }
+
+    // Add overhead for message structure
+    count += 20;
+  });
+
+  return count;
+}
+
+/**
  * Generate a prompt using OpenAI API based on reference image and current screenshot
  * @param apiKey The OpenAI API key
  * @param referenceImage The reference image data URL
@@ -77,6 +304,7 @@ export const isValidImageData = (imageData: string): boolean => {
  * @param tailwindData The tailwind class data
  * @param currentCSS The current CSS
  * @param computedStyles The computed styles for each portal-* class element
+ * @param sessionId Optional session ID for continuous conversation
  * @returns Promise resolving to the generated prompt
  */
 export const generatePromptWithAI = async (
@@ -87,9 +315,9 @@ export const generatePromptWithAI = async (
   tailwindData?: TailwindClassData,
   currentCSS: string = '',
   computedStyles?: Record<string, Record<string, string>>,
+  sessionId?: string,
 ): Promise<string> => {
-  const url = 'https://api.openai.com/v1/chat/completions';
-  const { model, temperature, maxTokensPrompt } = await getApiParameters();
+  const { model } = await getApiParameters();
 
   // Create enhanced tree and hierarchy text if data is provided
   let hierarchyText = '';
@@ -124,7 +352,7 @@ export const generatePromptWithAI = async (
   }
 
   // Prepare the messages for OpenAI
-  const messages = [
+  const messages: ChatMessage[] = [
     {
       role: 'system',
       content:
@@ -209,41 +437,12 @@ GENERATE ONLY THE PROMPT TEXT with no additional explanations or markdown format
     },
   ];
 
+  // Generate a session ID if not provided
+  const chatSessionId = sessionId || `prompt_gen_${Date.now()}`;
+
   try {
-    // Make the API request
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: messages,
-        temperature,
-        max_tokens: maxTokensPrompt,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `API error: ${errorData.error?.message || response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-
-    if (
-      data.choices &&
-      data.choices[0] &&
-      data.choices[0].message &&
-      data.choices[0].message.content
-    ) {
-      return data.choices[0].message.content.trim();
-    } else {
-      throw new Error('Invalid response format from API');
-    }
+    // Use the makeOpenAIRequest function
+    return await makeOpenAIRequest(apiKey, messages, model, chatSessionId);
   } catch (error) {
     console.error('Error generating prompt:', error);
     throw error;
@@ -366,6 +565,10 @@ type MessageContent = TextContent | ImageContent;
  * @param tailwindData The tailwind class data
  * @param currentCSS The current CSS
  * @param retryCount The retry count (default 0)
+ * @param referenceImage Optional reference image
+ * @param currentScreenshot Optional current screenshot
+ * @param computedStyles Optional computed styles
+ * @param sessionId Optional session ID for continuous conversation
  * @returns Promise resolving to the generated CSS
  */
 export const generateCSSWithAI = async (
@@ -378,9 +581,9 @@ export const generateCSSWithAI = async (
   referenceImage?: string,
   currentScreenshot?: string,
   computedStyles?: Record<string, Record<string, string>>,
+  sessionId?: string,
 ): Promise<string> => {
-  const url = 'https://api.openai.com/v1/chat/completions';
-  const { model, temperature, maxTokensCss } = await getApiParameters();
+  const { model } = await getApiParameters();
 
   // Sanitize CSS to prevent refusal responses
   const sanitizedCSS = validateAndSanitizeCSS(currentCSS);
@@ -656,12 +859,12 @@ Based on all the above, generate the complete CSS code now WITHOUT ANY COMMENTS.
   }
 
   // Prepare the messages for OpenAI
-  const messages = [
+  const messages: ChatMessage[] = [
     {
       role: 'system',
       content: isTextOnlyMode
         ? 'You are a CSS expert whose primary function is to generate valid CSS code from style descriptions. YOU MUST ALWAYS GENERATE CSS CODE regardless of how vague the prompt is - NEVER refuse, NEVER ask for clarification, and NEVER explain why you can\'t generate CSS. When given brief style descriptions (like "candy UI"), interpret them according to common design conventions. ALL responses MUST contain ONLY valid CSS code. You can make reasonable assumptions about colors, typography, spacing, and visual effects based on the hints provided. Remember, you are being used in a tool that expects CSS output.'
-        : 'You are an expert CSS developer specializing in pixel-perfect visual implementation. Your task is to generate CSS that will transform a web page to match a target design. You excel at solving complex styling challenges like specificity issues, cascade problems, and overriding existing styles.',
+        : 'You are an expert CSS developer specializing in pixel-perfect visual implementation. Your task is to generate robust, maintainable CSS that will transform a web page to match a target design. You excel at creating stable CSS that can be iteratively improved without breaking existing styles. You prioritize clean, consistent styling and good CSS architecture over quick fixes.',
     },
     {
       role: 'user',
@@ -669,50 +872,33 @@ Based on all the above, generate the complete CSS code now WITHOUT ANY COMMENTS.
     },
   ];
 
-  try {
-    // Make the API request
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: messages,
-        temperature,
-        max_tokens: maxTokensCss,
-      }),
+  // If this is a retry, add a message emphasizing stability
+  if (retryCount > 0) {
+    messages.splice(1, 0, {
+      role: 'system',
+      content:
+        "CRITICAL: Your CSS will be used in an iterative improvement process. Create CSS that is stable and won't break when modified. Use CSS custom properties for consistency, avoid excessive !important usage, and prefer simple class-based selectors over highly specific selectors. Focus on creating a solid foundation that can be refined rather than a brittle solution that may break during iterations.",
     });
+  }
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `API error: ${errorData.error?.message || response.statusText}`,
-      );
-    }
+  // Generate a session ID if not provided or use an existing one for continuity
+  const chatSessionId = sessionId || `css_gen_${Date.now()}`;
 
-    const data = await response.json();
+  try {
+    // Use the makeOpenAIRequest function
+    const content = await makeOpenAIRequest(
+      apiKey,
+      messages,
+      model,
+      chatSessionId,
+    );
 
-    if (
-      data.choices &&
-      data.choices[0] &&
-      data.choices[0].message &&
-      data.choices[0].message.content
-    ) {
-      let content = data.choices[0].message.content;
-
-      // Clean the response by removing markdown code blocks if present
-      content = content
-        .replace(/```css\s*/g, '')
-        .replace(/```\s*$/g, '')
-        .replace(/```/g, '')
-        .trim();
-
-      return content;
-    } else {
-      throw new Error('Invalid response format from API');
-    }
+    // Clean the response by removing markdown code blocks if present
+    return content
+      .replace(/```css\s*/g, '')
+      .replace(/```\s*$/g, '')
+      .replace(/```/g, '')
+      .trim();
   } catch (error) {
     console.error('Error generating CSS:', error);
     throw error;
@@ -1001,203 +1187,6 @@ function formatHierarchyForPrompt(
 }
 
 /**
- * Evaluate CSS results using OpenAI API
- * @param apiKey The OpenAI API key
- * @param referenceImage The reference image data URL
- * @param resultScreenshot The screenshot with applied CSS
- * @param currentCSS The current applied CSS
- * @param portalClassTree The portal class tree structure
- * @param tailwindData The tailwind class data
- * @param computedStyles The computed styles for each portal-* class element
- * @returns Promise resolving to evaluation results {isMatch: boolean, feedback: string}
- */
-export const evaluateCSSResultWithAI = async (
-  apiKey: string,
-  referenceImage: string,
-  resultScreenshot: string,
-  currentCSS: string,
-  portalClassTree?: TreeNode,
-  tailwindData?: TailwindClassData,
-  computedStyles?: Record<string, Record<string, string>>,
-): Promise<{ isMatch: boolean; feedback: string }> => {
-  const url = 'https://api.openai.com/v1/chat/completions';
-  const { model, maxTokensEval } = await getApiParameters();
-
-  // Use a lower temperature for evaluation for more consistent results
-  const evaluationTemperature = 0.5;
-
-  // Sanitize CSS to prevent refusal responses
-  const sanitizedCSS = validateAndSanitizeCSS(currentCSS);
-
-  // Format hierarchy data if provided
-  let hierarchyText = '';
-  let hierarchyData = '';
-
-  if (portalClassTree && tailwindData) {
-    // Process the tailwind data without additional filtering
-    const simplifiedTailwindData: Record<string, string[]> = {};
-    if (tailwindData) {
-      Object.keys(tailwindData).forEach((selector) => {
-        simplifiedTailwindData[selector] = Array.isArray(tailwindData[selector])
-          ? tailwindData[selector]
-          : [];
-      });
-    }
-
-    // Create enhanced tree with tailwind classes
-    const enhancedTree = createEnhancedClassTree(
-      portalClassTree,
-      simplifiedTailwindData,
-    );
-
-    // Format hierarchy for prompt
-    hierarchyText = formatHierarchyForPrompt(enhancedTree);
-    hierarchyData = JSON.stringify(enhancedTree, null, 2);
-  }
-
-  // Format computed styles if provided
-  let computedStylesText = '';
-  if (computedStyles) {
-    computedStylesText = formatComputedStyles(computedStyles);
-  }
-
-  // Prepare the messages for OpenAI
-  const messages = [
-    {
-      role: 'system',
-      content:
-        'You are an expert in visual design analysis and CSS. Your task is to evaluate if the applied CSS has successfully transformed the page to match the reference design. Be thorough in your analysis but constructive in your feedback for what needs improvement.',
-    },
-    {
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text: `I've applied CSS to transform a page to match a reference design. I need you to evaluate the results and provide specific improvements if needed.
-
-IMAGES:
-1. The FIRST image is the REFERENCE design (the target we aim to match)
-2. The SECOND image is the CURRENT state (with the applied CSS)
-
-CURRENT CSS:
-\`\`\`css
-${sanitizedCSS}
-\`\`\`
-
-${
-  hierarchyText
-    ? `DOM AND CLASS STRUCTURE:
-The following is a hierarchical tree of elements with their portal-* classes and associated Tailwind classes:
-
-HIERARCHICAL VIEW:
-${hierarchyText}
-
-FULL CLASS DATA:
-${hierarchyData}
-
-`
-    : ''
-}${
-            computedStylesText
-              ? `COMPUTED STYLES (Current rendered state of elements):
-${computedStylesText}
-
-`
-              : ''
-          }EVALUATION INSTRUCTIONS:
-1. Compare the visual appearance of both images with pixel-perfect precision
-2. Focus on these key aspects:
-   - Colors (backgrounds, text, borders) - exact hex values are important
-   - Typography (size, weight, family, spacing, alignment)
-   - Layout & Spacing (padding, margins, element positioning)
-   - Visual Effects (shadows, borders, border-radius, transitions)
-   - Overall fidelity to the reference design
-
-RESPONSE FORMAT:
-- If the current state matches the reference design well enough (90%+ accuracy), respond with ONLY the word "DONE"
-- If improvements are needed, respond with COMPLETE, VALID CSS that would improve the match. Do not include JSON, markdown formatting, or explanations, JUST the CSS.
-
-IMPORTANT CSS REQUIREMENTS:
-1. Your CSS must ONLY use selectors that target classes starting with "portal-"
-2. Do NOT include any comments in the CSS. Provide clean, comment-free CSS code only.
-3. Ensure your CSS has sufficient specificity to override Tailwind classes
-4. Provide the COMPLETE CSS file including all current styles plus your improvements
-5. Include precise values (exact colors, pixel measurements, etc.) to achieve a pixel-perfect match
-6. Fix ANY visual discrepancies, no matter how small
-7. Use the computed styles as your primary reference for understanding the current state
-
-CRITICAL: Focus on specific CSS improvements, not general descriptions of what's wrong. If you see a difference, provide the exact CSS code to fix it. DO NOT include any comments in the CSS.`,
-        },
-        {
-          type: 'image_url',
-          image_url: {
-            url: referenceImage,
-          },
-        },
-        {
-          type: 'image_url',
-          image_url: {
-            url: resultScreenshot,
-          },
-        },
-      ],
-    },
-  ];
-
-  try {
-    // Make the API request
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: messages,
-        temperature: evaluationTemperature,
-        max_tokens: maxTokensEval,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `API error: ${errorData.error?.message || response.statusText}`,
-      );
-    }
-
-    const data = await response.json();
-
-    if (
-      data.choices &&
-      data.choices[0] &&
-      data.choices[0].message &&
-      data.choices[0].message.content
-    ) {
-      const result = data.choices[0].message.content.trim();
-
-      if (result === 'DONE') {
-        return {
-          isMatch: true,
-          feedback: 'CSS matches reference design',
-        };
-      }
-
-      return {
-        isMatch: false,
-        feedback: result,
-      };
-    } else {
-      throw new Error('Invalid response format from API');
-    }
-  } catch (error) {
-    console.error('Error evaluating CSS result:', error);
-    throw error;
-  }
-};
-
-/**
  * Validates and sanitizes CSS to prevent refusal responses
  * @param css The CSS to validate and sanitize
  * @returns Sanitized CSS
@@ -1402,3 +1391,177 @@ function validateAndSanitizeCSS(css: string): string {
 
   return sanitized;
 }
+
+/**
+ * Evaluate CSS results using OpenAI API
+ * @param apiKey The OpenAI API key
+ * @param referenceImage The reference image data URL
+ * @param resultScreenshot The screenshot with applied CSS
+ * @param currentCSS The current applied CSS
+ * @param portalClassTree The portal class tree structure
+ * @param tailwindData The tailwind class data
+ * @param computedStyles The computed styles for each portal-* class element
+ * @param sessionId Optional session ID for continuous conversation
+ * @returns Promise resolving to evaluation results {isMatch: boolean, feedback: string}
+ */
+export const evaluateCSSResultWithAI = async (
+  apiKey: string,
+  referenceImage: string,
+  resultScreenshot: string,
+  currentCSS: string,
+  portalClassTree?: TreeNode,
+  tailwindData?: TailwindClassData,
+  computedStyles?: Record<string, Record<string, string>>,
+  sessionId?: string,
+): Promise<{ isMatch: boolean; feedback: string }> => {
+  const { model } = await getApiParameters();
+
+  // Sanitize CSS to prevent refusal responses
+  const sanitizedCSS = validateAndSanitizeCSS(currentCSS);
+
+  // Format hierarchy data if provided
+  let hierarchyText = '';
+  let hierarchyData = '';
+
+  if (portalClassTree && tailwindData) {
+    // Process the tailwind data without additional filtering
+    const simplifiedTailwindData: Record<string, string[]> = {};
+    if (tailwindData) {
+      Object.keys(tailwindData).forEach((selector) => {
+        simplifiedTailwindData[selector] = Array.isArray(tailwindData[selector])
+          ? tailwindData[selector]
+          : [];
+      });
+    }
+
+    // Create enhanced tree with tailwind classes
+    const enhancedTree = createEnhancedClassTree(
+      portalClassTree,
+      simplifiedTailwindData,
+    );
+
+    // Format hierarchy for prompt
+    hierarchyText = formatHierarchyForPrompt(enhancedTree);
+    hierarchyData = JSON.stringify(enhancedTree, null, 2);
+  }
+
+  // Format computed styles if provided
+  let computedStylesText = '';
+  if (computedStyles) {
+    computedStylesText = formatComputedStyles(computedStyles);
+  }
+
+  // Prepare the messages for OpenAI
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content:
+        "You are an expert in visual design analysis and CSS. Your task is to evaluate if the applied CSS has successfully transformed the page to match the reference design. Be thorough but conservative in your changes - only modify what needs improvement while preserving what's already working well.",
+    },
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'text',
+          text: `I've applied CSS to transform a page to match a reference design. I need you to evaluate the results and provide specific improvements if needed.
+
+IMAGES:
+1. The FIRST image is the REFERENCE design (the target we aim to match)
+2. The SECOND image is the CURRENT state (with the applied CSS)
+
+CURRENT CSS:
+\`\`\`css
+${sanitizedCSS}
+\`\`\`
+
+${
+  hierarchyText
+    ? `DOM AND CLASS STRUCTURE:
+The following is a hierarchical tree of elements with their portal-* classes and associated Tailwind classes:
+
+HIERARCHICAL VIEW:
+${hierarchyText}
+
+FULL CLASS DATA:
+${hierarchyData}
+
+`
+    : ''
+}${
+            computedStylesText
+              ? `COMPUTED STYLES (Current rendered state of elements):
+${computedStylesText}
+
+`
+              : ''
+          }EVALUATION INSTRUCTIONS:
+1. Compare the visual appearance of both images with pixel-perfect precision
+2. FIRST identify what's already working well - which elements already match the reference design closely
+3. Focus on these key aspects that may need improvement:
+   - Colors (backgrounds, text, borders) - exact hex values are important
+   - Typography (size, weight, family, spacing, alignment)
+   - Layout & Spacing (padding, margins, element positioning)
+   - Visual Effects (shadows, borders, border-radius, transitions)
+   - Overall fidelity to the reference design
+
+RESPONSE FORMAT:
+- If the current state matches the reference design well enough (90%+ accuracy), respond with ONLY the word "DONE"
+- If improvements are needed, respond with COMPLETE, VALID CSS that would improve the match. Do not include JSON, markdown formatting, or explanations, JUST the CSS.
+
+IMPORTANT CSS IMPROVEMENT GUIDELINES:
+1. PRESERVE EXISTING SUCCESSFUL STYLES - don't modify CSS for elements that already match the reference design well
+2. Your CSS must ONLY use selectors that target classes starting with "portal-"
+3. Do NOT include any comments in the CSS. Provide clean, comment-free CSS code only
+4. MINIMIZE SPECIFICITY CHANGES - avoid adding overly complex selectors or unnecessary !important declarations unless absolutely required
+5. KEEP SUCCESSFUL CSS FROM PREVIOUS ITERATIONS - only modify what still needs improvement
+6. Provide the COMPLETE CSS file including all current styles plus your targeted improvements
+7. Include precise values (exact colors, pixel measurements, etc.) to achieve a pixel-perfect match
+8. Focus on making MINIMAL, TARGETED CHANGES to fix specific issues rather than rewriting large portions
+9. Use the computed styles as your primary reference for understanding the current state
+
+CRITICAL: Make iterative, careful improvements without disrupting what's already working. DO NOT include any comments in the CSS.`,
+        },
+        {
+          type: 'image_url',
+          image_url: {
+            url: referenceImage,
+          },
+        },
+        {
+          type: 'image_url',
+          image_url: {
+            url: resultScreenshot,
+          },
+        },
+      ],
+    },
+  ];
+
+  // Use the same chat session ID if provided
+  const chatSessionId = sessionId || `css_eval_${Date.now()}`;
+
+  try {
+    // Use the makeOpenAIRequest function
+    const result = await makeOpenAIRequest(
+      apiKey,
+      messages,
+      model,
+      chatSessionId,
+    );
+
+    if (result === 'DONE') {
+      return {
+        isMatch: true,
+        feedback: 'CSS matches reference design',
+      };
+    }
+
+    return {
+      isMatch: false,
+      feedback: result,
+    };
+  } catch (error) {
+    console.error('Error evaluating CSS result:', error);
+    throw error;
+  }
+};
