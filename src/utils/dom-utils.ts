@@ -76,10 +76,6 @@ export const extractTailwindClasses = async (
       });
 
     if (response?.success) {
-      console.log(
-        'DEBUG: Tailwind classes from content script:',
-        response.data,
-      );
       return response.data;
     }
 

@@ -47,10 +47,6 @@ export function useHierarchyData() {
         });
 
       if (tailwindResponse?.success) {
-        console.log(
-          'DEBUG: Received Tailwind classes from content script:',
-          tailwindResponse.data,
-        );
         setTailwindClasses(tailwindResponse.data);
       } else {
         console.warn(

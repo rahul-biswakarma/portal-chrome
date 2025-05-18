@@ -257,9 +257,6 @@ async function makeOpenAIRequest(
 
         // Check if we need to continue generating
         if (data.choices[0].finish_reason === 'length') {
-          console.log(
-            `Response was truncated. Continuing (attempt ${continuationAttempts + 1}/${MAX_CONTINUATION_ATTEMPTS})...`,
-          );
           continuationAttempts++;
         } else {
           // Normal completion - we're done
@@ -373,7 +370,6 @@ export const generatePromptWithAI = async (
   let computedStylesText = '';
   if (computedStyles) {
     computedStylesText = formatComputedStyles(computedStyles);
-    console.log('DEBUG 1: Computed styles text:', computedStylesText);
   }
 
   // Prepare the messages for OpenAI
@@ -615,10 +611,7 @@ export const generateCSSWithAI = async (
   if (tailwindData) {
     Object.keys(tailwindData).forEach((selector) => {
       // Don't filter out any selector - the filtering was done in the content script
-      console.log(
-        `DEBUG: Processing classes for ${selector}:`,
-        tailwindData[selector],
-      );
+
       simplifiedTailwindData[selector] = Array.isArray(tailwindData[selector])
         ? tailwindData[selector]
         : [];
@@ -636,17 +629,14 @@ export const generateCSSWithAI = async (
 
   // Check for potential cascade issues with the provided tree
   const cascadeAnalysis = analyzeCascadeIssues(enhancedTree);
-  console.log('DEBUG 2: Cascade analysis:', cascadeAnalysis);
 
   // Analyze grouping opportunities for similar elements
   const groupingAnalysis = analyzeElementGroups(enhancedTree);
-  console.log('DEBUG 2: Grouping analysis:', groupingAnalysis);
 
   // Format computed styles if available
   let computedStylesText = '';
   if (computedStyles) {
     computedStylesText = formatComputedStyles(computedStyles);
-    console.log('DEBUG: Computed styles text:', computedStylesText);
   }
 
   // Check if we're in text-only mode (no reference image)
@@ -1018,10 +1008,6 @@ function createEnhancedClassTree(
   node: TreeNode,
   tailwindData: Record<string, string[]>,
 ): EnhancedTreeNode {
-  // Debug logging to inspect the inputs
-  console.log('DEBUG: Creating enhanced class tree with node:', node);
-  console.log('DEBUG: Tailwind data available:', tailwindData);
-
   // Create the base node
   const enhancedNode: EnhancedTreeNode = {
     element: node.element,
@@ -1032,10 +1018,6 @@ function createEnhancedClassTree(
   if (node.portalClasses && node.portalClasses.length > 0) {
     enhancedNode.portalClasses = node.portalClasses.map((cls) => {
       const tailwindClasses = tailwindData[cls] || [];
-      console.log(
-        `DEBUG: Portal class ${cls} has Tailwind classes:`,
-        tailwindClasses,
-      );
       return {
         name: cls,
         tailwindClasses: tailwindClasses,

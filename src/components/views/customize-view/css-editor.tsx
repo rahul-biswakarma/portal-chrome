@@ -92,7 +92,6 @@ export const CssEditor = () => {
   const handleApplyCss = async () => {
     if (viewRef.current) {
       const content = viewRef.current.state.doc.toString();
-      console.log('Applying CSS, content length:', content.length);
 
       if (
         !content ||
@@ -224,10 +223,6 @@ export const CssEditor = () => {
               setCurrentEditorContent(content);
               // Update the appContext cssContent when editor content changes
               setCssContent(content);
-              console.log(
-                'Editor content updated:',
-                content.substring(0, 50) + (content.length > 50 ? '...' : ''),
-              );
             }
           }),
         ],
@@ -280,7 +275,7 @@ export const CssEditor = () => {
     <div className="flex flex-col w-full h-full gap-3">
       <div
         ref={editorRef}
-        className="w-full h-full rounded-md overflow-hidden flex-1 border border-border"
+        className="w-full h-full rounded-md overflow-y-auto max-h-full flex-1 border border-border"
       />
       <div className="flex justify-between">
         <div className="flex gap-2">

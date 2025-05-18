@@ -292,10 +292,6 @@ export const PromptInput = () => {
       addLog('Extracting computed styles...', 'info');
       const computedStyles = await extractComputedStyles(tab.id);
 
-      console.log('DEBUG: Class hierarchy structure:', classHierarchy);
-      console.log('DEBUG: Tailwind data structure:', tailwindData);
-      console.log('DEBUG: Computed styles:', computedStyles);
-
       const apiKey = await getOpenAIApiKey();
       if (!apiKey) {
         throw new Error('OpenAI API key not found');
@@ -319,7 +315,6 @@ export const PromptInput = () => {
 
       setProgress(40);
       addLog(`Generating initial CSS...`, 'info');
-      console.log('DEBUG: Tailwind data being passed to OpenAI:', tailwindData);
 
       // Enhance the prompt if no reference image is available
       let enhancedPrompt = prompt;

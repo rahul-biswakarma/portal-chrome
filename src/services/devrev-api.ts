@@ -62,8 +62,6 @@ export const getPortalPreferences =
       url.searchParams.append('type', 'portal_preferences');
       url.searchParams.append('object', donId);
 
-      console.log(`Fetching preferences from ${url.toString()}`);
-
       const response = await fetch(url.toString(), {
         method: 'GET',
         headers: {
@@ -84,7 +82,6 @@ export const getPortalPreferences =
       }
 
       const data = await response.json();
-      console.log('Received preferences data:', JSON.stringify(data, null, 2));
       return data;
     } catch (error) {
       console.error('Error getting portal preferences:', error);
@@ -265,7 +262,6 @@ export const uploadCssToDevRev = async (
       artifactResponse.id,
     );
 
-    console.log('Preferences update result:', updateSuccess);
     return updateSuccess;
   } catch (error) {
     console.error('Error uploading CSS to DevRev:', error);
@@ -321,21 +317,17 @@ export const initializeCssFromDevRev = async (): Promise<string | null> => {
     const preferences = await getPortalPreferences();
 
     if (!preferences?.preference?.stylesheet) {
-      console.log('No stylesheet found in DevRev preferences');
       return null;
     }
 
     // The stylesheet can be either a string (artifact ID) or an object with preview_url
     const stylesheet = preferences.preference.stylesheet;
-    console.log('Stylesheet from preferences:', stylesheet);
 
     if (typeof stylesheet === 'string') {
       // Old format: stylesheet is an artifact ID
-      console.log('Stylesheet is an artifact ID:', stylesheet);
       return await getArtifactContent(stylesheet);
     } else if (typeof stylesheet === 'object' && stylesheet.preview_url) {
       // New format: stylesheet is an object with preview_url
-      console.log('Fetching CSS from preview URL:', stylesheet.preview_url);
       const response = await fetch(stylesheet.preview_url);
 
       if (!response.ok) {
@@ -345,10 +337,7 @@ export const initializeCssFromDevRev = async (): Promise<string | null> => {
       }
 
       const cssContent = await response.text();
-      console.log(
-        'CSS content preview (first 100 chars):',
-        cssContent.substring(0, 100),
-      );
+
       return cssContent;
     }
 
