@@ -8,14 +8,28 @@ import { AppContext } from '@/contexts/app-context';
 import { useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { getActiveTab } from '@/utils/chrome-utils';
-import { Play, RotateCcw, RotateCw, Copy, CheckIcon } from 'lucide-react';
+import {
+  Play,
+  RotateCcw,
+  RotateCw,
+  Copy,
+  CheckIcon,
+  CloudIcon,
+  Loader2,
+  Download,
+} from 'lucide-react';
 import { useLogger } from '@/services/logger';
+import { uploadCssToDevRev } from '@/services/devrev-api';
+import { FetchCssModal } from './fetch-css-modal';
 
 export const CssEditor = () => {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [currentEditorContent, setCurrentEditorContent] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
+  const [isUploadingToDevRev, setIsUploadingToDevRev] = useState(false);
+  const [showFetchModal, setShowFetchModal] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
   const appContext = useContext(AppContext);
   const { addLog } = useLogger();
 
@@ -23,7 +37,14 @@ export const CssEditor = () => {
     throw new Error('CssEditor must be used within an AppProvider');
   }
 
-  const { cssContent, generationStage } = appContext;
+  const {
+    cssContent,
+    setCssContent,
+    generationStage,
+    devRevCssStage,
+    setDevRevCssStage,
+    fetchCssFromDevRev,
+  } = appContext;
 
   // Function to clean CSS response (remove markdown)
   const cleanCSSResponse = (css: string): string => {
@@ -79,6 +100,73 @@ export const CssEditor = () => {
       addLog('Applying modified CSS...', 'info');
       await applyCSS(content);
       addLog('CSS applied successfully', 'success');
+    }
+  };
+
+  const handleUploadToDevRev = async () => {
+    if (!viewRef.current) return;
+
+    try {
+      setIsUploadingToDevRev(true);
+      addLog('Getting CSS from editor...', 'info');
+
+      // Get current CSS from editor
+      const content = viewRef.current.state.doc.toString();
+
+      if (!content.trim()) {
+        throw new Error('No CSS content found in editor');
+      }
+
+      addLog('Uploading CSS to DevRev...', 'info');
+      const success = await uploadCssToDevRev(content);
+
+      if (success) {
+        addLog('CSS uploaded and applied to portal successfully', 'success');
+        setDevRevCssStage('loaded');
+      } else {
+        throw new Error('Failed to upload CSS');
+      }
+    } catch (error) {
+      console.error('Error applying CSS to portal:', error);
+      addLog(
+        `Error applying CSS to portal: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'error',
+      );
+      setDevRevCssStage('error');
+    } finally {
+      setIsUploadingToDevRev(false);
+    }
+  };
+
+  const handleFetchFromDevRev = async () => {
+    setShowFetchModal(true);
+  };
+
+  const handleConfirmFetch = async () => {
+    try {
+      setIsFetching(true);
+      addLog('Fetching CSS from DevRev...', 'info');
+
+      const css = await fetchCssFromDevRev();
+
+      if (css) {
+        // Update the editor content with the fetched CSS
+        setCssContent(css);
+        addLog('CSS fetched from DevRev successfully', 'success');
+      } else {
+        throw new Error(
+          'Could not retrieve CSS from DevRev preferences. Check the console for details.',
+        );
+      }
+    } catch (error) {
+      console.error('Error fetching CSS from DevRev:', error);
+      addLog(
+        `Error fetching CSS from DevRev: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'error',
+      );
+    } finally {
+      setIsFetching(false);
+      setShowFetchModal(false);
     }
   };
 
@@ -201,6 +289,14 @@ export const CssEditor = () => {
     }
   }, [cssContent]);
 
+  // Determine if buttons should be disabled
+  const isLoading =
+    generationStage === 'generating' ||
+    devRevCssStage === 'loading' ||
+    isFetching;
+
+  const isEditorEmpty = !currentEditorContent;
+
   // Ensure the parent div can expand and has rounded corners
   return (
     <div className="flex flex-col w-full h-full gap-3">
@@ -216,7 +312,7 @@ export const CssEditor = () => {
             className="flex items-center gap-1.5"
             onClick={handleUndo}
             title="Undo"
-            disabled={generationStage === 'generating'}
+            disabled={isLoading}
           >
             <RotateCcw size={12} />
           </Button>
@@ -226,7 +322,7 @@ export const CssEditor = () => {
             className="flex items-center gap-1.5"
             onClick={handleRedo}
             title="Redo"
-            disabled={generationStage === 'generating'}
+            disabled={isLoading}
           >
             <RotateCw size={12} />
           </Button>
@@ -236,9 +332,19 @@ export const CssEditor = () => {
             className="flex items-center gap-1.5"
             onClick={handleCopy}
             title="Copy CSS"
-            disabled={generationStage === 'generating' || !currentEditorContent}
+            disabled={isLoading || isEditorEmpty}
           >
             {isCopied ? <CheckIcon size={12} /> : <Copy size={12} />}
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            className="flex items-center gap-1.5"
+            onClick={handleFetchFromDevRev}
+            title="Fetch CSS from DevRev"
+            disabled={isLoading}
+          >
+            <Download size={12} />
           </Button>
         </div>
         <div className="flex gap-2">
@@ -246,13 +352,46 @@ export const CssEditor = () => {
             size="sm"
             className="flex items-center gap-1.5"
             onClick={handleApplyCss}
-            disabled={generationStage === 'generating' || !currentEditorContent}
+            disabled={isLoading || isEditorEmpty}
           >
             <Play size={12} />
             <span className="text-xs">Apply CSS</span>
           </Button>
+
+          <Button
+            size="sm"
+            className="flex items-center gap-1.5"
+            onClick={handleUploadToDevRev}
+            disabled={isLoading || isEditorEmpty || isUploadingToDevRev}
+            variant={devRevCssStage === 'loaded' ? 'success' : 'default'}
+          >
+            {isUploadingToDevRev ? (
+              <>
+                <Loader2 size={12} className="animate-spin" />
+                <span className="text-xs">Uploading...</span>
+              </>
+            ) : devRevCssStage === 'loaded' ? (
+              <>
+                <CloudIcon size={12} />
+                <span className="text-xs">DevRev Synced</span>
+              </>
+            ) : (
+              <>
+                <CloudIcon size={12} />
+                <span className="text-xs">Upload to DevRev</span>
+              </>
+            )}
+          </Button>
         </div>
       </div>
+
+      {/* Modal for fetching CSS from DevRev */}
+      <FetchCssModal
+        isOpen={showFetchModal}
+        onClose={() => setShowFetchModal(false)}
+        onConfirm={handleConfirmFetch}
+        isLoading={isFetching}
+      />
     </div>
   );
 };

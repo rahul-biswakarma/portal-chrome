@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useContext } from 'react';
 import { Button } from './ui/button';
 import {
   Drawer,
@@ -16,8 +16,10 @@ import {
   Clock,
   XCircle,
   Loader2,
+  CloudIcon,
 } from 'lucide-react';
 import { useProgressStore } from '@/stores/progress-store';
+import { AppContext } from '@/contexts/app-context';
 
 // Function to render the icon based on log level
 const getIconForLevel = (level: LogEntry['level'], size = 16) => {
@@ -47,6 +49,79 @@ export const StatusBar = () => {
   const { logs, currentLog } = useLogger();
   const { progress, isVisible } = useProgressStore();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const appContext = useContext(AppContext);
+
+  if (!appContext) {
+    throw new Error('StatusBar must be used within an AppProvider');
+  }
+
+  const { devRevCssStage } = appContext;
+
+  // Determine what to show in the status bar
+  const getStatusContent = () => {
+    // Show generation progress first
+    if (isVisible && progress > 0) {
+      return (
+        <>
+          <Loader2 size={16} className="animate-spin text-blue-500" />
+          <span className="truncate max-w-[500px]">
+            {currentLog?.message || 'Generating CSS...'}
+          </span>
+        </>
+      );
+    }
+
+    // Then check for DevRev CSS loading states
+    if (devRevCssStage === 'loading') {
+      return (
+        <>
+          <Loader2 size={16} className="animate-spin text-blue-500" />
+          <span className="truncate max-w-[500px]">
+            Loading CSS from DevRev...
+          </span>
+        </>
+      );
+    }
+
+    if (devRevCssStage === 'loaded') {
+      return (
+        <>
+          <CloudIcon size={16} className="text-green-500" />
+          <span className="truncate max-w-[500px]">CSS loaded from DevRev</span>
+        </>
+      );
+    }
+
+    if (devRevCssStage === 'error') {
+      return (
+        <>
+          <XCircle size={16} className="text-red-500" />
+          <span className="truncate max-w-[500px]">
+            Error loading CSS from DevRev
+          </span>
+        </>
+      );
+    }
+
+    // Finally, show the current log message or ready state
+    if (currentLog) {
+      return (
+        <>
+          {getIconForLevel(currentLog.level)}
+          <span className="truncate max-w-[500px]">{currentLog.message}</span>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <Clock size={16} className="text-muted-foreground" />
+        <span className="text-muted-foreground text-xs truncate max-w-full">
+          Ready
+        </span>
+      </>
+    );
+  };
 
   return (
     <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
@@ -57,25 +132,7 @@ export const StatusBar = () => {
         >
           <div className="flex items-center justify-between p-2">
             <div className="flex items-center gap-2 text-xs">
-              {currentLog ? (
-                <>
-                  {isVisible && progress > 0 ? (
-                    <Loader2 size={16} className="animate-spin text-blue-500" />
-                  ) : (
-                    getIconForLevel(currentLog.level)
-                  )}
-                  <span className="truncate max-w-[500px]">
-                    {currentLog.message}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Clock size={16} className="text-muted-foreground" />
-                  <span className="text-muted-foreground text-xs truncate max-w-full">
-                    Ready
-                  </span>
-                </>
-              )}
+              {getStatusContent()}
             </div>
             {isVisible && progress > 0 && (
               <div className="flex items-center gap-2">

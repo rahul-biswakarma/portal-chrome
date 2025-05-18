@@ -7,8 +7,11 @@ import type {
   RefObject,
 } from 'react';
 import { convertFileToBase64 } from '../lib/image-utils';
+import { getEnvVariable } from '@/utils/environment';
+import { initializeCssFromDevRev } from '@/services/devrev-api';
 
 export type GenerationStage = 'idle' | 'generating' | 'success' | 'error';
+export type DevRevCssStage = 'idle' | 'loading' | 'loaded' | 'error';
 
 interface AppContextType {
   // Image Upload State
@@ -32,6 +35,13 @@ interface AppContextType {
   // Generation Stage State
   generationStage: GenerationStage;
   setGenerationStage: Dispatch<SetStateAction<GenerationStage>>;
+
+  // DevRev CSS Stage
+  devRevCssStage: DevRevCssStage;
+  setDevRevCssStage: Dispatch<SetStateAction<DevRevCssStage>>;
+
+  // DevRev CSS Fetch Function
+  fetchCssFromDevRev: () => Promise<string | null>;
 }
 
 export const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -48,9 +58,43 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // CSS Content State
   const [cssContent, setCssContent] = useState<string>('');
 
+  // DevRev CSS State
+  const [devRevCssStage, setDevRevCssStage] = useState<DevRevCssStage>('idle');
+
   // Generation Stage State
   const [generationStage, setGenerationStage] =
     useState<GenerationStage>('idle');
+
+  // Function to fetch CSS from DevRev
+  const fetchCssFromDevRev = async (): Promise<string | null> => {
+    try {
+      // Check if DevRev credentials exist
+      const pat = await getEnvVariable('DEVREV_PAT');
+      const donId = await getEnvVariable('DEVREV_ORG_DON_ID');
+
+      if (!pat || !donId) {
+        throw new Error('DevRev credentials missing');
+      }
+
+      // Start loading
+      setDevRevCssStage('loading');
+
+      // Get CSS from DevRev
+      const css = await initializeCssFromDevRev();
+
+      if (css) {
+        setDevRevCssStage('loaded');
+        return css;
+      } else {
+        setDevRevCssStage('idle');
+        return null;
+      }
+    } catch (error) {
+      console.error('Error fetching CSS from DevRev:', error);
+      setDevRevCssStage('error');
+      return null;
+    }
+  };
 
   const handleImageChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -101,6 +145,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         setCssContent,
         generationStage,
         setGenerationStage,
+        devRevCssStage,
+        setDevRevCssStage,
+        fetchCssFromDevRev,
       }}
     >
       {children}
