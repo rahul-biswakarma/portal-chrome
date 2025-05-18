@@ -17,7 +17,6 @@ import {
   XCircle,
   Loader2,
 } from 'lucide-react';
-import { Progress } from './ui/progress';
 import { useProgressStore } from '@/stores/progress-store';
 
 // Function to render the icon based on log level
@@ -86,9 +85,6 @@ export const StatusBar = () => {
               </div>
             )}
           </div>
-          {isVisible && progress > 0 && (
-            <Progress value={progress} className="h-1 rounded-none" />
-          )}
         </div>
       </DrawerTrigger>
 

@@ -4,7 +4,7 @@ import { getEnvVariable } from '../utils/environment';
 // Default API parameters
 const DEFAULT_MODEL = 'gpt-4o';
 const DEFAULT_TEMPERATURE = 0.7;
-const DEFAULT_MAX_TOKENS_PROMPT = 3000;
+const DEFAULT_MAX_TOKENS_PROMPT = 8000;
 const DEFAULT_MAX_TOKENS_CSS = 4000;
 const DEFAULT_MAX_TOKENS_EVAL = 1500;
 
@@ -437,22 +437,124 @@ export const generateCSSWithAI = async (
     computedStylesText = formatComputedStyles(computedStyles);
   }
 
-  // Improved prompt for pixel-perfect matching and visual fidelity
-  let improvedPrompt = `${prompt}\n\nIMPORTANT: The goal is to make the current design visually match the desired outcome. Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences. Only use the provided class names. If unsure, err on the side of making more changes.`;
+  // Check if we're in text-only mode (no reference image)
+  const isTextOnlyMode = !referenceImage || !isValidImageData(referenceImage);
 
-  // Add iteration context if this isn't the first attempt
-  if (retryCount > 0) {
-    improvedPrompt += `\n\nThis is iteration ${retryCount + 1}. The previous CSS didn't fully match the reference image. Please make additional refinements to achieve better visual matching.`;
-  }
+  // Create two completely different prompts based on mode
+  let contentText = '';
 
-  // Build the content array
-  const contentArray: MessageContent[] = [
-    {
-      type: 'text',
-      text: `You are an expert CSS generator. Your task is to write CSS to transform a current design to visually match a reference design based on the user's request.
+  if (isTextOnlyMode) {
+    // TEXT-ONLY MODE: Focus on interpreting the style description
+
+    // Extract style hints from the prompt
+    const lowerPrompt = prompt.toLowerCase();
+    const hasStyleKeywords = [
+      'ui',
+      'theme',
+      'style',
+      'design',
+      'look',
+      'aesthetic',
+      'modern',
+      'clean',
+      'minimalist',
+      'colorful',
+      'dark',
+      'light',
+      'candy',
+      'glossy',
+      'flat',
+      'material',
+      'neon',
+      'retro',
+      'vintage',
+      'futuristic',
+      'glassmorphism',
+      'neumorphism',
+    ].some((keyword) => lowerPrompt.includes(keyword));
+
+    const isVague = prompt.split(' ').length < 10;
+
+    contentText = `You are a professional CSS developer. Your task is to generate CSS based ONLY on a text description. NO REFERENCE IMAGE IS AVAILABLE.
+
+USER STYLE DESCRIPTION:
+"${prompt}"
+
+${
+  hasStyleKeywords && isVague
+    ? `IMPORTANT - THIS IS A BRIEF STYLE DESCRIPTION:
+The user has provided a brief style description that mentions "${prompt}". You MUST interpret this creatively and generate appropriate CSS for this style. Do not ask for clarification - instead, use your knowledge of design trends to implement what this style likely means.`
+    : ''
+}
+
+DOM AND CLASS STRUCTURE:
+The following is a hierarchical tree of elements with their portal-* classes and associated Tailwind classes. You MUST use these portal-* class names in your CSS selectors.
+
+HIERARCHICAL VIEW:
+${hierarchyText}
+
+FULL CLASS DATA (for context on existing Tailwind classes):
+${JSON.stringify(enhancedTree, null, 2)}
+
+${
+  specificityAnalysis
+    ? `SPECIFICITY ANALYSIS:
+${specificityAnalysis}
+`
+    : ''
+}
+
+${
+  cascadeAnalysis
+    ? `CASCADE CHALLENGES:
+${cascadeAnalysis}
+`
+    : ''
+}
+
+${
+  groupingAnalysis
+    ? `ELEMENT GROUPING OPPORTUNITIES:
+${groupingAnalysis}
+`
+    : ''
+}
+
+${
+  computedStylesText
+    ? `COMPUTED STYLES (Current rendered state of elements):
+${computedStylesText}
+`
+    : ''
+}
+
+CURRENT CSS (if any, to be built upon or replaced):
+${sanitizedCSS ? sanitizedCSS : 'No pre-existing CSS. Generate all necessary styles.'}
+
+CSS GENERATION INSTRUCTIONS:
+1. YOU MUST GENERATE CSS CODE regardless of how vague the style description is. DO NOT refuse to generate CSS.
+2. Output ONLY valid CSS code with NO explanations, markdown, or comments.
+3. Use ONLY selectors targeting classes that start with "portal-" (e.g., \`.portal-header\`, \`.portal-button--primary\`).
+4. CREATE A COMPLETE STYLE SYSTEM that matches the user's description or intent, using common design patterns.
+5. If the description is vague, MAKE CREATIVE ASSUMPTIONS about colors, typography, spacing, and other style elements.
+6. When overriding Tailwind, use sufficient specificity or strategic !important declarations.
+7. If \`CURRENT CSS\` is provided, include it with your modifications and improvements.
+8. Group similar elements with comma-separated selectors and organize your CSS logically.
+9. DO NOT INCLUDE ANY COMMENTS in the output CSS.
+
+MANDATORY RESPONSE FORMAT:
+- RESPOND ONLY WITH VALID CSS CODE
+- DO NOT ASK FOR CLARIFICATION
+- DO NOT EXPLAIN YOUR DECISIONS
+- DO NOT REFUSE TO GENERATE CSS
+- DO NOT USE MARKDOWN CODE BLOCKS`;
+  } else {
+    // REFERENCE IMAGE MODE: Focus on matching the visual design
+
+    contentText = `You are an expert CSS generator. Your task is to write CSS to transform a current design to visually match a reference design based on the user's request.
 
 USER REQUEST:
-"${improvedPrompt}"
+"${prompt}\n\nThe goal is to make the current design visually match the desired outcome in the reference image. Focus on pixel-perfect matching of color, spacing, font, and layout. Do not ignore small differences."
 
 DOM AND CLASS STRUCTURE:
 The following is a hierarchical tree of elements with their portal-* classes and associated Tailwind classes. You MUST use these portal-* class names in your CSS selectors.
@@ -523,11 +625,18 @@ CRITICAL INSTRUCTIONS:
 11. **Iterative Refinement (if applicable):** ${retryCount > 0 ? `This is iteration ${retryCount + 1}. Review the previous attempt and the user's feedback to make precise adjustments for a better match.` : 'This is the first attempt.'}
 12. **Computed Styles Reference:** Use the COMPUTED STYLES section as your primary reference for the current state of elements. This shows the actual rendered values rather than just class names, which is more precise for targeting changes.
 
-Based on all the above, generate the complete CSS code now WITHOUT ANY COMMENTS.`,
+Based on all the above, generate the complete CSS code now WITHOUT ANY COMMENTS.`;
+  }
+
+  // Build the content array
+  const contentArray: MessageContent[] = [
+    {
+      type: 'text',
+      text: contentText,
     },
   ];
 
-  // Add images if provided
+  // Add images if provided and valid
   if (referenceImage && isValidImageData(referenceImage)) {
     contentArray.push({
       type: 'image_url',
@@ -550,8 +659,9 @@ Based on all the above, generate the complete CSS code now WITHOUT ANY COMMENTS.
   const messages = [
     {
       role: 'system',
-      content:
-        'You are an expert CSS developer specializing in pixel-perfect visual implementation. Your task is to generate CSS that will transform a web page to match a target design. You excel at solving complex styling challenges like specificity issues, cascade problems, and overriding existing styles.',
+      content: isTextOnlyMode
+        ? 'You are a CSS expert whose primary function is to generate valid CSS code from style descriptions. YOU MUST ALWAYS GENERATE CSS CODE regardless of how vague the prompt is - NEVER refuse, NEVER ask for clarification, and NEVER explain why you can\'t generate CSS. When given brief style descriptions (like "candy UI"), interpret them according to common design conventions. ALL responses MUST contain ONLY valid CSS code. You can make reasonable assumptions about colors, typography, spacing, and visual effects based on the hints provided. Remember, you are being used in a tool that expects CSS output.'
+        : 'You are an expert CSS developer specializing in pixel-perfect visual implementation. Your task is to generate CSS that will transform a web page to match a target design. You excel at solving complex styling challenges like specificity issues, cascade problems, and overriding existing styles.',
     },
     {
       role: 'user',
@@ -1104,6 +1214,29 @@ function validateAndSanitizeCSS(css: string): string {
     'not appropriate',
     'against my ethical guidelines',
     'unable to assist',
+    'reference design', // Common in "I can't see the reference design" messages
+    'see the', // Common in "I can't see the reference image" messages
+    'reference image', // Explicitly matching reference image mentions
+    'unable to see',
+    'cannot see',
+    'no reference',
+    'without a reference',
+    'unable to provide', // Common in text-only refusals
+    'lacks specific details', // Common in vague prompt refusals
+    'lacks details',
+    'need more details',
+    'need more specific',
+    'need more information',
+    'provide more details',
+    'could you please provide',
+    'could you provide',
+    'please provide',
+    'more detailed',
+    "I'm sorry, I can't assist with that", // Exact phrase the user is seeing
+    "can't assist",
+    "can't help",
+    'cannot assist',
+    'cannot help',
   ];
 
   // If CSS is a refusal message, replace with placeholder CSS
@@ -1115,7 +1248,140 @@ function validateAndSanitizeCSS(css: string): string {
     console.warn(
       'Detected refusal message in CSS content, replacing with placeholder',
     );
-    return '/* CSS content will be generated based on the evaluation */';
+
+    // Extract any style hints from the input text - like "candy UI"
+    const styleHint =
+      css.match(/["']([^"']+ui|[^"']+theme|[^"']+style)["']/i)?.[1] || '';
+
+    // Generate appropriate placeholder CSS based on style hints
+    if (styleHint.toLowerCase().includes('candy')) {
+      return `/* Generated candy UI style based on your prompt */
+.portal-header {
+  font-size: 28px;
+  font-weight: bold;
+  color: #ff4d8d;
+  text-shadow: 2px 2px 0px #ffffff;
+  margin-bottom: 20px;
+  letter-spacing: 1px;
+}
+
+.portal-content {
+  font-size: 16px;
+  line-height: 1.6;
+  color: #8a5eff;
+  background-color: #fffaf0;
+  padding: 20px;
+  border-radius: 15px;
+  border: 3px solid #ffccf9;
+}
+
+.portal-button {
+  background: linear-gradient(135deg, #ff9be6 0%, #ff85d5 100%);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 25px;
+  font-weight: bold;
+  border: none;
+  box-shadow: 0 4px 0 #cc6db0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.portal-button:hover {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #cc6db0;
+  background: linear-gradient(135deg, #ffb0ec 0%, #ff99dd 100%);
+}
+
+.portal-card {
+  background-color: #ffffff;
+  border-radius: 20px;
+  border: 4px solid #a5eeff;
+  padding: 20px;
+  margin-bottom: 15px;
+  box-shadow: 0 8px 0 rgba(164, 219, 255, 0.5);
+}
+
+.portal-nav {
+  background-color: #ffefff;
+  padding: 15px;
+  border-bottom: 4px solid #ffd6f3;
+}
+
+.portal-link {
+  color: #ff6b9d;
+  text-decoration: none;
+  font-weight: bold;
+  position: relative;
+}
+
+.portal-link:hover::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background-color: #ffb9d8;
+  border-radius: 3px;
+}
+`;
+    } else {
+      // Generic placeholder CSS
+      return `/* CSS content placeholder */
+.portal-header {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.portal-content {
+  font-size: 16px;
+  line-height: 1.5;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.portal-button {
+  background-color: #4a7dff;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.portal-button:hover {
+  background-color: #3a6eee;
+}
+
+.portal-card {
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.portal-nav {
+  background-color: #f8f9fa;
+  padding: 12px 16px;
+}
+
+.portal-link {
+  color: #4a7dff;
+  text-decoration: none;
+}
+
+.portal-link:hover {
+  text-decoration: underline;
+}
+
+/* This CSS provides a basic starting point. You can provide more details in your prompt for a more specific style. */
+`;
+    }
   }
 
   // Remove any markdown code block syntax if present

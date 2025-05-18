@@ -280,6 +280,12 @@ export const PromptInput = () => {
       if (selectedImage && imageFile) {
         // Ensure imageFile is also present for a valid reference
         referenceImgForAI = selectedImage as string;
+      } else {
+        // No reference image was provided, warn the user
+        addLog(
+          'No reference image provided. Results may be limited to style descriptions in your prompt only.',
+          'warning',
+        );
       }
 
       // Always take a screenshot for the current state, even if no reference image
@@ -292,9 +298,29 @@ export const PromptInput = () => {
       addLog(`Generating initial CSS...`, 'info');
       console.log('DEBUG: Tailwind data being passed to OpenAI:', tailwindData);
 
+      // Enhance the prompt if no reference image is available
+      let enhancedPrompt = prompt;
+      if (!referenceImgForAI) {
+        // Format text-only prompts with a clear directive prefix and specific instructions
+        const isShortPrompt = prompt.split(' ').length < 5;
+
+        if (isShortPrompt) {
+          addLog(
+            'The prompt is very brief. Adding additional context to help the AI interpret your style description.',
+            'info',
+          );
+        }
+
+        enhancedPrompt = `GENERATE CSS FOR: "${prompt}".
+CRITICAL: This is a text-only directive with no reference image available.
+YOU MUST generate CSS for elements with portal-* classes based on this description.
+${isShortPrompt ? 'The description is brief, so use your creativity to interpret what this style means in terms of colors, typography, spacing, and visual effects.' : ''}
+DO NOT refuse to generate CSS or ask for clarification - instead, make your best interpretation of the style request.`;
+      }
+
       const initialCss = await generateCSSWithAI(
         apiKey,
-        prompt,
+        enhancedPrompt,
         classHierarchy,
         tailwindData,
         '', // currentCSS for the first run
