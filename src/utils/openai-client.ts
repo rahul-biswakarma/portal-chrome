@@ -191,108 +191,132 @@ async function makeOpenAIRequest(
 
   const messages = session.getMessages();
 
-  // Estimate message token count and log warning if extremely large
-  const estimatedTokens = estimateTokenCount(messages);
-  if (estimatedTokens > 15000) {
-    console.warn(
-      `WARNING: Message token count is approximately ${estimatedTokens}, which is very high and may cause issues.`,
-    );
-  }
+  // Used for tracking continuation attempts
+  let fullContent = '';
+  let continuationAttempts = 0;
+  const MAX_CONTINUATION_ATTEMPTS = 3;
 
-  try {
-    // Make the API request
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-      }),
-    });
+  // Keep track of whether we're in a continuation
+  let continueGenerating = true;
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        `API error: ${errorData.error?.message || response.statusText}`,
-      );
-    }
+  while (
+    continueGenerating &&
+    continuationAttempts <= MAX_CONTINUATION_ATTEMPTS
+  ) {
+    try {
+      // Prepare messages for continuation
+      const requestMessages = [...messages];
 
-    const data = await response.json();
+      // If this is a continuation, add the partial response and a continuation instruction
+      if (continuationAttempts > 0) {
+        // Add the partial response as an assistant message
+        requestMessages.push({
+          role: 'assistant',
+          content: fullContent,
+        });
 
-    if (
-      data.choices &&
-      data.choices[0] &&
-      data.choices[0].message &&
-      data.choices[0].message.content
-    ) {
-      const content = data.choices[0].message.content.trim();
-
-      // Add the assistant's response to the session
-      session.addMessage('assistant', content);
-
-      return content;
-    } else if (
-      data.choices &&
-      data.choices[0] &&
-      data.choices[0].finish_reason === 'length'
-    ) {
-      // Handle token limit errors
-      console.warn(
-        'Model hit token limit. Pruning history and returning placeholder content.',
-      );
-
-      // Force stronger history pruning
-      if (session.maxHistoryLength > 3) {
-        session.maxHistoryLength = Math.max(
-          3,
-          Math.floor(session.maxHistoryLength / 2),
-        );
-        session.pruneHistory();
+        // Add a continuation instruction
+        requestMessages.push({
+          role: 'user',
+          content: 'Please continue your response from where you left off.',
+        });
       }
 
-      return 'ERROR: Hit token limit. Please try again with a simpler request or less context.';
-    } else {
-      console.error('Unexpected API response:', data);
-      throw new Error('Invalid response format from API');
-    }
-  } catch (error) {
-    console.error('Error making OpenAI request:', error);
-    throw error;
-  }
-}
-
-// Simple function to estimate token count from messages
-// This is a rough estimate based on common heuristics
-function estimateTokenCount(messages: ChatMessage[]): number {
-  let count = 0;
-
-  messages.forEach((msg) => {
-    // Count tokens in text content
-    if (typeof msg.content === 'string') {
-      // Roughly 4 chars per token for English text
-      count += Math.ceil(msg.content.length / 4);
-    }
-    // Count tokens in complex content (text + images)
-    else if (Array.isArray(msg.content)) {
-      msg.content.forEach((item) => {
-        if (item.type === 'text') {
-          count += Math.ceil(item.text.length / 4);
-        } else if (item.type === 'image_url') {
-          // Images are expensive in tokens, add a reasonable estimate
-          // Low-res ~1000, high-res ~3000
-          count += 2000;
-        }
+      // Make the API request
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: requestMessages,
+        }),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `API error: ${errorData.error?.message || response.statusText}`,
+        );
+      }
+
+      const data = await response.json();
+
+      if (
+        data.choices &&
+        data.choices[0] &&
+        data.choices[0].message &&
+        data.choices[0].message.content
+      ) {
+        const content = data.choices[0].message.content.trim();
+
+        // Append to the full content
+        fullContent += (continuationAttempts > 0 ? ' ' : '') + content;
+
+        // Check if we need to continue generating
+        if (data.choices[0].finish_reason === 'length') {
+          console.log(
+            `Response was truncated. Continuing (attempt ${continuationAttempts + 1}/${MAX_CONTINUATION_ATTEMPTS})...`,
+          );
+          continuationAttempts++;
+        } else {
+          // Normal completion - we're done
+          continueGenerating = false;
+
+          // Add the complete assistant response to the session
+          session.addMessage('assistant', fullContent);
+        }
+
+        // If we've reached max attempts, stop and return what we have
+        if (continuationAttempts >= MAX_CONTINUATION_ATTEMPTS) {
+          console.warn(
+            `Reached maximum continuation attempts (${MAX_CONTINUATION_ATTEMPTS}). Returning partial content.`,
+          );
+          continueGenerating = false;
+
+          // Add the partial response to the session
+          session.addMessage('assistant', fullContent);
+        }
+      } else {
+        console.error('Unexpected API response:', data);
+        throw new Error('Invalid response format from API');
+      }
+    } catch (error) {
+      console.error('Error making OpenAI request:', error);
+
+      // Handle token limit errors if that's what caused the exception
+      if (
+        error instanceof Error &&
+        (error.message.includes('context_length_exceeded') ||
+          error.message.includes('token limit'))
+      ) {
+        // Force stronger history pruning and try once more
+        if (session.maxHistoryLength > 3 && continuationAttempts === 0) {
+          console.warn(
+            'Context length exceeded. Pruning history and retrying...',
+          );
+          session.maxHistoryLength = Math.max(
+            3,
+            Math.floor(session.maxHistoryLength / 2),
+          );
+          session.pruneHistory();
+          continuationAttempts++;
+        } else {
+          // We've already tried pruning or it didn't work
+          continueGenerating = false;
+          throw error;
+        }
+      } else {
+        // For other errors, stop the continuation loop
+        continueGenerating = false;
+        throw error;
+      }
     }
+  }
 
-    // Add overhead for message structure
-    count += 20;
-  });
-
-  return count;
+  return fullContent;
 }
 
 /**
@@ -349,6 +373,7 @@ export const generatePromptWithAI = async (
   let computedStylesText = '';
   if (computedStyles) {
     computedStylesText = formatComputedStyles(computedStyles);
+    console.log('DEBUG 1: Computed styles text:', computedStylesText);
   }
 
   // Prepare the messages for OpenAI
@@ -585,12 +610,6 @@ export const generateCSSWithAI = async (
 ): Promise<string> => {
   const { model } = await getApiParameters();
 
-  // Sanitize CSS to prevent refusal responses
-  const sanitizedCSS = validateAndSanitizeCSS(currentCSS);
-
-  // Debug log to check incoming tailwind data
-  console.log('DEBUG: Incoming tailwind data:', tailwindData);
-
   // Process the tailwind data without additional filtering
   const simplifiedTailwindData: Record<string, string[]> = {};
   if (tailwindData) {
@@ -606,38 +625,28 @@ export const generateCSSWithAI = async (
     });
   }
 
-  console.log('DEBUG: Simplified tailwind data:', simplifiedTailwindData);
-
   // Create a hierarchical representation of the Tailwind classes
   const enhancedTree = createEnhancedClassTree(
     portalClassTree,
     simplifiedTailwindData,
   );
 
-  console.log(
-    'DEBUG: Enhanced tree for prompt:',
-    JSON.stringify(enhancedTree, null, 2),
-  );
-
   // Create a more readable hierarchical representation for the prompt
   const hierarchyText = formatHierarchyForPrompt(enhancedTree);
 
-  // Create a detailed analysis of conflicting styles that might need higher specificity
-  const specificityAnalysis = analyzeSpecificityIssues(
-    enhancedTree,
-    sanitizedCSS,
-  );
-
   // Check for potential cascade issues with the provided tree
   const cascadeAnalysis = analyzeCascadeIssues(enhancedTree);
+  console.log('DEBUG 2: Cascade analysis:', cascadeAnalysis);
 
   // Analyze grouping opportunities for similar elements
   const groupingAnalysis = analyzeElementGroups(enhancedTree);
+  console.log('DEBUG 2: Grouping analysis:', groupingAnalysis);
 
   // Format computed styles if available
   let computedStylesText = '';
   if (computedStyles) {
     computedStylesText = formatComputedStyles(computedStyles);
+    console.log('DEBUG: Computed styles text:', computedStylesText);
   }
 
   // Check if we're in text-only mode (no reference image)
@@ -699,13 +708,6 @@ ${hierarchyText}
 FULL CLASS DATA (for context on existing Tailwind classes):
 ${JSON.stringify(enhancedTree, null, 2)}
 
-${
-  specificityAnalysis
-    ? `SPECIFICITY ANALYSIS:
-${specificityAnalysis}
-`
-    : ''
-}
 
 ${
   cascadeAnalysis
@@ -732,7 +734,7 @@ ${computedStylesText}
 }
 
 CURRENT CSS (if any, to be built upon or replaced):
-${sanitizedCSS ? sanitizedCSS : 'No pre-existing CSS. Generate all necessary styles.'}
+${currentCSS ?? 'No pre-existing CSS. Generate all necessary styles.'}
 
 CSS GENERATION INSTRUCTIONS:
 1. YOU MUST GENERATE CSS CODE regardless of how vague the style description is. DO NOT refuse to generate CSS.
@@ -768,13 +770,6 @@ ${hierarchyText}
 FULL CLASS DATA (for context on existing Tailwind classes):
 ${JSON.stringify(enhancedTree, null, 2)}
 
-${
-  specificityAnalysis
-    ? `SPECIFICITY ANALYSIS:
-${specificityAnalysis}
-`
-    : ''
-}
 
 ${
   cascadeAnalysis
@@ -801,7 +796,7 @@ ${computedStylesText}
 }
 
 CURRENT CSS (if any, to be built upon or replaced):
-${sanitizedCSS ? sanitizedCSS : 'No pre-existing CSS. Generate all necessary styles.'}
+${currentCSS ?? 'No pre-existing CSS. Generate all necessary styles.'}
 
 CRITICAL INSTRUCTIONS:
 1.  **Output Format:** RESPOND ONLY WITH VALID CSS CODE. Do NOT include any explanations, markdown (like \`\`\`css), or any text other than the CSS itself.
@@ -904,71 +899,6 @@ Based on all the above, generate the complete CSS code now WITHOUT ANY COMMENTS.
     throw error;
   }
 };
-
-// Helper function to analyze specificity issues in the tree
-function analyzeSpecificityIssues(
-  tree: EnhancedTreeNode,
-  currentCSS: string,
-): string {
-  // Identify portal classes with many Tailwind classes that might need specificity help
-  const potentialIssues: string[] = [];
-
-  // Check for nodes with many competing Tailwind classes
-  const findSpecificityIssues = (node: EnhancedTreeNode, path: string = '') => {
-    const nodePath = path ? `${path} > ${node.element}` : node.element;
-
-    // Check if this node has portal classes with many Tailwind classes
-    node.portalClasses.forEach((portalClass) => {
-      if (portalClass.tailwindClasses.length > 10) {
-        potentialIssues.push(
-          `- \`.${portalClass.name}\` has ${portalClass.tailwindClasses.length} Tailwind classes that may need strong specificity to override.`,
-        );
-      }
-
-      // Look for conflicting Tailwind classes (e.g., multiple colors, sizes)
-      const colorClasses = portalClass.tailwindClasses.filter(
-        (cls) =>
-          cls.startsWith('bg-') ||
-          cls.startsWith('text-') ||
-          cls.startsWith('border-'),
-      );
-
-      if (colorClasses.length > 2) {
-        potentialIssues.push(
-          `- \`.${portalClass.name}\` has conflicting color classes: ${colorClasses.join(', ')}`,
-        );
-      }
-
-      // Check for inline styles (will appear in the element, not classes)
-      if (nodePath.includes('style=')) {
-        potentialIssues.push(
-          `- \`.${portalClass.name}\` may have inline styles that will need !important to override.`,
-        );
-      }
-    });
-
-    // Recursively check children
-    if (node.children) {
-      node.children.forEach((child) => findSpecificityIssues(child, nodePath));
-    }
-  };
-
-  findSpecificityIssues(tree);
-
-  // Check if currentCSS contains !important declarations already
-  const importantDeclarations = (currentCSS.match(/!important/g) || []).length;
-  if (importantDeclarations > 0) {
-    potentialIssues.push(
-      `- Current CSS already contains ${importantDeclarations} !important declarations, indicating existing specificity challenges.`,
-    );
-  }
-
-  if (potentialIssues.length === 0) {
-    return '';
-  }
-
-  return `The following elements may need special handling for specificity issues:\n${potentialIssues.join('\n')}`;
-}
 
 // Helper function to analyze cascade issues
 function analyzeCascadeIssues(tree: EnhancedTreeNode): string {
@@ -1187,212 +1117,6 @@ function formatHierarchyForPrompt(
 }
 
 /**
- * Validates and sanitizes CSS to prevent refusal responses
- * @param css The CSS to validate and sanitize
- * @returns Sanitized CSS
- */
-function validateAndSanitizeCSS(css: string): string {
-  // Check if CSS contains common refusal messages
-  const refusalPhrases = [
-    "I'm sorry",
-    'I cannot',
-    "I can't",
-    'I apologize',
-    'I am not able to',
-    "I'm unable to",
-    'not appropriate',
-    'against my ethical guidelines',
-    'unable to assist',
-    'reference design', // Common in "I can't see the reference design" messages
-    'see the', // Common in "I can't see the reference image" messages
-    'reference image', // Explicitly matching reference image mentions
-    'unable to see',
-    'cannot see',
-    'no reference',
-    'without a reference',
-    'unable to provide', // Common in text-only refusals
-    'lacks specific details', // Common in vague prompt refusals
-    'lacks details',
-    'need more details',
-    'need more specific',
-    'need more information',
-    'provide more details',
-    'could you please provide',
-    'could you provide',
-    'please provide',
-    'more detailed',
-    "I'm sorry, I can't assist with that", // Exact phrase the user is seeing
-    "can't assist",
-    "can't help",
-    'cannot assist',
-    'cannot help',
-  ];
-
-  // If CSS is a refusal message, replace with placeholder CSS
-  if (
-    refusalPhrases.some((phrase) =>
-      css.toLowerCase().includes(phrase.toLowerCase()),
-    )
-  ) {
-    console.warn(
-      'Detected refusal message in CSS content, replacing with placeholder',
-    );
-
-    // Extract any style hints from the input text - like "candy UI"
-    const styleHint =
-      css.match(/["']([^"']+ui|[^"']+theme|[^"']+style)["']/i)?.[1] || '';
-
-    // Generate appropriate placeholder CSS based on style hints
-    if (styleHint.toLowerCase().includes('candy')) {
-      return `/* Generated candy UI style based on your prompt */
-.portal-header {
-  font-size: 28px;
-  font-weight: bold;
-  color: #ff4d8d;
-  text-shadow: 2px 2px 0px #ffffff;
-  margin-bottom: 20px;
-  letter-spacing: 1px;
-}
-
-.portal-content {
-  font-size: 16px;
-  line-height: 1.6;
-  color: #8a5eff;
-  background-color: #fffaf0;
-  padding: 20px;
-  border-radius: 15px;
-  border: 3px solid #ffccf9;
-}
-
-.portal-button {
-  background: linear-gradient(135deg, #ff9be6 0%, #ff85d5 100%);
-  color: white;
-  padding: 10px 20px;
-  border-radius: 25px;
-  font-weight: bold;
-  border: none;
-  box-shadow: 0 4px 0 #cc6db0;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.portal-button:hover {
-  transform: translateY(2px);
-  box-shadow: 0 2px 0 #cc6db0;
-  background: linear-gradient(135deg, #ffb0ec 0%, #ff99dd 100%);
-}
-
-.portal-card {
-  background-color: #ffffff;
-  border-radius: 20px;
-  border: 4px solid #a5eeff;
-  padding: 20px;
-  margin-bottom: 15px;
-  box-shadow: 0 8px 0 rgba(164, 219, 255, 0.5);
-}
-
-.portal-nav {
-  background-color: #ffefff;
-  padding: 15px;
-  border-bottom: 4px solid #ffd6f3;
-}
-
-.portal-link {
-  color: #ff6b9d;
-  text-decoration: none;
-  font-weight: bold;
-  position: relative;
-}
-
-.portal-link:hover::after {
-  content: '';
-  position: absolute;
-  bottom: -3px;
-  left: 0;
-  width: 100%;
-  height: 3px;
-  background-color: #ffb9d8;
-  border-radius: 3px;
-}
-`;
-    } else {
-      // Generic placeholder CSS
-      return `/* CSS content placeholder */
-.portal-header {
-  font-size: 24px;
-  font-weight: bold;
-  margin-bottom: 16px;
-  color: #333;
-}
-
-.portal-content {
-  font-size: 16px;
-  line-height: 1.5;
-  color: #333;
-  margin-bottom: 20px;
-}
-
-.portal-button {
-  background-color: #4a7dff;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.2s;
-}
-
-.portal-button:hover {
-  background-color: #3a6eee;
-}
-
-.portal-card {
-  background-color: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-.portal-nav {
-  background-color: #f8f9fa;
-  padding: 12px 16px;
-}
-
-.portal-link {
-  color: #4a7dff;
-  text-decoration: none;
-}
-
-.portal-link:hover {
-  text-decoration: underline;
-}
-
-/* This CSS provides a basic starting point. You can provide more details in your prompt for a more specific style. */
-`;
-    }
-  }
-
-  // Remove any markdown code block syntax if present
-  let sanitized = css
-    .replace(/```css\s*/g, '')
-    .replace(/```\s*$/g, '')
-    .replace(/```/g, '');
-
-  // Ensure CSS is valid by checking for basic CSS syntax (this is a very simple check)
-  if (
-    !sanitized.includes('{') &&
-    !sanitized.includes('}') &&
-    sanitized.trim().length > 0
-  ) {
-    console.warn('CSS content may not be valid CSS, adding minimal structure');
-    sanitized = '/* CSS content appears to be malformed */\n' + sanitized;
-  }
-
-  return sanitized;
-}
-
-/**
  * Evaluate CSS results using OpenAI API
  * @param apiKey The OpenAI API key
  * @param referenceImage The reference image data URL
@@ -1415,9 +1139,6 @@ export const evaluateCSSResultWithAI = async (
   sessionId?: string,
 ): Promise<{ isMatch: boolean; feedback: string }> => {
   const { model } = await getApiParameters();
-
-  // Sanitize CSS to prevent refusal responses
-  const sanitizedCSS = validateAndSanitizeCSS(currentCSS);
 
   // Format hierarchy data if provided
   let hierarchyText = '';
@@ -1471,7 +1192,7 @@ IMAGES:
 
 CURRENT CSS:
 \`\`\`css
-${sanitizedCSS}
+${currentCSS}
 \`\`\`
 
 ${

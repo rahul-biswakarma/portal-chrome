@@ -408,8 +408,8 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
 
       // Begin iteration loop if initial CSS needs improvement
       let isSuccessful = false;
-      const maxIterations = 3; // Reduced from 5 to 3 iterations
-      let bestCss = currentCss; // Track the best CSS version
+      const maxIterations = 5;
+      let bestCss = currentCss;
 
       // Simple function to compare CSS lengths to detect potential overwrites
       const isCssLikelyImprovement = (
