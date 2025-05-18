@@ -106,7 +106,8 @@ export const prepareArtifact = async (
       throw new Error('DevRev PAT is missing');
     }
 
-    const response = await fetch(`${baseUrl}/artifacts.prepare`, {
+    // The endpoint might be /internal/artifacts.prepare based on your Postman screenshot
+    const response = await fetch(`${baseUrl}/internal/artifacts.prepare`, {
       method: 'POST',
       headers: {
         Authorization: pat,
