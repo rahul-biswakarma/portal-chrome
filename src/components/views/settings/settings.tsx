@@ -169,7 +169,7 @@ export const Settings = () => {
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg p-2">
+    <div className="flex flex-col gap-2 rounded-lg p-4 pb-12">
       <h3 className="text-lg font-medium mb-2">Settings</h3>
 
       <div className="mb-6">
@@ -184,6 +184,7 @@ export const Settings = () => {
             type="password"
             id="apiKey"
             value={apiKey}
+            className="text-sm"
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="sk-..."
           />
@@ -213,7 +214,7 @@ export const Settings = () => {
               type="password"
               id="devrevPat"
               value={devrevPat}
-              className="text-xs"
+              className="text-sm"
               onChange={(e) => setDevrevPat(e.target.value)}
               placeholder="Enter your DevRev PAT"
             />
@@ -232,7 +233,7 @@ export const Settings = () => {
               type="text"
               id="devrevOrgDonId"
               value={devrevOrgDonId}
-              className="text-xs"
+              className="text-sm"
               onChange={(e) => setDevrevOrgDonId(e.target.value)}
               placeholder="e.g., don:identity:dvrv-us-1:devo/E9k6TwiY"
             />
@@ -248,7 +249,7 @@ export const Settings = () => {
           </label>
           <div className="flex gap-1">
             <Input
-              className="text-xs"
+              className="text-sm"
               type="text"
               id="devrevApiUrl"
               value={devrevApiUrl}

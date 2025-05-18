@@ -271,7 +271,7 @@ export const HierarchyView = () => {
         };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden p-2 pb-12">
       <div className="p-3 bg-secondary rounded-md flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold">Portal Classes</h2>

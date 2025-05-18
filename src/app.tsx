@@ -33,7 +33,7 @@ function App() {
 
   return (
     <AppProvider>
-      <div className="flex gap-1.5 flex-col h-screen bg-background text-foreground overflow-hidden">
+      <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
         <div className="h-full overflow-hidden">
           <ViewTabs
             config={views}

@@ -25,7 +25,7 @@ export const CustomizeView = () => {
   }, [setApiKey, apiKey]);
 
   return (
-    <div className="pb-4 h-full grid grid-rows-[auto_1fr] gap-2 overflow-hidden">
+    <div className="pb-12 h-full grid grid-rows-[auto_1fr] gap-2 overflow-y-auto p-2">
       <div className="flex flex-col gap-2">
         {apiKeyMissing && (
           <div className="bg-amber-50 border border-amber-200 rounded-md p-2 mb-2 flex items-center gap-2">

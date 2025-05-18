@@ -28,7 +28,7 @@ export const ViewTabs = ({
         ))}
       </div>
       <Separator />
-      <div className="p-2 h-full">
+      <div className="h-full">
         {config.map((tab) => (
           <div
             className={clsx('h-full', activeTab !== tab.id && 'hidden')}
