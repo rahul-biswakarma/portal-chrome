@@ -7,6 +7,7 @@ import { uploadCssToDevRev } from '@/services/devrev-api';
 import { AppContext } from '@/contexts/app-context';
 import { useLogger } from '@/services/logger';
 import { Loader2 } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 
 export const Settings = () => {
   const [apiKey, setApiKey] = useState('');
@@ -177,7 +178,7 @@ export const Settings = () => {
   }
 
   return (
-    <div className="rounded-lg p-2">
+    <div className="flex flex-col gap-2 rounded-lg p-2">
       <h3 className="text-lg font-medium mb-2">Settings</h3>
 
       <div className="mb-6">
@@ -204,7 +205,9 @@ export const Settings = () => {
         </p>
       </div>
 
-      <div className="border-t pt-4 mb-6">
+      <Separator />
+
+      <div className="pt-4 mb-6">
         <h4 className="text-md font-medium mb-2">DevRev Integration</h4>
 
         <div className="mb-3">
@@ -219,6 +222,7 @@ export const Settings = () => {
               type="password"
               id="devrevPat"
               value={devrevPat}
+              className="text-xs"
               onChange={(e) => setDevrevPat(e.target.value)}
               placeholder="Enter your DevRev PAT"
             />
@@ -237,6 +241,7 @@ export const Settings = () => {
               type="text"
               id="devrevOrgDonId"
               value={devrevOrgDonId}
+              className="text-xs"
               onChange={(e) => setDevrevOrgDonId(e.target.value)}
               placeholder="e.g., don:identity:dvrv-us-1:devo/E9k6TwiY"
             />
@@ -252,6 +257,7 @@ export const Settings = () => {
           </label>
           <div className="flex gap-1">
             <Input
+              className="text-xs"
               type="text"
               id="devrevApiUrl"
               value={devrevApiUrl}
@@ -268,26 +274,6 @@ export const Settings = () => {
           <Button onClick={handleSaveDevRevSettings}>
             Save DevRev Settings
           </Button>
-          <Button
-            onClick={handleApplyCssToPortal}
-            disabled={isApplyButtonDisabled}
-            variant={
-              uploadStatus === 'success'
-                ? 'success'
-                : uploadStatus === 'error'
-                  ? 'destructive'
-                  : 'default'
-            }
-          >
-            {isUploading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              'Apply CSS in Portal'
-            )}
-          </Button>
         </div>
 
         {uploadStatus === 'success' && (
@@ -302,6 +288,30 @@ export const Settings = () => {
           </p>
         )}
       </div>
+
+      <Separator />
+
+      <Button
+        onClick={handleApplyCssToPortal}
+        className="w-full mt-2"
+        disabled={isApplyButtonDisabled}
+        variant={
+          uploadStatus === 'success'
+            ? 'success'
+            : uploadStatus === 'error'
+              ? 'destructive'
+              : 'default'
+        }
+      >
+        {isUploading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Uploading...
+          </>
+        ) : (
+          'Apply CSS in Portal'
+        )}
+      </Button>
 
       {isSaved && (
         <p className="mt-2 text-sm text-green-600">

@@ -127,7 +127,7 @@ export const StatusBar = () => {
     <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
       <DrawerTrigger asChild>
         <div
-          className="flex flex-col border-t border-border bg-card p-1 h-full cursor-pointer text-xs truncate max-w-full overflow-hidden"
+          className="flex flex-col border-t border-border bg-card p-1 h-fit cursor-pointer text-xs truncate max-w-full overflow-hidden"
           onClick={() => setIsDrawerOpen(true)}
         >
           <div className="flex items-center justify-between p-2">

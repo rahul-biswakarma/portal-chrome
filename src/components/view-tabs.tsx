@@ -12,12 +12,12 @@ export const ViewTabs = ({
   setActiveTab: React.Dispatch<React.SetStateAction<string>>;
 }) => {
   return (
-    <div className="h-full flex-1">
+    <div className="h-full flex-1 flex flex-col grow">
       <div className="flex flex-wrap gap-2 justify-center items-center p-2">
         {config.map((tab) => (
           <div
             className={clsx(
-              'p-2 hover:bg-mute rounded cursor-pointer select-none',
+              'px-2 py-1 hover:bg-mute rounded cursor-pointer select-none font-medium',
               activeTab === tab.id && 'bg-secondary',
             )}
             key={tab.id}

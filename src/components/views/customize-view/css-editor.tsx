@@ -14,12 +14,9 @@ import {
   RotateCw,
   Copy,
   CheckIcon,
-  CloudIcon,
-  Loader2,
   Download,
 } from 'lucide-react';
 import { useLogger } from '@/services/logger';
-import { uploadCssToDevRev } from '@/services/devrev-api';
 import { FetchCssModal } from './fetch-css-modal';
 
 export const CssEditor = () => {
@@ -27,7 +24,6 @@ export const CssEditor = () => {
   const viewRef = useRef<EditorView | null>(null);
   const [currentEditorContent, setCurrentEditorContent] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
-  const [isUploadingToDevRev, setIsUploadingToDevRev] = useState(false);
   const [showFetchModal, setShowFetchModal] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const appContext = useContext(AppContext);
@@ -42,7 +38,6 @@ export const CssEditor = () => {
     setCssContent,
     generationStage,
     devRevCssStage,
-    setDevRevCssStage,
     fetchCssFromDevRev,
   } = appContext;
 
@@ -111,46 +106,6 @@ export const CssEditor = () => {
       addLog('Applying modified CSS...', 'info');
       await applyCSS(content);
       addLog('CSS applied successfully', 'success');
-    }
-  };
-
-  const handleUploadToDevRev = async () => {
-    if (!viewRef.current) return;
-
-    try {
-      setIsUploadingToDevRev(true);
-      addLog('Getting CSS from editor...', 'info');
-
-      // Get current CSS from editor
-      const content = viewRef.current.state.doc.toString();
-      console.log('Current editor content:', content);
-
-      if (
-        !content ||
-        content.trim() === '' ||
-        content.trim() === '/* CSS will appear here when generated */'
-      ) {
-        throw new Error('No CSS content found in editor');
-      }
-
-      addLog('Uploading CSS to DevRev...', 'info');
-      const success = await uploadCssToDevRev(content);
-
-      if (success) {
-        addLog('CSS uploaded and applied to portal successfully', 'success');
-        setDevRevCssStage('loaded');
-      } else {
-        throw new Error('Failed to upload CSS');
-      }
-    } catch (error) {
-      console.error('Error applying CSS to portal:', error);
-      addLog(
-        `Error applying CSS to portal: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'error',
-      );
-      setDevRevCssStage('error');
-    } finally {
-      setIsUploadingToDevRev(false);
     }
   };
 
@@ -325,49 +280,49 @@ export const CssEditor = () => {
     <div className="flex flex-col w-full h-full gap-3">
       <div
         ref={editorRef}
-        className="w-full h-full max-h-[500px] rounded-md overflow-hidden flex-1 border border-border"
+        className="w-full h-full rounded-md overflow-hidden flex-1 border border-border"
       />
       <div className="flex justify-between">
         <div className="flex gap-2">
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5"
+            className="flex items-center gap-1.5 w-8 h-8"
             onClick={handleUndo}
             title="Undo"
             disabled={isLoading}
           >
-            <RotateCcw size={12} />
+            <RotateCcw size={14} />
           </Button>
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5"
+            className="flex items-center gap-1.5 w-8 h-8"
             onClick={handleRedo}
             title="Redo"
             disabled={isLoading}
           >
-            <RotateCw size={12} />
+            <RotateCw size={14} />
           </Button>
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5"
+            className="flex items-center gap-1.5 h-8 w-8"
             onClick={handleCopy}
             title="Copy CSS"
             disabled={isLoading || isEditorEmpty}
           >
-            {isCopied ? <CheckIcon size={12} /> : <Copy size={12} />}
+            {isCopied ? <CheckIcon size={14} /> : <Copy size={14} />}
           </Button>
           <Button
-            size="icon"
+            size="sm"
             variant="outline"
-            className="flex items-center gap-1.5"
+            className="flex items-center gap-1.5 h-8 w-8"
             onClick={handleFetchFromDevRev}
             title="Fetch CSS from DevRev"
             disabled={isLoading}
           >
-            <Download size={12} />
+            <Download size={14} />
           </Button>
         </div>
         <div className="flex gap-2">
@@ -379,31 +334,6 @@ export const CssEditor = () => {
           >
             <Play size={12} />
             <span className="text-xs">Apply CSS</span>
-          </Button>
-
-          <Button
-            size="sm"
-            className="flex items-center gap-1.5"
-            onClick={handleUploadToDevRev}
-            disabled={isLoading || isEditorEmpty || isUploadingToDevRev}
-            variant={devRevCssStage === 'loaded' ? 'success' : 'default'}
-          >
-            {isUploadingToDevRev ? (
-              <>
-                <Loader2 size={12} className="animate-spin" />
-                <span className="text-xs">Uploading...</span>
-              </>
-            ) : devRevCssStage === 'loaded' ? (
-              <>
-                <CloudIcon size={12} />
-                <span className="text-xs">DevRev Synced</span>
-              </>
-            ) : (
-              <>
-                <CloudIcon size={12} />
-                <span className="text-xs">Upload to DevRev</span>
-              </>
-            )}
           </Button>
         </div>
       </div>

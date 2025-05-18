@@ -10,6 +10,7 @@ export interface TreeNode {
   element: string;
   portalClasses: string[];
   children: TreeNode[];
+  id?: string; // Optional ID for node identification
 }
 
 // CSS version data

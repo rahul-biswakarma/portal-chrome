@@ -2,11 +2,15 @@
   --element-color: #333;
   --element-bg: #f8f9fa;
   --class-color: #087ea4;
-  --indent-width: 20px;
-  --connector-width: 1px;
-  --line-color: #ddd;
+  --indent-width: 24px;
+  --connector-width: 2px;
+  --line-color: #ccc;
   --hover-bg: rgba(0, 0, 0, 0.05);
   --active-bg: rgba(8, 126, 164, 0.08);
+  --tag-bg: #edf2f7;
+  --tag-hover-bg: #e2e8f0;
+  --class-bg: rgba(8, 126, 164, 0.08);
+  --parent-node-bg: #f8fafc;
 }
 
 .hierarchy-tree {
@@ -86,30 +90,234 @@
   background-color: var(--hover-bg);
 }
 
+/* Tree container styles */
+.tree-container {
+  padding: 8px 12px;
+  overflow-y: auto;
+  max-height: calc(100vh - 120px);
+}
+
+.tree-node.root-node {
+  border-left: none;
+}
+
 /* Tree nodes */
 .tree-node {
   position: relative;
+  margin-bottom: 2px;
+}
+
+.node-content {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: #555;
+  gap: 6px;
+  min-height: 28px;
+  font-size: 13px;
+}
+
+.node-content:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.dark .node-content:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.node-highlighted {
+  background-color: rgba(59, 130, 246, 0.06);
+}
+
+.dark .node-highlighted {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.node-hovered {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.dark .node-hovered {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Toggle button */
+.toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.toggle-btn:hover {
+  opacity: 1;
+}
+
+.toggle-spacer {
+  width: 20px;
+  flex-shrink: 0;
+}
+
+/* Element styling */
+.element-tag {
+  display: flex;
+  align-items: center;
+  font-family:
+    'SF Mono', Monaco, Menlo, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.dark .element-tag {
+  color: #bbb;
+}
+
+.element-name {
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.dark .element-name {
+  color: #60a5fa;
+}
+
+.text-node {
+  color: #777;
+  font-style: italic;
+}
+
+.dark .text-node {
+  color: #999;
+}
+
+/* Portal classes styling */
+.portal-classes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 4px;
+  overflow: hidden;
+}
+
+.portal-class {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  border: 1px solid;
   white-space: nowrap;
+  transition: all 0.15s ease;
+  font-family:
+    'SF Mono', Monaco, Menlo, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.portal-class.active {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Children container */
+.node-children {
+  padding-left: 20px;
+  margin-top: 2px;
+  position: relative;
+}
+
+/* Root node styling */
+.root-node > .node-content {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* Hierarchy view container */
+.hierarchy-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #fff;
+  border-radius: 8px;
+}
+
+.dark .hierarchy-view {
+  background-color: #1e1e2f;
+}
+
+/* Tree structure container */
+.tree-structure {
+  padding: 4px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.tree-node {
+  animation: fadeIn 0.2s ease;
+}
+
+/* Parent nodes with children - make them stand out */
+.tree-node.has-children > .tree-node-row {
+  background-color: var(--parent-node-bg);
+  border-left: 3px solid var(--line-color);
 }
 
 .tree-node-row {
   display: flex;
   align-items: center;
-  min-height: 28px;
+  min-height: 32px;
   position: relative;
   border-radius: 4px;
-  transition: background-color 0.15s;
+  transition: all 0.2s ease;
+  padding: 2px 4px;
 }
 
 .tree-node-row:hover {
   background-color: var(--hover-bg);
 }
 
-/* Content area styles */
+/* Node content wrapper for better alignment */
+.node-content-wrapper {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+}
+
+/* Spacer for nodes without expand/collapse buttons */
+.expand-collapse-spacer {
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+}
+
+/* Tree content spacing */
 .tree-content {
   display: flex;
   align-items: flex-start;
-  padding: 2px 0;
+  padding: 4px 0;
   flex-grow: 1;
 }
 
@@ -121,13 +329,22 @@
   width: 100%;
 }
 
+/* Enhance element tag styling */
 .tree-element-tag {
   color: var(--element-color);
   font-weight: 600;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 3px;
-  background-color: var(--element-bg);
+  background-color: var(--tag-bg);
   margin-right: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.tree-node-row:hover .tree-element-tag {
+  background-color: var(--tag-hover-bg);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+  transition: all 0.2s ease;
 }
 
 /* Class styling */
@@ -136,7 +353,8 @@
   flex-direction: column;
   width: 100%;
   gap: 4px;
-  margin-top: 4px;
+  margin-top: 6px;
+  margin-left: 12px;
 }
 
 .tree-class-container {
@@ -145,11 +363,12 @@
 
 .tree-class {
   font-weight: 500;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 3px;
   transition: all 0.15s;
   cursor: pointer;
   position: relative;
+  background-color: var(--class-bg);
 }
 
 .tree-class.standalone {
@@ -163,8 +382,9 @@
 }
 
 .tree-class.active {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transform: translateY(-1px);
+  font-weight: 600;
 }
 
 .tree-class-toggle {
@@ -194,33 +414,52 @@
   border: 1px solid rgba(191, 219, 254, 0.5);
 }
 
-/* Children container */
+/* Tree structure container */
+.tree-structure {
+  padding: 4px 8px;
+  position: relative;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+/* Adjust indentation for better visualization */
 .tree-children {
   position: relative;
   padding-left: var(--indent-width);
+  margin-left: 8px;
+  margin-top: 2px;
+  border-left: var(--connector-width) solid var(--line-color);
+  padding-top: 4px;
+  padding-bottom: 2px;
 }
 
-/* Tree connector styling - completely revised */
+/* Remove left border for last child's connector */
+.tree-node.last-child > .tree-children {
+  border-left-color: transparent;
+}
+
+/* Tree connector styling */
 .tree-connector {
   position: relative;
   width: var(--indent-width);
-  height: 28px;
+  height: 32px;
   flex-shrink: 0;
-  margin-right: -5px; /* Pull the connector closer to the element */
 }
 
-/* L-shaped connector line for each node */
+/* Horizontal connector line */
 .tree-connector::before {
   content: '';
   position: absolute;
   top: 50%;
-  right: 0;
-  width: 100%; /* Extend the line all the way to the element */
+  right: 5px;
+  width: calc(100% - 5px);
   height: var(--connector-width);
   background-color: var(--line-color);
 }
 
-/* Vertical line connecting to parent */
+/* Vertical connector line */
 .tree-connector::after {
   content: '';
   position: absolute;
@@ -231,37 +470,69 @@
   background-color: var(--line-color);
 }
 
-/* Continuous vertical line for non-last-child nodes */
-.tree-node:not(.last-child)
-  > .tree-children
-  > .tree-node
-  > .tree-node-row
-  > .tree-connector::after {
-  height: 100%;
-}
-
-/* Root node special treatment */
+/* Root node styling */
 .tree-node.root-node {
   margin-left: 0;
+  margin-top: 4px;
+  padding-left: 0;
 }
 
-/* Vertical lines for each level of hierarchy */
-.has-children > .tree-children::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: var(--connector-width);
-  background-color: var(--line-color);
+.tree-node.root-node > .tree-node-row {
+  background-color: var(--parent-node-bg);
+  border-left: 3px solid var(--class-color);
+  border-radius: 4px;
+  padding-left: 8px;
 }
 
-/* No vertical line for root node's children container */
-.tree-node.root-node.has-children > .tree-children::before {
+/* Root node's children styling */
+.tree-node.root-node > .tree-children {
+  border-left: var(--connector-width) solid var(--line-color);
+  margin-left: 12px;
+  padding-left: var(--indent-width);
+}
+
+/* No vertical line for last child */
+.tree-node.last-child > .tree-node-row > .tree-connector::after {
+  height: 50%;
+}
+
+/* Specific style for children of the last node */
+.last-child-container {
+  border-left-color: transparent;
+}
+
+.last-child-container::before {
   display: none;
 }
 
-/* No left connector for last children */
-.tree-node.last-child > .tree-node-row > .tree-connector::after {
-  height: 50%;
+/* Collapsed node styling */
+.tree-node.collapsed > .tree-node-row {
+  border-left-color: #a3afc0;
+}
+
+.tree-node.collapsed > .tree-node-row:hover {
+  border-left-color: #8492a6;
+}
+
+/* Expand/collapse button styling */
+.expand-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border: none;
+  background: #f0f0f0;
+  cursor: pointer;
+  padding: 0;
+  color: #666;
+  transition: all 0.2s ease;
+  border-radius: 3px;
+}
+
+.expand-collapse-btn:hover {
+  color: #000;
+  background: #e0e0e0;
+  transform: scale(1.05);
 }

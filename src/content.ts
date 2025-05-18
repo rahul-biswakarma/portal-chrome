@@ -3,6 +3,7 @@ type TreeNode = {
   element: string;
   portalClasses: string[];
   children: TreeNode[];
+  id?: string;
 };
 
 // Types for element styling
@@ -210,6 +211,7 @@ function getPortalTreeData(): TreeNode {
     element: 'body',
     portalClasses: [],
     children: [],
+    id: 'body',
   };
 
   // Use a combination of approaches to find all portal elements
@@ -261,6 +263,12 @@ function getPortalTreeData(): TreeNode {
     return rootNode;
   }
 
+  // Add unique data attributes to elements to help with tree building
+  portalElements.forEach((el, index) => {
+    const id = `portal-element-${index}`;
+    el.setAttribute('data-portal-id', id);
+  });
+
   // Build a tree of portal-class elements
   buildTreeFromElements(
     rootNode,
@@ -277,7 +285,7 @@ function getPortalTreeData(): TreeNode {
  */
 function buildTreeFromElements(
   root: TreeNode,
-  elements: NodeListOf<Element>,
+  elements: NodeListOf<Element> | Element[],
 ): void {
   // Special handling for body element - add portal classes directly
   if (root.element === 'body') {
@@ -299,17 +307,78 @@ function buildTreeFromElements(
     return;
   }
 
-  // Find direct children of the root node
+  // For body node, use DOM structure to build actual tree
+  if (root.element === 'body') {
+    // Create a map of elements to help with lookup
+    const elementMap = new Map<Element, TreeNode>();
+
+    // First, create nodes for all elements but don't set up the hierarchy yet
+    elementsArray.forEach((el) => {
+      const allClasses = Array.from(el.classList);
+      const portalClasses = allClasses.filter((cls) =>
+        cls.startsWith('portal-'),
+      );
+
+      if (portalClasses.length > 0) {
+        const portalId =
+          el.getAttribute('data-portal-id') ||
+          `el-${Math.random().toString(36).substr(2, 9)}`;
+        const node: TreeNode = {
+          element: el.tagName.toLowerCase(),
+          portalClasses,
+          children: [],
+          id: portalId,
+        };
+        elementMap.set(el, node);
+      }
+    });
+
+    // Now, establish parent-child relationships based on DOM structure
+    elementsArray.forEach((el) => {
+      if (!elementMap.has(el)) return;
+
+      // Get current element's node
+      const currentNode = elementMap.get(el)!;
+
+      // Find the closest parent that is in our element map
+      let parentEl: Element | null = el.parentElement;
+      let closestPortalParent: Element | null = null;
+
+      while (parentEl && parentEl !== document.body) {
+        if (elementMap.has(parentEl)) {
+          closestPortalParent = parentEl;
+          break;
+        }
+        parentEl = parentEl.parentElement;
+      }
+
+      // If we found a parent in our map, add this node as its child
+      if (closestPortalParent) {
+        const parentNode = elementMap.get(closestPortalParent)!;
+        parentNode.children.push(currentNode);
+      } else {
+        // No portal parent found, so this is a direct child of body
+        root.children.push(currentNode);
+      }
+    });
+
+    return;
+  }
+
+  // For non-body nodes, use the existing approach
+  // Find direct children of the current node
   const childElements = elementsArray.filter((el) => {
     if (!el.parentElement) return false;
 
-    // If the element's parent is the body, it's a direct child of root
-    if (root.element === 'body' && el.parentElement === document.body) {
+    // For non-body elements, we need a different approach since we don't have a direct reference to the element
+    // related to the root node. Instead check parent-child relationship using DOM hierarchy.
+    const parentId = el.parentElement.getAttribute('data-portal-id');
+    if (parentId && root.id === parentId) {
       return true;
     }
 
     // For other nodes, check if parent has the same class as root node
-    if (root.portalClasses.length > 0) {
+    if (root.portalClasses && root.portalClasses.length > 0) {
       const parentClasses = Array.from(el.parentElement.classList);
       const isChild = root.portalClasses.some((cls) =>
         parentClasses.includes(cls),
@@ -325,12 +394,16 @@ function buildTreeFromElements(
     // Extract portal-* classes
     const allClasses = Array.from(el.classList);
     const portalClasses = allClasses.filter((cls) => cls.startsWith('portal-'));
+    const portalId =
+      el.getAttribute('data-portal-id') ||
+      `el-${Math.random().toString(36).substr(2, 9)}`;
 
     // Create child node
     const childNode: TreeNode = {
       element: el.tagName.toLowerCase(),
       portalClasses,
       children: [],
+      id: portalId,
     };
 
     // Add to root's children
@@ -348,31 +421,6 @@ function buildTreeFromElements(
       elementsArray as unknown as NodeListOf<Element>,
     );
   });
-
-  // If we couldn't find any direct children but there are remaining elements,
-  // add them all as children of the current root as a fallback
-  if (
-    root.children.length === 0 &&
-    root.element === 'body' &&
-    elementsArray.length > 0
-  ) {
-    elementsArray.forEach((el) => {
-      const allClasses = Array.from(el.classList);
-      const portalClasses = allClasses.filter((cls) =>
-        cls.startsWith('portal-'),
-      );
-
-      if (portalClasses.length > 0) {
-        const childNode: TreeNode = {
-          element: el.tagName.toLowerCase(),
-          portalClasses,
-          children: [],
-        };
-
-        root.children.push(childNode);
-      }
-    });
-  }
 }
 
 /**

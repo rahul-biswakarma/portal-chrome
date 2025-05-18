@@ -7,6 +7,7 @@ export interface ArboristNode {
   portalClasses?: string[];
   tailwindClasses?: Record<string, string[]>; // Map of portal classes to their associated Tailwind classes
   children?: ArboristNode[];
+  parentId?: string; // Reference to parent node for better tree structure
 }
 
 // Tree data structure
@@ -14,10 +15,8 @@ export interface TreeData {
   rootNode: ArboristNode;
 }
 
-// Colors mapping for different classes
-export interface ClassColorMap {
-  [className: string]: string;
-}
+// Color map for portal classes
+export type ClassColorMap = Record<string, string>;
 
 // Hierarchy data hook return type
 export interface HierarchyDataResult {
