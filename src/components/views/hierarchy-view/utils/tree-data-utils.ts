@@ -47,14 +47,8 @@ export const convertToArboristFormat = (
     elementNode.portalClasses = node.portalClasses;
     elementNode.tailwindClasses = portalToTailwind;
 
-    // Add portal classes as children of the element node with their tailwind classes
-    elementNode.children = node.portalClasses.map((cls) => ({
-      id: `${nodeId}-${cls}`,
-      name: cls,
-      portalClasses: [cls],
-      tailwindClasses: { [cls]: portalToTailwind[cls] || [] },
-      isElement: false,
-    }));
+    // Remove the creation of class children for elements
+    // We'll only show the portal classes directly on the element
   }
 
   // Process child elements

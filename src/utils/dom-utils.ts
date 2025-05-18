@@ -172,3 +172,223 @@ ${tailwindClassesStr}
     return 'Error getting page structure';
   }
 };
+
+/**
+ * Extract computed styles for elements with portal-* classes
+ * @param tabId The tab ID
+ * @returns Promise resolving to portal class to computed styles mapping
+ */
+export const extractComputedStyles = async (
+  tabId: number,
+): Promise<Record<string, Record<string, string>>> => {
+  try {
+    const result = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const portalElements = document.querySelectorAll('[class*="portal-"]');
+        const result: Record<string, Record<string, string>> = {};
+
+        // Important CSS properties to capture
+        const importantProperties = [
+          // Typography
+          'color',
+          'font-family',
+          'font-size',
+          'font-weight',
+          'line-height',
+          'letter-spacing',
+          'text-align',
+          'text-decoration',
+          'text-transform',
+
+          // Box model
+          'width',
+          'height',
+          'padding',
+          'padding-top',
+          'padding-right',
+          'padding-bottom',
+          'padding-left',
+          'margin',
+          'margin-top',
+          'margin-right',
+          'margin-bottom',
+          'margin-left',
+
+          // Layout
+          'display',
+          'position',
+          'top',
+          'right',
+          'bottom',
+          'left',
+          'flex-direction',
+          'flex-wrap',
+          'justify-content',
+          'align-items',
+          'grid-template-columns',
+          'grid-template-rows',
+          'grid-gap',
+
+          // Visual styles
+          'background-color',
+          'background-image',
+          'border',
+          'border-radius',
+          'box-shadow',
+          'opacity',
+          'transform',
+          'transition',
+
+          // Other
+          'z-index',
+          'overflow',
+          'cursor',
+        ];
+
+        // Pseudo-elements to capture
+        const pseudoElements = [
+          ':hover',
+          ':focus',
+          ':active',
+          '::before',
+          '::after',
+          ':first-child',
+          ':last-child',
+        ];
+
+        portalElements.forEach((element) => {
+          const classes = element.className.split(' ');
+          const portalClasses = classes.filter((cls) =>
+            cls.startsWith('portal-'),
+          );
+          const computedStyle = window.getComputedStyle(element);
+
+          portalClasses.forEach((portalClass) => {
+            const styles: Record<string, string> = {};
+
+            // Extract base element styles
+            importantProperties.forEach((prop) => {
+              const value = computedStyle.getPropertyValue(prop);
+              if (value && value !== '') {
+                styles[prop] = value;
+              }
+            });
+
+            // Add element tag name for context
+            styles['element'] = element.tagName.toLowerCase();
+
+            // Add parent-child relationship info if possible
+            const parentElement = element.parentElement;
+            if (parentElement && parentElement.className) {
+              const parentPortalClasses = parentElement.className
+                .split(' ')
+                .filter((cls) => cls.startsWith('portal-'));
+              if (parentPortalClasses.length > 0) {
+                styles['parent-classes'] = parentPortalClasses.join(' ');
+              }
+            }
+
+            // Add child context if it has children
+            if (element.children.length > 0) {
+              const childPortalElements = Array.from(element.children).filter(
+                (child) =>
+                  child.className &&
+                  child.className
+                    .split(' ')
+                    .some((cls) => cls.startsWith('portal-')),
+              );
+
+              if (childPortalElements.length > 0) {
+                styles['has-portal-children'] = 'true';
+                styles['child-elements'] =
+                  childPortalElements.length.toString();
+              }
+            }
+
+            // Extract CSS Rules matching the element
+            try {
+              // This part gets the actual CSS rules from stylesheets including pseudo-elements
+              const cssRules: Record<string, Record<string, string>> = {};
+
+              // Collect all stylesheets' rules
+              for (let i = 0; i < document.styleSheets.length; i++) {
+                try {
+                  const sheet = document.styleSheets[i];
+                  // Skip if the stylesheet is inaccessible (e.g., cross-origin)
+                  if (!sheet.cssRules) continue;
+
+                  for (let j = 0; j < sheet.cssRules.length; j++) {
+                    const rule = sheet.cssRules[j];
+                    if (rule instanceof CSSStyleRule) {
+                      // Check if the rule applies to our element class
+                      if (
+                        rule.selectorText.includes(`.${portalClass}`) ||
+                        rule.selectorText.includes(`.${portalClass}:`) ||
+                        rule.selectorText.includes(`.${portalClass}::`)
+                      ) {
+                        // Parse the selector to identify if it's a pseudo-element/class
+                        let pseudoType = 'base';
+                        for (const pseudo of pseudoElements) {
+                          if (rule.selectorText.includes(pseudo)) {
+                            pseudoType = pseudo;
+                            break;
+                          }
+                        }
+
+                        if (!cssRules[pseudoType]) {
+                          cssRules[pseudoType] = {};
+                        }
+
+                        // Extract the style properties
+                        for (let k = 0; k < rule.style.length; k++) {
+                          const property = rule.style[k];
+                          const value = rule.style.getPropertyValue(property);
+                          if (value) {
+                            cssRules[pseudoType][property] = value;
+                          }
+                        }
+                      }
+                    }
+                  }
+                } catch (e) {
+                  // Silent fail for cross-origin stylesheets
+                  continue;
+                }
+              }
+
+              // Add the CSS rules to styles
+              for (const [pseudo, properties] of Object.entries(cssRules)) {
+                if (pseudo === 'base') {
+                  // Merge base rules with the computed styles
+                  Object.assign(styles, properties);
+                } else {
+                  // Add pseudo-element styles with prefix
+                  for (const [prop, value] of Object.entries(properties)) {
+                    styles[`${pseudo}-${prop}`] = value;
+                  }
+                }
+              }
+            } catch (e) {
+              // Silent fail for stylesheet access issues
+              console.error('Error accessing stylesheets:', e);
+            }
+
+            result[portalClass] = styles;
+          });
+        });
+
+        return result;
+      },
+    });
+
+    if (result && result[0] && result[0].result) {
+      return result[0].result;
+    }
+
+    return {};
+  } catch (error) {
+    console.error('Error extracting computed styles:', error);
+    return {};
+  }
+};

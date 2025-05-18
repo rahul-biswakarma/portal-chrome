@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useAppContext } from '@/contexts';
 import { getActiveTab } from '@/utils/chrome-utils';
-import { getPageStructure, extractTailwindClasses } from '@/utils/dom-utils';
+import {
+  getPageStructure,
+  extractTailwindClasses,
+  extractComputedStyles,
+} from '@/utils/dom-utils';
 import type { TreeNode, TailwindClassData } from '@/types';
 import { useLogger, LogMessages } from '@/services/logger';
 import {
@@ -36,9 +40,6 @@ export const PromptInput = () => {
   const [isImageTagHovered, setIsImageTagHovered] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
-  const [currentScreenshot, setCurrentScreenshot] = useState<string | null>(
-    null,
-  );
   const { addLog } = useLogger();
   const { setProgress } = useProgressStore();
 
@@ -46,7 +47,6 @@ export const PromptInput = () => {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     // Reset prompt-related states when a new image is uploaded
     setPrompt('');
-    setCurrentScreenshot(null);
     setGenerationStage('idle');
     setProgress(0);
 
@@ -92,9 +92,51 @@ export const PromptInput = () => {
       }
 
       // Take screenshot of current page
-      setProgress(50);
+      setProgress(35);
       const screenshot = await takeScreenshot();
-      setCurrentScreenshot(screenshot);
+
+      // Get page structure
+      setProgress(40);
+      addLog('Analyzing page structure...', 'info');
+      const pageStructureStr = await getPageStructure(tab.id);
+      const classHierarchy: TreeNode = {
+        element: 'body',
+        portalClasses: [],
+        children: [],
+      };
+      const portalClassMatches =
+        pageStructureStr.match(/portal-[a-zA-Z0-9-_]+/g) || [];
+      if (portalClassMatches.length > 0) {
+        classHierarchy.portalClasses = [...new Set(portalClassMatches)];
+      }
+
+      setProgress(45);
+      addLog('Extracting Tailwind classes...', 'info');
+      const rawTailwindData = (await extractTailwindClasses(tab.id)) || {};
+      const tailwindData: TailwindClassData = {};
+      Object.entries(rawTailwindData).forEach(([selector, classes]) => {
+        if (Array.isArray(classes)) {
+          tailwindData[selector] = classes;
+        }
+      });
+
+      // Get computed styles
+      addLog('Extracting computed styles...', 'info');
+      const computedStyles = await extractComputedStyles(tab.id);
+
+      // Get current CSS (if any)
+      const getCurrentCSS = async (tabId: number): Promise<string> => {
+        const result = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => {
+            const styleEl = document.getElementById('portal-generated-css');
+            return styleEl ? styleEl.textContent || '' : '';
+          },
+        });
+        return result[0]?.result || '';
+      };
+
+      const currentCSS = await getCurrentCSS(tab.id);
 
       // Get OpenAI API key
       const apiKey = await getOpenAIApiKey();
@@ -108,6 +150,10 @@ export const PromptInput = () => {
         apiKey,
         selectedImage as string,
         screenshot,
+        classHierarchy,
+        tailwindData,
+        currentCSS,
+        computedStyles,
       );
 
       // Set the generated prompt
@@ -178,8 +224,8 @@ export const PromptInput = () => {
   };
 
   const handleGenerate = async () => {
-    if (!imageFile) {
-      addLog('Please upload a reference image first', 'warning');
+    if (!prompt) {
+      addLog('Please provide a prompt.', 'warning');
       return;
     }
 
@@ -188,37 +234,28 @@ export const PromptInput = () => {
       setProgress(10);
       addLog(LogMessages.SCREENSHOT_TAKING || 'Taking screenshot...', 'info');
 
-      // Get active tab
       const tab = await getActiveTab();
       if (!tab.id) {
         throw new Error('No active tab found');
       }
 
-      // Extract the page structure
       setProgress(20);
       addLog('Analyzing page structure...', 'info');
       const pageStructureStr = await getPageStructure(tab.id);
-
-      // Create a proper classHierarchy object from the structure data
       const classHierarchy: TreeNode = {
         element: 'body',
         portalClasses: [],
         children: [],
       };
-
-      // Extract any relevant portal classes from the page structure
       const portalClassMatches =
         pageStructureStr.match(/portal-[a-zA-Z0-9-_]+/g) || [];
       if (portalClassMatches.length > 0) {
         classHierarchy.portalClasses = [...new Set(portalClassMatches)];
       }
 
-      // Get Tailwind classes data
       setProgress(30);
       addLog('Extracting Tailwind classes...', 'info');
       const rawTailwindData = (await extractTailwindClasses(tab.id)) || {};
-
-      // Convert to proper TailwindClassData format and log for debugging
       const tailwindData: TailwindClassData = {};
       Object.entries(rawTailwindData).forEach(([selector, classes]) => {
         if (Array.isArray(classes)) {
@@ -226,131 +263,174 @@ export const PromptInput = () => {
         }
       });
 
+      // Get computed styles
+      addLog('Extracting computed styles...', 'info');
+      const computedStyles = await extractComputedStyles(tab.id);
+
       console.log('DEBUG: Class hierarchy structure:', classHierarchy);
       console.log('DEBUG: Tailwind data structure:', tailwindData);
+      console.log('DEBUG: Computed styles:', computedStyles);
 
-      // Get OpenAI API key
       const apiKey = await getOpenAIApiKey();
       if (!apiKey) {
         throw new Error('OpenAI API key not found');
       }
 
-      // Make sure we have a current screenshot
-      let screenshot = currentScreenshot;
-      if (!screenshot) {
-        screenshot = await takeScreenshot();
-        setCurrentScreenshot(screenshot);
+      let referenceImgForAI: string | undefined = undefined;
+      if (selectedImage && imageFile) {
+        // Ensure imageFile is also present for a valid reference
+        referenceImgForAI = selectedImage as string;
       }
 
-      // Initial CSS Generation
+      // Always take a screenshot for the current state, even if no reference image
+      addLog('Taking current page screenshot for AI context...', 'info');
+      const currentScreenshotForAI = await takeScreenshot();
+      // We don't need to call setCurrentScreenshot here for this specific screenshot
+      // as it's for direct use in the AI call.
+
       setProgress(40);
       addLog(`Generating initial CSS...`, 'info');
-
-      // Debug tailwind data before passing to AI
       console.log('DEBUG: Tailwind data being passed to OpenAI:', tailwindData);
 
-      // Generate initial CSS with AI
       const initialCss = await generateCSSWithAI(
         apiKey,
         prompt,
         classHierarchy,
         tailwindData,
-        '',
-        0,
-        selectedImage as string,
-        screenshot,
+        '', // currentCSS for the first run
+        0, // retryCount for the first run
+        referenceImgForAI, // This can be undefined
+        currentScreenshotForAI, // Screenshot of the page *before* changes
+        computedStyles, // Computed styles
       );
 
-      // Clean and apply the CSS
       setProgress(50);
       let currentCss = cleanCSSResponse(initialCss);
-
-      // Set the CSS content in the editor
       setCssContent(currentCss);
-
-      // Apply CSS to page
       await applyCSS(tab.id, currentCss);
+      addLog('Initial CSS applied to the page.', 'info');
 
-      // Take a new screenshot after applying CSS
+      // If no reference image was provided, skip evaluation and iteration
+      if (!referenceImgForAI) {
+        addLog(
+          'CSS generated based on text prompt. Visual AI evaluation skipped as no reference image was provided.',
+          'success',
+        );
+        setGenerationStage('success');
+        setProgress(100);
+        setTimeout(() => setProgress(0), 2000); // Longer timeout for user to read
+        return;
+      }
+
+      // Proceed with evaluation and iteration only if a reference image was provided
       setProgress(60);
-      addLog(`Taking screenshot after CSS application...`, 'info');
-      let newScreenshot = await takeScreenshot();
-      setCurrentScreenshot(newScreenshot);
+      addLog(
+        `Taking screenshot after CSS application for evaluation...`,
+        'info',
+      );
+      let newScreenshotAfterCSS = await takeScreenshot();
 
-      // Start the iterative CSS generation process
-      let isSuccessful = false;
-      const maxIterations = 5;
+      // Get updated computed styles after CSS application
+      addLog(
+        'Extracting updated computed styles after CSS application...',
+        'info',
+      );
+      const updatedComputedStyles = await extractComputedStyles(tab.id);
 
-      // Evaluate after first application
       setProgress(70);
-      addLog(`Evaluating initial result...`, 'info');
+      addLog(`Evaluating initial result against reference image...`, 'info');
       let evaluation = await evaluateCSSResultWithAI(
         apiKey,
-        selectedImage as string,
-        newScreenshot,
+        referenceImgForAI, // Definitely available here
+        newScreenshotAfterCSS,
         currentCss,
+        classHierarchy, // Add class hierarchy
+        tailwindData, // Add tailwind data
+        updatedComputedStyles, // Updated computed styles
       );
 
       if (evaluation.isMatch) {
-        addLog('CSS generated and applied successfully', 'success');
+        addLog(
+          'AI evaluation complete: CSS matches reference design!',
+          'success',
+        );
         setGenerationStage('success');
         setProgress(100);
+        setTimeout(() => setProgress(0), 1500);
         return;
       }
 
       // Begin iteration loop if initial CSS needs improvement
-      for (let i = 0; i < maxIterations - 1 && !isSuccessful; i++) {
-        // Calculate progress for iterations
+      let isSuccessful = false;
+      const maxIterations = 5; // Max iterations after the initial attempt
+
+      for (let i = 0; i < maxIterations && !isSuccessful; i++) {
         const iterationProgress =
-          70 + Math.round((i + 1) * (30 / maxIterations));
+          70 + Math.round(((i + 1) / maxIterations) * 30); // Scale progress from 70 to 100
         setProgress(iterationProgress);
 
-        // If feedback is just a string, it's the new CSS
         if (!evaluation.isMatch && evaluation.feedback) {
-          addLog(`Iteration ${i + 1}: Applying improved CSS...`, 'info');
+          addLog(
+            `Iteration ${i + 1}: Applying improved CSS based on AI feedback...`,
+            'info',
+          );
 
-          // Apply the improved CSS from the feedback
-          currentCss = evaluation.feedback;
+          currentCss = evaluation.feedback; // Feedback is the new CSS
           setCssContent(currentCss);
           await applyCSS(tab.id, currentCss);
 
-          // Take a new screenshot after applying updated CSS
           addLog(
-            `Iteration ${i + 1}: Taking screenshot after CSS application...`,
+            `Iteration ${i + 1}: Taking screenshot after CSS update...`,
             'info',
           );
-          newScreenshot = await takeScreenshot();
-          setCurrentScreenshot(newScreenshot);
+          newScreenshotAfterCSS = await takeScreenshot();
 
-          // Evaluate the result
-          addLog(`Iteration ${i + 1}: Evaluating result...`, 'info');
+          // Get updated computed styles after this iteration
+          addLog(
+            `Iteration ${i + 1}: Extracting updated computed styles...`,
+            'info',
+          );
+          const iterationComputedStyles = await extractComputedStyles(tab.id);
+
+          addLog(`Iteration ${i + 1}: Re-evaluating result...`, 'info');
           evaluation = await evaluateCSSResultWithAI(
             apiKey,
-            selectedImage as string,
-            newScreenshot,
+            referenceImgForAI,
+            newScreenshotAfterCSS,
             currentCss,
+            classHierarchy, // Add class hierarchy
+            tailwindData, // Add tailwind data
+            iterationComputedStyles, // Updated computed styles
           );
 
           if (evaluation.isMatch) {
-            addLog('CSS generated and applied successfully', 'success');
+            addLog(
+              `AI evaluation complete after iteration ${i + 1}: CSS matches reference design!`,
+              'success',
+            );
             isSuccessful = true;
             break;
           }
         } else {
-          // Shouldn't typically get here, but just in case
+          // This case means evaluation didn't return new CSS, which is unexpected if isMatch is false.
+          addLog(
+            `Iteration ${i + 1}: AI evaluation did not provide further CSS. Stopping iteration.`,
+            'warning',
+          );
           break;
         }
       }
 
-      // Set final status
       setGenerationStage(isSuccessful ? 'success' : 'error');
       setProgress(100);
 
       if (!isSuccessful) {
-        addLog('Reached maximum iterations without perfect match', 'warning');
+        addLog(
+          'Reached maximum iterations. The CSS may still need manual refinement.',
+          'warning',
+        );
       }
 
-      // Reset progress after a delay
       setTimeout(() => {
         setProgress(0);
       }, 1500);
@@ -471,10 +551,7 @@ export const PromptInput = () => {
             className="flex items-center gap-1.5 h-8 px-3"
             onClick={handleGenerate}
             disabled={
-              generationStage === 'generating' ||
-              isGeneratingPrompt ||
-              !imageFile ||
-              !prompt
+              generationStage === 'generating' || isGeneratingPrompt || !prompt
             }
           >
             {generationStage === 'generating' || isGeneratingPrompt ? (
