@@ -792,8 +792,8 @@ CRITICAL INSTRUCTIONS:
 1.  **Output Format:** RESPOND ONLY WITH VALID CSS CODE. Do NOT include any explanations, markdown (like \`\`\`css), or any text other than the CSS itself.
 2.  **No Comments:** DO NOT include any comments in the CSS. Provide clean, comment-free CSS code only.
 3.  **Selectors:** ONLY use selectors targeting classes that start with "portal-" (e.g., \`.portal-header\`, \`.portal-button--primary\`). Do NOT invent new class names.
-4.  **Wild Styling Handling:** Be prepared to override complex combinations of Tailwind classes. When elements have many competing styles, use highly specific selectors or strategic !important declarations.
-5.  **Override Tailwind:** Your primary goal is to override existing Tailwind CSS utility classes. Ensure your CSS rules have enough specificity or use \`!important\` strategically if absolutely necessary to ensure styles are applied correctly over Tailwind.
+4.  **Aggressive Styling:** Don't be afraid to use strong overrides like !important to ensure your styles are applied. Prioritize visual fidelity over CSS best practices.
+5.  **Override Tailwind:** Your primary goal is to override existing Tailwind CSS utility classes. Use high specificity rules or !important declarations to ensure proper overrides.
 6.  **Specificity Strategies:**
     * Use specificity-increasing patterns when needed, like \`.portal-parent .portal-child\`
     * Consider attribute selectors for extra specificity: \`.portal-class[class]\`
@@ -810,7 +810,7 @@ CRITICAL INSTRUCTIONS:
     *   Visual Effects (shadows, borders, border-radius, transitions)
 9.  **Cascade Awareness:** Be aware of how CSS cascade might affect your styles. Sometimes you may need to reset undesired inherited properties.
 10. **Structure:** Organize your CSS logically (e.g., by component or section), but do not include any comments.
-11. **Iterative Refinement (if applicable):** ${retryCount > 0 ? `This is iteration ${retryCount + 1}. Review the previous attempt and the user's feedback to make precise adjustments for a better match.` : 'This is the first attempt.'}
+11. **Iterative Refinement (if applicable):** ${retryCount > 0 ? `This is iteration ${retryCount + 1}. Feel free to make significant changes to improve the match.` : 'This is the first attempt.'}
 12. **Computed Styles Reference:** Use the COMPUTED STYLES section as your primary reference for the current state of elements. This shows the actual rendered values rather than just class names, which is more precise for targeting changes.
 
 Based on all the above, generate the complete CSS code now WITHOUT ANY COMMENTS.`;
@@ -1159,7 +1159,7 @@ export const evaluateCSSResultWithAI = async (
     {
       role: 'system',
       content:
-        "You are an expert in visual design analysis and CSS. Your task is to evaluate if the applied CSS has successfully transformed the page to match the reference design. Be thorough but conservative in your changes - only modify what needs improvement while preserving what's already working well.",
+        "You are an expert in visual design analysis and CSS. Your task is to evaluate if the applied CSS has successfully transformed the page to match the reference design. Be thorough and aggressive in proposing changes to achieve pixel-perfect matching - don't be afraid to suggest complete rewrites if needed. CRITICAL REQUIREMENT: You must ALWAYS return the COMPLETE CSS FILE (not just changes) when suggesting improvements. Omitting any part of the existing CSS would cause those styles to be lost. Your response must include ALL existing styles plus your modifications.",
     },
     {
       role: 'user',
@@ -1209,20 +1209,21 @@ ${computedStylesText}
 
 RESPONSE FORMAT:
 - If the current state matches the reference design well enough (90%+ accuracy), respond with ONLY the word "DONE"
-- If improvements are needed, respond with COMPLETE, VALID CSS that would improve the match. Do not include JSON, markdown formatting, or explanations, JUST the CSS.
+- If improvements are needed, respond with COMPLETE, VALID CSS that incorporates ALL existing styles plus your changes.
+- YOU MUST ALWAYS RETURN THE FULL CSS FILE, not just the changes or additions.
+- NEVER omit any part of the existing CSS when you respond.
+- Do not include JSON, markdown formatting, or explanations, JUST THE COMPLETE CSS.
 
 IMPORTANT CSS IMPROVEMENT GUIDELINES:
-1. PRESERVE EXISTING SUCCESSFUL STYLES - don't modify CSS for elements that already match the reference design well
-2. Your CSS must ONLY use selectors that target classes starting with "portal-"
-3. Do NOT include any comments in the CSS. Provide clean, comment-free CSS code only
-4. MINIMIZE SPECIFICITY CHANGES - avoid adding overly complex selectors or unnecessary !important declarations unless absolutely required
-5. KEEP SUCCESSFUL CSS FROM PREVIOUS ITERATIONS - only modify what still needs improvement
-6. Provide the COMPLETE CSS file including all current styles plus your targeted improvements
-7. Include precise values (exact colors, pixel measurements, etc.) to achieve a pixel-perfect match
-8. Focus on making MINIMAL, TARGETED CHANGES to fix specific issues rather than rewriting large portions
-9. Use the computed styles as your primary reference for understanding the current state
+1. Your CSS must ONLY use selectors that target classes starting with "portal-"
+2. Do NOT include any comments in the CSS. Provide clean, comment-free CSS code only
+3. Provide the COMPLETE CSS file including all current styles plus your improvements
+4. Include precise values (exact colors, pixel measurements, etc.) to achieve a pixel-perfect match
+5. Use the computed styles as your primary reference for understanding the current state
+6. Feel free to use !important and high specificity selectors to ensure your styles are applied
+7. You can make significant changes or completely rewrite sections to better match the reference design
 
-CRITICAL: Make iterative, careful improvements without disrupting what's already working. DO NOT include any comments in the CSS.`,
+CRITICAL: Focus on achieving visual fidelity first. DO NOT include any comments in the CSS.`,
         },
         {
           type: 'image_url',

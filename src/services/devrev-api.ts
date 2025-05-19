@@ -21,12 +21,43 @@ interface PortalConfiguration {
   [key: string]: unknown;
 }
 
+interface StylingInfo {
+  header_image?: { id: string } | string;
+  [key: string]: unknown;
+}
+
 interface PreferencesGetResponse {
   type: string;
   object: string;
   preference: {
     stylesheet?: string | StylesheetInfo;
     configuration?: PortalConfiguration;
+    [key: string]: unknown;
+  };
+}
+
+interface StagedContent {
+  type: string;
+  error?: string;
+  etag: string;
+  expires_at: string;
+  id: string;
+  status: string;
+}
+
+interface ContentsPrepareResponse {
+  form_data: Array<{ key: string; value: string }>;
+  staged_content: StagedContent;
+  url: string;
+}
+
+interface ContentsValidateResponse {
+  staged_content: StagedContent;
+}
+
+interface ArtifactCreateResponse {
+  artifact: {
+    id: string;
     [key: string]: unknown;
   };
 }
@@ -131,6 +162,130 @@ export const prepareArtifact = async (
 };
 
 /**
+ * Prepare content upload for an artifact
+ */
+export const prepareArtifactContent = async (
+  fileType: string = 'text/css',
+): Promise<ContentsPrepareResponse | null> => {
+  try {
+    const { baseUrl, pat } = await getDevRevConfig();
+
+    if (!pat) {
+      throw new Error('DevRev PAT is missing');
+    }
+
+    const response = await fetch(
+      `${baseUrl}/internal/artifacts.contents.prepare`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: pat,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          configuration_set: 'portal_css',
+          file_type: fileType,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to prepare artifact content: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error preparing artifact content:', error);
+    return null;
+  }
+};
+
+/**
+ * Validate staged content
+ */
+export const validateArtifactContent = async (
+  stagedContentId: string,
+): Promise<ContentsValidateResponse | null> => {
+  try {
+    const { baseUrl, pat } = await getDevRevConfig();
+
+    if (!pat) {
+      throw new Error('DevRev PAT is missing');
+    }
+
+    const response = await fetch(
+      `${baseUrl}/internal/artifacts.contents.validate`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: pat,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: stagedContentId,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to validate artifact content: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error validating artifact content:', error);
+    return null;
+  }
+};
+
+/**
+ * Create artifact from staged content
+ */
+export const createArtifactFromContent = async (
+  fileName: string,
+  stagedContentId: string,
+): Promise<ArtifactCreateResponse | null> => {
+  try {
+    const { baseUrl, pat } = await getDevRevConfig();
+
+    if (!pat) {
+      throw new Error('DevRev PAT is missing');
+    }
+
+    const response = await fetch(
+      `${baseUrl}/internal/artifacts.create-from-content`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: pat,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          file_name: fileName,
+          staged_content_id: stagedContentId,
+          configuration_set: 'portal_css',
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to create artifact from content: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating artifact from content:', error);
+    return null;
+  }
+};
+
+/**
  * Upload a file to the prepared URL
  */
 export const uploadArtifactContent = async (
@@ -184,7 +339,9 @@ export const updatePortalPreferences = async (
     // Process configuration to remove aat_keyring_id and fix org_favicon
     const configuration =
       preferenceWithoutModifiedBy.configuration || ({} as PortalConfiguration);
+    const styling = preferenceWithoutModifiedBy.styling || ({} as StylingInfo);
     const { aat_keyring_id, org_favicon, ...restConfig } = configuration;
+    const { header_image, ...restStyling } = styling as StylingInfo;
 
     const updatedPreferences = {
       ...preferenceWithoutModifiedBy,
@@ -193,6 +350,12 @@ export const updatePortalPreferences = async (
         ...restConfig,
         ...(org_favicon && typeof org_favicon === 'object'
           ? { org_favicon: org_favicon.id }
+          : {}),
+      },
+      styling: {
+        ...restStyling,
+        ...(header_image && typeof header_image === 'object'
+          ? { header_image: header_image.id }
           : {}),
       },
       stylesheet: stylesheetArtifactId,
@@ -238,17 +401,16 @@ export const uploadCssToDevRev = async (
       throw new Error('Failed to get current preferences');
     }
 
-    // Step 2: Prepare artifact upload
-    const fileName = `portal-stylesheet-${new Date().toISOString()}.css`;
-    const artifactResponse = await prepareArtifact(fileName, 'text/css');
-    if (!artifactResponse) {
-      throw new Error('Failed to prepare artifact');
+    // Step 2: Prepare artifact content upload
+    const contentsPrepareResponse = await prepareArtifactContent('text/css');
+    if (!contentsPrepareResponse) {
+      throw new Error('Failed to prepare artifact content');
     }
 
-    // Step 3: Upload CSS content
+    // Step 3: Upload CSS content to the provided URL
     const uploadSuccess = await uploadArtifactContent(
-      artifactResponse.url,
-      artifactResponse.form_data,
+      contentsPrepareResponse.url,
+      contentsPrepareResponse.form_data,
       cssContent,
     );
 
@@ -256,10 +418,35 @@ export const uploadCssToDevRev = async (
       throw new Error('Failed to upload CSS content');
     }
 
-    // Step 4: Update preferences with new artifact ID
+    // Step 4: Validate the uploaded content
+    const stagedContentId = contentsPrepareResponse.staged_content.id;
+    const validateResponse = await validateArtifactContent(stagedContentId);
+
+    if (
+      !validateResponse ||
+      validateResponse.staged_content.status !== 'succeeded'
+    ) {
+      throw new Error(
+        'Content validation failed: ' +
+          (validateResponse?.staged_content.error || 'Unknown error'),
+      );
+    }
+
+    // Step 5: Create artifact from staged content
+    const fileName = `portal-stylesheet-${new Date().toISOString()}.css`;
+    const createResponse = await createArtifactFromContent(
+      fileName,
+      stagedContentId,
+    );
+
+    if (!createResponse) {
+      throw new Error('Failed to create artifact from content');
+    }
+
+    // Step 6: Update preferences with new artifact ID
     const updateSuccess = await updatePortalPreferences(
       preferences,
-      artifactResponse.id,
+      createResponse.artifact.id,
     );
 
     return updateSuccess;

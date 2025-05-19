@@ -227,13 +227,37 @@ export const PromptInput = () => {
     });
   };
 
-  // Function to clean CSS response (remove markdown)
+  // Function to clean CSS response (remove markdown) and verify completeness
   const cleanCSSResponse = (css: string): string => {
-    return css
+    const cleaned = css
       .replace(/```css\s*/g, '')
       .replace(/```\s*$/g, '')
       .replace(/```/g, '')
       .trim();
+
+    // Verify CSS completeness
+    if (cleaned.length < 30) {
+      addLog(
+        'Warning: Suspiciously short CSS received, may be incomplete',
+        'warning',
+      );
+    }
+
+    // Check for portal- classes - all CSS should target these
+    if (!cleaned.includes('.portal-')) {
+      addLog('Warning: CSS does not contain any .portal- selectors', 'warning');
+    }
+
+    // Check for basic CSS structure with proper declarations
+    const hasProperDeclarations = /\{[^}]+\}/.test(cleaned);
+    if (!hasProperDeclarations) {
+      addLog(
+        'Warning: CSS may be malformed (missing proper declarations)',
+        'warning',
+      );
+    }
+
+    return cleaned;
   };
 
   const handleGenerate = async () => {
@@ -411,44 +435,8 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
       const maxIterations = 5;
       let bestCss = currentCss;
 
-      // Simple function to compare CSS lengths to detect potential overwrites
-      const isCssLikelyImprovement = (
-        oldCss: string,
-        newCss: string,
-      ): boolean => {
-        // Reject if new CSS is more than 50% larger (likely adding too much)
-        if (newCss.length > oldCss.length * 1.5) {
-          addLog(
-            'Proposed CSS changes appear too aggressive, being selective about changes',
-            'warning',
-          );
-          return false;
-        }
-
-        // Reject if new CSS is more than 25% smaller (likely lost content)
-        if (newCss.length < oldCss.length * 0.75) {
-          addLog(
-            'Proposed CSS changes appear to remove too much content, being selective',
-            'warning',
-          );
-          return false;
-        }
-
-        // Count the number of !important declarations as a metric
-        const oldImportantCount = (oldCss.match(/!important/g) || []).length;
-        const newImportantCount = (newCss.match(/!important/g) || []).length;
-
-        // Warn if there's a large increase in !important usage
-        if (newImportantCount > oldImportantCount + 5) {
-          addLog(
-            `Warning: Increasing !important usage from ${oldImportantCount} to ${newImportantCount}`,
-            'warning',
-          );
-        }
-
-        // Generally accept the change unless it's very different in size
-        return true;
-      };
+      // No longer checking if CSS changes are improvements
+      // Function removed as we now accept all AI proposals
 
       for (let i = 0; i < maxIterations && !isSuccessful; i++) {
         const iterationProgress =
@@ -458,85 +446,71 @@ DO NOT refuse to generate CSS or ask for clarification - instead, make your best
         if (!evaluation.isMatch && evaluation.feedback) {
           addLog(`Iteration ${i + 1}: Analyzing AI feedback...`, 'info');
 
-          // Validate if the proposed CSS changes are likely improvements
+          // Always apply the proposed CSS changes
           const proposedCss = evaluation.feedback;
-          const isLikelyImprovement = isCssLikelyImprovement(
-            currentCss,
-            proposedCss,
-          );
 
-          if (isLikelyImprovement) {
-            currentCss = proposedCss; // Apply the new CSS
-            bestCss = currentCss; // Track this as our best version so far
-
+          // Verify we received complete CSS
+          if (proposedCss.length < 20) {
             addLog(
-              `Iteration ${i + 1}: Applying improved CSS based on AI feedback...`,
-              'info',
-            );
-
-            setCssContent(currentCss);
-            await applyCSS(tab.id, currentCss);
-
-            addLog(
-              `Iteration ${i + 1}: Taking full page screenshot after CSS update...`,
-              'info',
-            );
-            newScreenshotAfterCSS = await takeScreenshot(true);
-
-            // Get updated computed styles after this iteration
-            addLog(
-              `Iteration ${i + 1}: Extracting updated computed styles...`,
-              'info',
-            );
-            const iterationComputedStyles = await extractComputedStyles(tab.id);
-
-            addLog(`Iteration ${i + 1}: Re-evaluating result...`, 'info');
-            evaluation = await evaluateCSSResultWithAI(
-              apiKey,
-              referenceImgForAI,
-              newScreenshotAfterCSS,
-              currentCss,
-              classHierarchy, // Add class hierarchy
-              tailwindData, // Add tailwind data
-              iterationComputedStyles, // Updated computed styles
-              currentSessionId, // Pass the session ID
-            );
-
-            if (evaluation.isMatch) {
-              addLog(
-                `AI evaluation complete after iteration ${i + 1}: CSS matches reference design!`,
-                'success',
-              );
-              isSuccessful = true;
-              break;
-            }
-          } else {
-            // Skip this iteration if the changes don't look like improvements
-            addLog(
-              `Iteration ${i + 1}: Proposed CSS changes may not be improvements. Proceeding carefully...`,
+              `Iteration ${i + 1}: Warning - received suspiciously short CSS (${proposedCss.length} chars), might be incomplete`,
               'warning',
             );
+          }
 
-            // Use a more conservative approach for the next iteration
-            evaluation = await evaluateCSSResultWithAI(
-              apiKey,
-              referenceImgForAI,
-              newScreenshotAfterCSS,
-              currentCss, // Keep using current CSS instead of the rejected one
-              classHierarchy,
-              tailwindData,
-              updatedComputedStyles, // Use the last known good computed styles
-              currentSessionId, // Pass the session ID
+          // Check if typical CSS patterns like selectors and declarations exist
+          const hasSelectorPattern = proposedCss.includes('.portal-');
+          const hasDeclarationPattern = /:[^;]+;/.test(proposedCss);
+
+          if (!hasSelectorPattern || !hasDeclarationPattern) {
+            addLog(
+              `Iteration ${i + 1}: Warning - CSS may be malformed, but applying anyway`,
+              'warning',
             );
+          }
 
-            if (evaluation.isMatch) {
-              addLog(
-                `AI evaluation complete after iteration ${i + 1}: CSS matches reference design!`,
-                'success',
-              );
-              isSuccessful = true;
-              break;
-            }
+          currentCss = proposedCss; // Apply the new CSS
+          bestCss = currentCss; // Track this as our best version so far
+
+          addLog(
+            `Iteration ${i + 1}: Applying improved CSS based on AI feedback...`,
+            'info',
+          );
+
+          setCssContent(currentCss);
+          await applyCSS(tab.id, currentCss);
+
+          addLog(
+            `Iteration ${i + 1}: Taking full page screenshot after CSS update...`,
+            'info',
+          );
+          newScreenshotAfterCSS = await takeScreenshot(true);
+
+          // Get updated computed styles after this iteration
+          addLog(
+            `Iteration ${i + 1}: Extracting updated computed styles...`,
+            'info',
+          );
+          const iterationComputedStyles = await extractComputedStyles(tab.id);
+
+          addLog(`Iteration ${i + 1}: Re-evaluating result...`, 'info');
+          evaluation = await evaluateCSSResultWithAI(
+            apiKey,
+            referenceImgForAI,
+            newScreenshotAfterCSS,
+            currentCss,
+            classHierarchy, // Add class hierarchy
+            tailwindData, // Add tailwind data
+            iterationComputedStyles, // Updated computed styles
+            currentSessionId, // Pass the session ID
+          );
+
+          if (evaluation.isMatch) {
+            addLog(
+              `AI evaluation complete after iteration ${i + 1}: CSS matches reference design!`,
+              'success',
+            );
+            isSuccessful = true;
+            break;
           }
         } else {
           // This case means evaluation didn't return new CSS, which is unexpected if isMatch is false.
