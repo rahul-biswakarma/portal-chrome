@@ -8,6 +8,12 @@ import {
 } from '@/components/ui/popover';
 import { useAppContext } from '@/contexts';
 import { Plus, RotateCcw } from 'lucide-react';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 
 interface ThemeVariablesGeneratorProps {
   forceShow?: boolean;
@@ -119,7 +125,11 @@ const defaultSpacingVariables: Record<string, SpacingVariable> = {
   borderWidth: { value: '0.0625rem', name: 'Border Width Unit' },
 };
 
-const defaultFont = 'Inter';
+const defaultFonts = {
+  heading: 'Inter',
+  paragraph: 'Inter',
+  code: 'Consolas',
+};
 
 // Function to convert HSL to HEX
 const hslToHex = (h: number, s: number, l: number): string => {
@@ -203,7 +213,10 @@ export const ThemeVariablesGenerator = ({
   >({ ...defaultSpacingVariables });
 
   // Font families
-  const [selectedFont, setSelectedFont] = useState(defaultFont);
+  const [headingFont, setHeadingFont] = useState(defaultFonts.heading);
+  const [paragraphFont, setParagraphFont] = useState(defaultFonts.paragraph);
+  const [codeFont, setCodeFont] = useState(defaultFonts.code);
+
   const fontOptions = [
     'Inter',
     'Roboto',
@@ -214,6 +227,17 @@ export const ThemeVariablesGenerator = ({
     'Poppins',
     'Roboto Condensed',
     'Oswald',
+  ];
+
+  const codeFontOptions = [
+    'Consolas',
+    'Menlo',
+    'Monaco',
+    'Courier New',
+    'monospace',
+    'Fira Code',
+    'Source Code Pro',
+    'JetBrains Mono',
   ];
 
   // Initialize showGenerator when forceShow changes
@@ -256,10 +280,12 @@ export const ThemeVariablesGenerator = ({
     // Spacing variables
     css += `  --spacing-unit: ${spacingVariables.spacing.value} !important;\n`;
     css += `  --radius-unit: ${spacingVariables.radius.value} !important;\n`;
-    css += `  --border-width-unit: ${spacingVariables.borderWidth.value} !important;\n`;
+    css += `  --border-width-unit: ${spacingVariables.borderWidth.value} !important;\n\n`;
 
-    // Font family
-    css += `  --font-family: "${selectedFont}", -apple-system, BlinkMacSystemFont, sans-serif !important;\n`;
+    // Font families
+    css += `  --font-family: "${paragraphFont}", -apple-system, BlinkMacSystemFont, sans-serif !important;\n`;
+    css += `  --font-family-headings: "${headingFont}", -apple-system, BlinkMacSystemFont, sans-serif !important;\n`;
+    css += `  --font-family-code: "${codeFont}", monospace !important;\n`;
 
     css += '}';
     return css;
@@ -288,13 +314,21 @@ export const ThemeVariablesGenerator = ({
           return `${prefix}/* Theme Variables */\n${cssVariables}`;
         }
       });
+
+      // Note: Changes from this component are automatically applied to the page
+      // 1. This useEffect updates the cssContent in the global context
+      // 2. The CssEditor component detects that change and updates its editor
+      // 3. The CssEditor's auto-apply feature then applies the changes to the page
+      // This creates a seamless workflow where theme variable changes instantly appear on the page
     }
   }, [
     colorVariables,
     headingVariables,
     textVariables,
     spacingVariables,
-    selectedFont,
+    headingFont,
+    paragraphFont,
+    codeFont,
     showGenerator,
     setCssContent,
   ]);
@@ -345,7 +379,9 @@ export const ThemeVariablesGenerator = ({
     setHeadingVariables({ ...defaultHeadingVariables });
     setTextVariables({ ...defaultTextVariables });
     setSpacingVariables({ ...defaultSpacingVariables });
-    setSelectedFont(defaultFont);
+    setHeadingFont(defaultFonts.heading);
+    setParagraphFont(defaultFonts.paragraph);
+    setCodeFont(defaultFonts.code);
   };
 
   if (!showGenerator && !forceShow) {
@@ -361,224 +397,353 @@ export const ThemeVariablesGenerator = ({
   }
 
   return (
-    <div className="border rounded-md p-4 mb-4">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-medium">Theme Variables Generator</h3>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleReset} size="sm">
-            <RotateCcw className="mr-2 h-4 w-4" /> Reset
+    <div className="mb-4">
+      <div className="flex justify-end mb-6">
+        <Button
+          variant="outline"
+          onClick={handleReset}
+          size="sm"
+          className="bg-white dark:bg-gray-800 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          <RotateCcw className="mr-2 h-4 w-4" /> Reset
+        </Button>
+        {!forceShow && (
+          <Button
+            variant="outline"
+            onClick={() => setShowGenerator(false)}
+            size="sm"
+            className="ml-2"
+          >
+            Cancel
           </Button>
-          {!forceShow && (
-            <Button
-              variant="outline"
-              onClick={() => setShowGenerator(false)}
-              size="sm"
-            >
-              Cancel
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
-      <div className="space-y-6 overflow-y-auto max-h-[70vh]">
-        {/* Colors Section */}
-        <div>
-          <h4 className="text-md font-medium mb-3 pb-1 border-b">Colors</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.entries(colorVariables).map(([key, variable]) => (
-              <div key={key} className="border rounded-md p-3">
-                <div className="flex justify-between items-center mb-3">
-                  <div>
-                    <h3 className="font-medium">{variable.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {variable.description}
-                    </p>
-                  </div>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        className="w-10 h-10 rounded-md border cursor-pointer overflow-hidden"
-                        style={{
-                          backgroundColor: `hsl(${variable.h}, ${variable.s}%, ${variable.l}%)`,
-                        }}
-                        aria-label={`Select ${variable.name} color`}
-                      />
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-3" side="right">
-                      <HexColorPicker
-                        color={hslToHex(variable.h, variable.s, variable.l)}
-                        onChange={(hexColor) =>
-                          handleColorPickerChange(key, hexColor)
-                        }
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="text-sm text-muted-foreground bg-gray-50 dark:bg-gray-900 p-2 rounded-md">
-                  HSL: {variable.h}, {variable.s}%, {variable.l}%<br />
-                  HEX: {hslToHex(variable.h, variable.s, variable.l)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Font Family Section */}
-        <div>
-          <h4 className="text-md font-medium mb-3 pb-1 border-b">
+      <div className="space-y-10 overflow-y-auto max-h-[80vh] pb-6">
+        {/* Font Family Section - Always visible */}
+        <section className="rounded-lg bg-white dark:bg-gray-800/50 p-4 shadow-sm">
+          <h4 className="text-lg font-medium mb-4 pb-2 border-b text-gray-800 dark:text-gray-200">
             Font Family
           </h4>
-          <div className="border rounded-md p-3">
-            <select
-              value={selectedFont}
-              onChange={(e) => setSelectedFont(e.target.value)}
-              className="w-full p-2 border rounded-md"
-            >
-              {fontOptions.map((font) => (
-                <option key={font} value={font}>
-                  {font}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Headings Section */}
-        <div>
-          <h4 className="text-md font-medium mb-3 pb-1 border-b">Headings</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.entries(headingVariables).map(([key, variable]) => (
-              <div key={key} className="border rounded-md p-3">
-                <h4 className="font-medium mb-2">{variable.name}</h4>
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-sm block mb-1">Font Size</label>
-                    <input
-                      type="text"
-                      value={variable.size}
-                      onChange={(e) =>
-                        handleHeadingChange(key, 'size', e.target.value)
-                      }
-                      className="w-full p-1 border rounded-md"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm block mb-1">Line Height</label>
-                    <input
-                      type="text"
-                      value={variable.lineHeight}
-                      onChange={(e) =>
-                        handleHeadingChange(key, 'lineHeight', e.target.value)
-                      }
-                      className="w-full p-1 border rounded-md"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm block mb-1">Font Weight</label>
-                    <select
-                      value={variable.weight}
-                      onChange={(e) =>
-                        handleHeadingChange(
-                          key,
-                          'weight',
-                          Number(e.target.value),
-                        )
-                      }
-                      className="w-full p-1 border rounded-md"
-                    >
-                      <option value="300">Light (300)</option>
-                      <option value="400">Regular (400)</option>
-                      <option value="500">Medium (500)</option>
-                      <option value="600">SemiBold (600)</option>
-                      <option value="700">Bold (700)</option>
-                    </select>
-                  </div>
-                </div>
+          <div className="space-y-6">
+            <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+              <label className="text-sm font-medium mb-2 block text-gray-700 dark:text-gray-300">
+                Headings
+              </label>
+              <select
+                value={headingFont}
+                onChange={(e) => setHeadingFont(e.target.value)}
+                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary"
+              >
+                {fontOptions.map((font) => (
+                  <option key={font} value={font}>
+                    {font}
+                  </option>
+                ))}
+              </select>
+              <div
+                className="mt-3 p-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm text-lg"
+                style={{ fontFamily: `"${headingFont}", sans-serif` }}
+              >
+                <span className="font-medium">Heading Sample</span>
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* Text Sizes Section */}
-        <div>
-          <h4 className="text-md font-medium mb-3 pb-1 border-b">Text Sizes</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.entries(textVariables).map(([key, variable]) => (
-              <div key={key} className="border rounded-md p-3">
-                <h4 className="font-medium mb-2">{variable.name}</h4>
-
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-sm block mb-1">Font Size</label>
-                    <input
-                      type="text"
-                      value={variable.size}
-                      onChange={(e) =>
-                        handleTextChange(key, 'size', e.target.value)
-                      }
-                      className="w-full p-1 border rounded-md"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm block mb-1">Line Height</label>
-                    <input
-                      type="text"
-                      value={variable.lineHeight}
-                      onChange={(e) =>
-                        handleTextChange(key, 'lineHeight', e.target.value)
-                      }
-                      className="w-full p-1 border rounded-md"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm block mb-1">
-                      Font Weight (Regular)
-                    </label>
-                    <select
-                      value={variable.weight}
-                      onChange={(e) =>
-                        handleTextChange(key, 'weight', Number(e.target.value))
-                      }
-                      className="w-full p-1 border rounded-md"
-                    >
-                      <option value="300">Light (300)</option>
-                      <option value="400">Regular (400)</option>
-                      <option value="500">Medium (500)</option>
-                    </select>
-                  </div>
-                </div>
+            <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+              <label className="text-sm font-medium mb-2 block text-gray-700 dark:text-gray-300">
+                Paragraphs
+              </label>
+              <select
+                value={paragraphFont}
+                onChange={(e) => setParagraphFont(e.target.value)}
+                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary"
+              >
+                {fontOptions.map((font) => (
+                  <option key={font} value={font}>
+                    {font}
+                  </option>
+                ))}
+              </select>
+              <div
+                className="mt-3 p-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm"
+                style={{ fontFamily: `"${paragraphFont}", sans-serif` }}
+              >
+                <span>
+                  This is a paragraph text sample that shows how your content
+                  will appear on the page.
+                </span>
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* Spacing Section */}
-        <div>
-          <h4 className="text-md font-medium mb-3 pb-1 border-b">
-            Spacing Units
-          </h4>
-          <div className="border rounded-md p-3">
-            <div className="grid grid-cols-1 gap-4">
-              {Object.entries(spacingVariables).map(([key, variable]) => (
-                <div key={key} className="flex items-center space-x-4">
-                  <label className="text-sm w-40">{variable.name}</label>
-                  <input
-                    type="text"
-                    value={variable.value}
-                    onChange={(e) => handleSpacingChange(key, e.target.value)}
-                    className="p-1 border rounded-md flex-1"
-                  />
-                </div>
-              ))}
+            <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+              <label className="text-sm font-medium mb-2 block text-gray-700 dark:text-gray-300">
+                Code
+              </label>
+              <select
+                value={codeFont}
+                onChange={(e) => setCodeFont(e.target.value)}
+                className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary"
+              >
+                {codeFontOptions.map((font) => (
+                  <option key={font} value={font}>
+                    {font}
+                  </option>
+                ))}
+              </select>
+              <div
+                className="mt-3 p-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm font-mono text-sm overflow-x-auto"
+                style={{ fontFamily: `"${codeFont}", monospace` }}
+              >
+                <span>
+                  function example() {`{ return "Sample Code Block"; }`}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
+
+        {/* Colors Section */}
+        <section className="rounded-lg bg-white dark:bg-gray-800/50 p-4 shadow-sm">
+          <h4 className="text-lg font-medium mb-4 pb-2 border-b text-gray-800 dark:text-gray-200">
+            Colors
+          </h4>
+          <div className="grid grid-cols-1 gap-4">
+            {Object.entries(colorVariables).map(([key, variable]) => (
+              <div
+                key={key}
+                className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg flex justify-between items-center"
+              >
+                <div>
+                  <h3 className="font-medium text-gray-800 dark:text-gray-200">
+                    {variable.name}
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {variable.description}
+                  </p>
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="w-16 h-16 rounded-md cursor-pointer shadow-md hover:ring-2 ring-offset-2 ring-offset-background transition-shadow border border-gray-300 dark:border-gray-700"
+                      style={{
+                        backgroundColor: `hsl(${variable.h}, ${variable.s}%, ${variable.l}%)`,
+                      }}
+                      aria-label={`Select ${variable.name} color`}
+                    />
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-3" side="right">
+                    <div className="mb-2 text-xs font-medium text-center text-gray-600 dark:text-gray-400">
+                      {hslToHex(
+                        variable.h,
+                        variable.s,
+                        variable.l,
+                      ).toUpperCase()}
+                    </div>
+                    <HexColorPicker
+                      color={hslToHex(variable.h, variable.s, variable.l)}
+                      onChange={(hexColor) =>
+                        handleColorPickerChange(key, hexColor)
+                      }
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Typography Section with Accordions */}
+        <section className="rounded-lg bg-white dark:bg-gray-800/50 p-4 shadow-sm">
+          <h4 className="text-lg font-medium mb-4 pb-2 border-b text-gray-800 dark:text-gray-200">
+            Typography
+          </h4>
+
+          <Accordion type="single" collapsible className="space-y-2">
+            <AccordionItem
+              value="headings"
+              className="border-0 bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden"
+            >
+              <AccordionTrigger className="py-3 px-4 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <span className="font-medium text-gray-800 dark:text-gray-200">
+                  Headings
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+                <div className="space-y-5 p-4">
+                  {Object.entries(headingVariables).map(([key, variable]) => (
+                    <div
+                      key={key}
+                      className="pt-2 pb-4 border-b border-gray-200 dark:border-gray-700 last:border-0"
+                    >
+                      <h4 className="font-medium text-sm mb-3 text-gray-800 dark:text-gray-200">
+                        {variable.name}
+                      </h4>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                            Font Size
+                          </label>
+                          <input
+                            type="text"
+                            value={variable.size}
+                            onChange={(e) =>
+                              handleHeadingChange(key, 'size', e.target.value)
+                            }
+                            className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                            Line Height
+                          </label>
+                          <input
+                            type="text"
+                            value={variable.lineHeight}
+                            onChange={(e) =>
+                              handleHeadingChange(
+                                key,
+                                'lineHeight',
+                                e.target.value,
+                              )
+                            }
+                            className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                            Weight
+                          </label>
+                          <select
+                            value={variable.weight}
+                            onChange={(e) =>
+                              handleHeadingChange(
+                                key,
+                                'weight',
+                                Number(e.target.value),
+                              )
+                            }
+                            className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary text-sm"
+                          >
+                            <option value="300">Light</option>
+                            <option value="400">Regular</option>
+                            <option value="500">Medium</option>
+                            <option value="600">SemiBold</option>
+                            <option value="700">Bold</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem
+              value="text-sizes"
+              className="border-0 bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden"
+            >
+              <AccordionTrigger className="py-3 px-4 hover:bg-gray-100 dark:hover:bg-gray-700">
+                <span className="font-medium text-gray-800 dark:text-gray-200">
+                  Text Sizes
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+                <div className="space-y-5 p-4">
+                  {Object.entries(textVariables).map(([key, variable]) => (
+                    <div
+                      key={key}
+                      className="pt-2 pb-4 border-b border-gray-200 dark:border-gray-700 last:border-0"
+                    >
+                      <h4 className="font-medium text-sm mb-3 text-gray-800 dark:text-gray-200">
+                        {variable.name}
+                      </h4>
+
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                            Font Size
+                          </label>
+                          <input
+                            type="text"
+                            value={variable.size}
+                            onChange={(e) =>
+                              handleTextChange(key, 'size', e.target.value)
+                            }
+                            className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                            Line Height
+                          </label>
+                          <input
+                            type="text"
+                            value={variable.lineHeight}
+                            onChange={(e) =>
+                              handleTextChange(
+                                key,
+                                'lineHeight',
+                                e.target.value,
+                              )
+                            }
+                            className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1.5">
+                            Weight
+                          </label>
+                          <select
+                            value={variable.weight}
+                            onChange={(e) =>
+                              handleTextChange(
+                                key,
+                                'weight',
+                                Number(e.target.value),
+                              )
+                            }
+                            className="w-full p-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary text-sm"
+                          >
+                            <option value="300">Light</option>
+                            <option value="400">Regular</option>
+                            <option value="500">Medium</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </section>
+
+        {/* Spacing Section */}
+        <section className="rounded-lg bg-white dark:bg-gray-800/50 p-4 shadow-sm">
+          <h4 className="text-lg font-medium mb-4 pb-2 border-b text-gray-800 dark:text-gray-200">
+            Spacing Units
+          </h4>
+          <div className="space-y-4 bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
+            {Object.entries(spacingVariables).map(([key, variable]) => (
+              <div key={key} className="flex items-center space-x-4">
+                <label className="text-sm font-medium w-40 text-gray-700 dark:text-gray-300">
+                  {variable.name}
+                </label>
+                <input
+                  type="text"
+                  value={variable.value}
+                  onChange={(e) => handleSpacingChange(key, e.target.value)}
+                  className="p-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary flex-1"
+                />
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );

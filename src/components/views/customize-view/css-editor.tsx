@@ -15,6 +15,9 @@ import {
   Copy,
   CheckIcon,
   Download,
+  Info as InfoIcon,
+  Pause as PauseIcon,
+  Play as PlayIcon,
 } from 'lucide-react';
 import { useLogger } from '@/services/logger';
 import { FetchCssModal } from './fetch-css-modal';
@@ -26,6 +29,7 @@ export const CssEditor = () => {
   const [isCopied, setIsCopied] = useState(false);
   const [showFetchModal, setShowFetchModal] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+  const [autoApplyEnabled, setAutoApplyEnabled] = useState(true); // State to control auto-apply feature
   const appContext = useContext(AppContext);
   const { addLog } = useLogger();
 
@@ -107,6 +111,26 @@ export const CssEditor = () => {
       addLog('CSS applied successfully', 'success');
     }
   };
+
+  // Auto-apply CSS when editor content changes
+  // This makes the theme editor changes apply instantly
+  useEffect(() => {
+    // Skip initial empty content
+    if (
+      currentEditorContent &&
+      currentEditorContent.trim() !== '' &&
+      currentEditorContent.trim() !==
+        '/* CSS will appear here when generated */' &&
+      autoApplyEnabled
+    ) {
+      // Apply the CSS automatically with a slight debounce
+      const timer = setTimeout(() => {
+        applyCSS(currentEditorContent);
+      }, 500); // Delay to avoid excessive updates while typing
+
+      return () => clearTimeout(timer);
+    }
+  }, [currentEditorContent, autoApplyEnabled]);
 
   const handleFetchFromDevRev = async () => {
     setShowFetchModal(true);
@@ -223,6 +247,9 @@ export const CssEditor = () => {
               setCurrentEditorContent(content);
               // Update the appContext cssContent when editor content changes
               setCssContent(content);
+
+              // The content update is detected here and propagated through state.
+              // Auto-apply is handled in the useEffect hook with debouncing.
             }
           }),
         ],
@@ -258,6 +285,10 @@ export const CssEditor = () => {
           },
         });
         setCurrentEditorContent(cleanedContent);
+
+        // When cssContent is updated by other components (like Theme Editor),
+        // it's automatically updated here and will be auto-applied through the
+        // useEffect hook that watches currentEditorContent.
       }
     }
   }, [cssContent]);
@@ -270,66 +301,116 @@ export const CssEditor = () => {
 
   const isEditorEmpty = !currentEditorContent;
 
+  // Toggle auto-apply feature
+  const toggleAutoApply = () => {
+    setAutoApplyEnabled((prev) => !prev);
+    addLog(`Auto-apply ${!autoApplyEnabled ? 'enabled' : 'disabled'}`, 'info');
+  };
+
   // Ensure the parent div can expand and has rounded corners
   return (
-    <div className="flex flex-col w-full h-full gap-3">
+    <div className="flex flex-col w-full h-full gap-4">
+      {/* Auto-apply notification */}
+      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-1 shadow-sm">
+        <div className="flex items-start">
+          <InfoIcon className="text-blue-500 dark:text-blue-400 mt-0.5 h-4 w-4 mr-2 flex-shrink-0" />
+          <div>
+            <p className="text-sm text-blue-800 dark:text-blue-300 font-medium mb-1">
+              Auto-Apply {autoApplyEnabled ? 'Enabled' : 'Disabled'}
+            </p>
+            <p className="text-xs text-blue-700/80 dark:text-blue-400/80">
+              CSS changes are{' '}
+              {autoApplyEnabled
+                ? 'automatically applied to the page as you type'
+                : 'only applied when you click the Apply button'}
+              . Theme editor changes will update this editor and{' '}
+              {autoApplyEnabled && 'automatically'} apply.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div
         ref={editorRef}
-        className="w-full h-full rounded-md max-h-full flex-1 border border-border"
+        className="w-full h-full rounded-lg max-h-full flex-1 border border-gray-300 dark:border-gray-700 shadow-sm overflow-hidden"
       />
-      <div className="flex justify-between">
+
+      <div className="flex justify-between items-center pt-1">
         <div className="flex gap-2">
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5 w-8 h-8"
+            className="flex items-center gap-1.5 w-9 h-9 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
             onClick={handleUndo}
             title="Undo"
             disabled={isLoading}
           >
-            <RotateCcw size={14} />
+            <RotateCcw size={15} />
           </Button>
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5 w-8 h-8"
+            className="flex items-center gap-1.5 w-9 h-9 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
             onClick={handleRedo}
             title="Redo"
             disabled={isLoading}
           >
-            <RotateCw size={14} />
+            <RotateCw size={15} />
           </Button>
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5 h-8 w-8"
+            className="flex items-center gap-1.5 h-9 w-9 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
             onClick={handleCopy}
             title="Copy CSS"
             disabled={isLoading || isEditorEmpty}
           >
-            {isCopied ? <CheckIcon size={14} /> : <Copy size={14} />}
+            {isCopied ? <CheckIcon size={15} /> : <Copy size={15} />}
           </Button>
           <Button
-            size="sm"
+            size="icon"
             variant="outline"
-            className="flex items-center gap-1.5 h-8 w-8"
+            className="flex items-center gap-1.5 h-9 w-9 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
             onClick={handleFetchFromDevRev}
             title="Fetch CSS from DevRev"
             disabled={isLoading}
           >
-            <Download size={14} />
+            <Download size={15} />
           </Button>
         </div>
         <div className="flex gap-2">
           <Button
             size="sm"
-            className="flex items-center gap-1.5"
-            onClick={handleApplyCss}
-            disabled={isLoading || isEditorEmpty}
+            variant={autoApplyEnabled ? 'outline' : 'default'}
+            className={`flex items-center gap-1.5 h-9 px-3 shadow-sm ${
+              autoApplyEnabled
+                ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+            onClick={toggleAutoApply}
           >
-            <Play size={12} />
-            <span className="text-xs">Apply CSS</span>
+            {autoApplyEnabled ? (
+              <>
+                <PauseIcon size={14} className="mr-1" /> Disable Auto-Apply
+              </>
+            ) : (
+              <>
+                <PlayIcon size={14} className="mr-1" /> Enable Auto-Apply
+              </>
+            )}
           </Button>
+
+          {!autoApplyEnabled && (
+            <Button
+              size="sm"
+              className="flex items-center gap-1.5 h-9 px-3 bg-green-600 hover:bg-green-700 shadow-sm"
+              onClick={handleApplyCss}
+              disabled={isLoading || isEditorEmpty}
+            >
+              <Play size={14} className="mr-1" />
+              Apply CSS
+            </Button>
+          )}
         </div>
       </div>
 
