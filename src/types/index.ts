@@ -3,7 +3,8 @@ export type Tab =
   | 'hierarchy'
   | 'versions'
   | 'settings'
-  | 'theme-editor';
+  | 'theme-editor'
+  | 'css-editor';
 
 // Node in the portal class tree
 export interface TreeNode {

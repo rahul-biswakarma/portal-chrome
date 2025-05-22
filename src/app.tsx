@@ -5,6 +5,8 @@ import { StatusBar } from './components/status-bar';
 import { CustomizeView } from './components/views/customize-view/customize-view';
 import { HierarchyView } from './components/views/hierarchy-view/hierarchy-view';
 import { Settings } from './components/views/settings/settings';
+import { CssEditorView } from './components/views/css-editor-view/css-editor-view';
+import { ThemeEditorView } from './components/views/theme-editor/theme-editor-view';
 
 import type { ViewTabsSchema } from './types';
 import { AppProvider } from './contexts/app-context';
@@ -15,6 +17,16 @@ const views: ViewTabsSchema[] = [
     id: 'customize',
     trigger: 'Customize',
     content: <CustomizeView />,
+  },
+  {
+    id: 'css-editor',
+    trigger: 'CSS Editor',
+    content: <CssEditorView />,
+  },
+  {
+    id: 'theme-editor',
+    trigger: 'Theme Editor',
+    content: <ThemeEditorView />,
   },
   {
     id: 'hierarchy',
