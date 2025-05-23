@@ -426,7 +426,7 @@ export const ThemeVariablesGenerator = ({
         )}
       </div>
 
-      <div className="space-y-10 overflow-y-auto max-h-[80vh] pb-6">
+      <div className="space-y-10 pb-6">
         {/* Font Family Section - Always visible */}
         <section className="rounded-lg bg-white dark:bg-gray-800/50 p-4 shadow-sm">
           <h4 className="text-lg font-medium mb-4 pb-2 border-b text-gray-800 dark:text-gray-200">

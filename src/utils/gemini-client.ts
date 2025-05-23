@@ -586,12 +586,13 @@ RESPOND ONLY WITH VALID CSS CODE OR THE SINGLE WORD "DONE".`;
 
   try {
     // Use the makeGeminiRequest function
-    const result = await makeGeminiRequest(
+    const result = await makeGeminiRequest({
       apiKey,
       messages,
-      model,
-      chatSessionId,
-    );
+      modelName: model,
+      sessionId: chatSessionId,
+      temperature: 0.2,
+    });
 
     if (result.trim() === 'DONE') {
       return {
@@ -720,22 +721,29 @@ function formatEnhancedTree(
   return result;
 }
 
-/**
- * Make a Gemini API request reusing chat history from an existing session
- * @param apiKey The Gemini API key
- * @param newMessages New messages to add to the conversation
- * @param model Gemini model to use
- * @param sessionId Optional session ID to use (creates new if not provided)
- * @returns The API response content
- */
+// Define the GeminiRequestOptions type
+interface GeminiRequestOptions {
+  apiKey: string;
+  messages: GeminiMessage[];
+  modelName: string;
+  sessionId?: string;
+  temperature?: number;
+}
+
+// Export the makeGeminiRequest function
 export async function makeGeminiRequest(
-  apiKey: string,
-  newMessages: GeminiMessage[],
-  model: string,
-  sessionId?: string,
+  options: GeminiRequestOptions,
 ): Promise<string> {
+  const {
+    apiKey,
+    messages: newMessages,
+    modelName,
+    sessionId,
+    temperature,
+  } = options;
+
   const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
-  const url = `${baseUrl}/${model}:generateContent?key=${apiKey}`;
+  const url = `${baseUrl}/${modelName}:generateContent?key=${apiKey}`;
 
   const session = sessionId
     ? chatManager.getOrCreateSession(sessionId)
@@ -747,7 +755,7 @@ export async function makeGeminiRequest(
   });
 
   // Get all messages from the session
-  const messages = session.getMessages();
+  const messagesFromSession = session.getMessages();
 
   // Used for tracking continuation attempts
   let fullContent = '';
@@ -763,7 +771,7 @@ export async function makeGeminiRequest(
   ) {
     try {
       // Prepare messages for continuation
-      const requestMessages = [...messages];
+      const requestMessages = [...messagesFromSession];
 
       // If this is a continuation, add a continuation instruction
       if (continuationAttempts > 0) {
@@ -780,7 +788,7 @@ export async function makeGeminiRequest(
       const requestBody = {
         contents: requestMessages,
         generationConfig: {
-          temperature: 0.2,
+          temperature: temperature !== undefined ? temperature : 0.2,
           maxOutputTokens: 8192,
         },
       };

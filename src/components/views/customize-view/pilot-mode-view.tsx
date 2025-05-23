@@ -71,8 +71,23 @@ export const PilotModeView = () => {
   };
 
   const getApiParameters = async () => {
-    const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-2.0-flash';
-    return { model };
+    const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-1.5-flash';
+    // Define temperatures for different stages
+    const temperatureVisualDiff = parseFloat(
+      (await getEnvVariable('GEMINI_TEMP_VISUAL_DIFF')) || '0.4',
+    );
+    const temperatureCssGeneration = parseFloat(
+      (await getEnvVariable('GEMINI_TEMP_CSS_GENERATION')) || '0.6',
+    );
+    const temperatureFeedbackLoop = parseFloat(
+      (await getEnvVariable('GEMINI_TEMP_FEEDBACK_LOOP')) || '0.3',
+    );
+    return {
+      model,
+      temperatureVisualDiff,
+      temperatureCssGeneration,
+      temperatureFeedbackLoop,
+    };
   };
 
   // Check if API keys are set whenever this component is shown or apiKey context changes
@@ -292,76 +307,69 @@ export const PilotModeView = () => {
       setFeedbackStage('generating-visual-diff');
       setProgress(25);
 
-      // Get Gemini API key
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      // Create dynamic diff analysis prompt that adapts to actual DOM structure
-      const diffPrompt = `TASK: Analyze these images and DOM structure to create a precise visual transformation plan.
+      const diffPrompt = `TASK: Analyze images and DOM to create a professional visual transformation plan for a HELP CENTER PORTAL.
 
 🎯 IMAGE ANALYSIS:
-- IMAGE 1 (REFERENCE): Target design to replicate exactly
-- IMAGE 2 (CURRENT): Current portal state that needs transformation
+- IMAGE 1 (REFERENCE): Target design aesthetic to inspire the transformation.
+- IMAGE 2 (CURRENT): Current portal state that needs professional enhancement.
 
 📋 CURRENT PORTAL STRUCTURE:
 ${domStructure || 'No portal elements found'}
 
+CRITICAL CONSIDERATIONS FOR A HELP CENTER:
+- **Professionalism:** The final design must look clean, modern, trustworthy, and user-friendly.
+- **Search Bar Excellence:** A prominent, well-styled search bar is THE MOST IMPORTANT element. It must be preserved, highly visible, and easy to use.
+- **Clear Navigation:** Header and navigation elements must be clear and intuitive.
+- **Readability:** Typography and color choices must ensure high readability of content.
+- **Responsive Design:** Layout should adapt well to different screen sizes (conceptual).
+
 IMPORTANT CSS SELECTOR NOTE:
 - All portal-* identifiers in the DOM are CSS CLASSES, not HTML attributes
-- Use class selectors: .portal-class-name (NOT div[portal-class-name])
+- Use class selectors: .portal-class-name (NOT div[portal-classname])
 - Example: .portal-banner__wrapper, .portal-directory-card, .portal-common-header
 
-REQUIRED ANALYSIS - Generate a detailed visual diff:
+REQUIRED ANALYSIS - Generate a detailed visual diff and transformation plan:
 
-**VISUAL ELEMENTS EXTRACTION:**
-From REFERENCE image, extract:
-1. **Color Palette:**
-   - Primary background colors/gradients
-   - Text colors (headings, body, links)
-   - Card/container background colors
-   - Accent and highlight colors
-   - Border and shadow colors
+**1. VISUAL ELEMENTS EXTRACTION (From REFERENCE - Image 1):**
+   - **Color Palette:** Primary, secondary, accent colors. Aim for a professional and accessible scheme.
+   - **Typography:** Font styles, weights, sizes. Prioritize readability.
+   - **Layout & Spacing:** Overall structure, padding, margins, content density.
+   - **Key Style Elements:** Card styles, button styles, shadow usage, border radius, etc.
 
-2. **Typography Characteristics:**
-   - Font weights and sizes for different text levels
-   - Text color hierarchy and contrast
-   - Line spacing and letter spacing patterns
+**2. CURRENT STATE ASSESSMENT (Image 2 & DOM Structure):**
+   - **Identify Key Portal Components:** Locate CSS classes for:
+     - Search Bar / Search Input field(s)
+     - Main Banner / Hero section
+     - Header / Navigation bar
+     - Content Cards / Directory items
+     - Footer
+     - Buttons
+   - **Critique Current Design:** What aspects of the current design (Image 2) look unprofessional or hinder usability?
 
-3. **Layout & Spacing:**
-   - Container padding and margins
-   - Element spacing (cards, buttons, sections)
-   - Grid/layout density and rhythm
-   - Border radius and corner styling
-
-4. **Visual Depth & Style:**
-   - Shadow patterns and depth
-   - Border styles and weights
-   - Background treatments (solid, gradient, patterns)
-   - Overall visual style (flat, material, etc.)
-
-**TRANSFORMATION MAPPING:**
-Based on the actual DOM structure above, identify:
-1. **Background Elements:** Which portal CSS classes should receive background treatments
-2. **Card/Container Elements:** Which portal CSS classes represent cards or containers
-3. **Navigation Elements:** Which portal CSS classes represent headers or navigation
-4. **Text Elements:** Which portal CSS classes contain text that needs styling
-5. **Interactive Elements:** Which portal CSS classes represent buttons, inputs, or links
+**3. TRANSFORMATION MAPPING (Professional Help Center Focus):**
+   Based on the DOM structure and inspired by the REFERENCE (Image 1), plan transformations for:
+   - **Search Bar:** How to make it prominent, visually appealing, and highly functional? Specify styling for its container and input fields.
+   - **Overall Layout:** How to achieve a clean, organized, and professional structure?
+   - **Header/Navigation:** How to ensure clarity and ease of use?
+   - **Content Presentation (Cards/Lists):** How to display information in an accessible and engaging way?
+   - **Color & Typography:** How to apply a professional and readable color scheme and typography?
+   - **Buttons & Interactive Elements:** How to style them for clear affordance and consistency?
 
 **OUTPUT REQUIREMENTS:**
 Create a specific transformation plan that:
-- Maps reference design elements to actual portal CSS classes found in DOM
-- Provides exact color values and measurements
-- Gives specific CSS property recommendations using CLASS SELECTORS (.portal-class)
-- Focuses only on portal classes that actually exist in the current page
+- Prioritizes a professional, user-friendly help center aesthetic.
+- Ensures the search bar is a central, well-styled element.
+- Maps reference design elements to actual portal CSS classes found in DOM.
+- Provides exact color values and measurements where applicable.
+- Gives specific CSS property recommendations using CLASS SELECTORS (.portal-class).
 
 CRITICAL: Remember all portal-* are CSS classes - use .portal-class-name syntax for CSS selectors.
+Do not assume any specific portal class names - work with what's actually present in the DOM. The goal is a professional transformation, not just a copy of the reference if the reference is not suitable for a help center.`;
 
-Do not assume any specific portal class names - work with what's actually present in the DOM structure provided.`;
-
-      // Prepare the message parts
       const parts: MessagePart[] = [{ text: diffPrompt }];
-
-      // Add images
       if (isValidImageData(referenceImage)) {
         const imgData = dataUrlToBase64(referenceImage);
         const mimeType = referenceImage.split(';')[0].split(':')[1];
@@ -383,34 +391,23 @@ Do not assume any specific portal class names - work with what's actually presen
           },
         });
       }
-
-      // Prepare the messages for Gemini
-      const { model } = await getApiParameters();
-      const messages: GeminiMessage[] = [
-        {
-          role: 'user',
-          parts,
-        },
-      ];
-
-      // Use session ID to maintain conversation context
+      const { model, temperatureVisualDiff } = await getApiParameters();
+      const messages: GeminiMessage[] = [{ role: 'user', parts }];
       const diffSessionId = sessionId || `diff_${Date.now()}`;
 
-      // Use the shared makeGeminiRequest function
-      const visualDiffAnalysis = await makeGeminiRequest(
+      const visualDiffAnalysis = await makeGeminiRequest({
         apiKey,
         messages,
-        model,
-        diffSessionId,
-      );
+        modelName: model,
+        sessionId: diffSessionId,
+        temperature: temperatureVisualDiff,
+      });
 
       if (!visualDiffAnalysis) {
         throw new Error('No visual diff analysis returned from API');
       }
-
       console.log('Generated visual diff analysis:', visualDiffAnalysis);
       addLog('Visual diff analysis completed', 'info');
-
       return visualDiffAnalysis.trim();
     } catch (error) {
       console.error('Error generating visual diff analysis:', error);
@@ -428,12 +425,10 @@ Do not assume any specific portal class names - work with what's actually presen
       setFeedbackStage('generating-css');
       setProgress(50);
 
-      // Get Gemini API key
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      // Create CSS generation prompt using the visual diff analysis
-      const cssPrompt = `TASK: Generate CSS based on the visual analysis and DOM structure.
+      const cssPrompt = `TASK: Generate COMPLETE CSS for a HELP CENTER PORTAL based on the visual analysis and DOM structure.
 
 📋 VISUAL TRANSFORMATION PLAN:
 ${visualDiffAnalysis}
@@ -441,14 +436,20 @@ ${visualDiffAnalysis}
 📋 CURRENT DOM STRUCTURE:
 ${domStructure || 'No portal elements found'}
 
-📋 CURRENT CSS:
+📋 PREVIOUS CSS (for context, if any):
 ${cssContent || 'No existing CSS'}
+
+CRITICAL GOALS FOR HELP CENTER CSS:
+- **Professional Aesthetic:** CSS must result in a clean, modern, trustworthy, and user-friendly interface.
+- **Search Bar Functionality & Style:** Ensure the search bar (identified in the plan) is highly visible, functional, and well-styled. DO NOT REMOVE IT.
+- **Maintain Essential Elements:** All critical portal functions (navigation, content display, search) must remain fully usable.
+- **Readability & Accessibility:** Prioritize readable fonts, good contrast, and accessible design patterns.
 
 CRITICAL CSS SELECTOR REQUIREMENTS:
 - All portal-* identifiers are CSS CLASSES, not HTML attributes
 - ALWAYS use class selectors: .portal-class-name
 - NEVER use attribute selectors: div[portal-class-name] ❌
-- For high specificity use: .portal-class.portal-class or .portal-class.portal-class {}
+- For high specificity use: .portal-class.portal-class
 
 CORRECT EXAMPLES:
 ✅ .portal-banner__wrapper { background: blue; }
@@ -461,64 +462,36 @@ INCORRECT EXAMPLES:
 
 CSS GENERATION REQUIREMENTS:
 
-1. **Use Correct CSS Class Selectors:**
-   - Target portal CSS classes with: .portal-class-name
-   - For high specificity use: .portal-class.portal-class
-   - Add !important for strong overrides where needed
+1. **Implement Transformation Plan:** Faithfully execute the visual transformation plan, especially regarding the search bar and overall professional look.
+2. **Use Correct CSS Class Selectors:** Target portal CSS classes with: .portal-class-name. Use .portal-class.portal-class for high specificity.
+3. **Complete & Cohesive Styling:** Generate a FULL stylesheet. Do not assume any base styles exist. Create a consistent look and feel.
+4. **Preserve Functionality:** Ensure all interactive elements remain functional. Do not hide or break essential components.
+5. **High-Quality CSS:** Write clean, well-organized CSS. Include comments for major sections (e.g., /* Header Styles */, /* Search Bar Styles */, /* Card Styles */).
+6. **Override Existing Styles:** If transforming an existing page, ensure new styles are specific enough (using .class.class and !important where necessary) to override previous/browser default styles and achieve the desired professional look.
 
-2. **Apply Visual Diff Recommendations:**
-   - Implement the exact color palette extracted from reference
-   - Apply typography changes as specified in the analysis
-   - Implement layout and spacing changes
-   - Add visual depth and styling as recommended
+REMEMBER: The goal is a PROFESSIONAL, MODERN, and FUNCTIONAL help center. The search bar is paramount.
 
-3. **Focus on Actual DOM Elements:**
-   - Only generate CSS for portal classes that exist in the provided DOM structure
-   - Use the transformation mapping from the visual analysis
-   - Ensure selectors match the actual HTML structure using CLASS SELECTORS
+Generate production-ready CSS that transforms the portal to match the professional help center design outlined in the plan.`;
 
-4. **Complete Transformation:**
-   - Make dramatic changes that completely transform the appearance
-   - Override ALL existing styles that conflict with the reference design
-   - Create a cohesive visual transformation
-
-5. **CSS Organization:**
-   - Organize CSS logically (layout, colors, typography, effects)
-   - Include comments explaining major transformations
-   - Ensure cross-browser compatibility
-
-REMEMBER: portal-banner__wrapper, portal-directory-card, portal-common-header etc. are CSS classes - use .portal-class-name syntax!
-
-Generate production-ready CSS that transforms the portal to match the reference design exactly.`;
-
-      // Use same session ID to continue the conversation context
       const cssSessionId = sessionId || `css_${Date.now()}`;
-
-      // Prepare messages - this continues the conversation from the visual diff
       const messages: GeminiMessage[] = [
-        {
-          role: 'user',
-          parts: [{ text: cssPrompt }],
-        },
+        { role: 'user', parts: [{ text: cssPrompt }] },
       ];
+      const { model, temperatureCssGeneration } = await getApiParameters();
 
-      const { model } = await getApiParameters();
-
-      // Generate CSS with Gemini using the conversation context
-      const generatedCSS = await makeGeminiRequest(
+      const generatedCSS = await makeGeminiRequest({
         apiKey,
         messages,
-        model,
-        cssSessionId,
-      );
+        modelName: model,
+        sessionId: cssSessionId,
+        temperature: temperatureCssGeneration,
+      });
 
       if (!generatedCSS) {
         throw new Error('No CSS generated from visual diff analysis');
       }
-
       console.log('Generated CSS from diff analysis:', generatedCSS);
       addLog('CSS generation completed', 'info');
-
       return generatedCSS.trim();
     } catch (error) {
       console.error('Error generating CSS from diff:', error);
@@ -536,24 +509,28 @@ Generate production-ready CSS that transforms the portal to match the reference 
       setFeedbackStage('getting-feedback');
       setProgress(85);
 
-      // Get Gemini API key
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      // Create feedback prompt that regenerates CSS from scratch
-      const feedbackPrompt = `TASK: Evaluate transformation results and generate improved CSS.
+      const feedbackPrompt = `TASK: Evaluate HELP CENTER PORTAL transformation and generate improved CSS.
+
+CRITICAL GOALS FOR HELP CENTER CSS:
+- **Professionalism:** Final CSS must result in a clean, modern, trustworthy, and user-friendly interface.
+- **Search Bar Functionality & Style:** The search bar MUST be highly visible, functional, and well-styled. It is the most important interactive element.
+- **Maintain Essential Elements:** All critical portal functions (navigation, content display, search) must remain fully usable.
+- **Readability & Accessibility:** Prioritize readable fonts, good contrast, and accessible design patterns.
 
 📋 CONTEXT:
 This is feedback loop ${feedbackLoopCount} of ${maxFeedbackLoops} for the current page transformation.
 
 📋 IMAGES:
-- IMAGE 1 (REFERENCE): Target design to match exactly
-- IMAGE 2 (CURRENT RESULT): Current transformation result after previous CSS
+- IMAGE 1 (REFERENCE): Target design aesthetic to inspire the transformation.
+- IMAGE 2 (CURRENT RESULT): Current transformation result after previous CSS.
 
 📋 CURRENT DOM STRUCTURE:
 ${domStructure || 'No portal elements found'}
 
-📋 PREVIOUS CSS (for reference):
+📋 PREVIOUS CSS (that produced Image 2):
 ${cssContent || 'No CSS applied'}
 
 CRITICAL CSS SELECTOR REQUIREMENTS:
@@ -565,47 +542,46 @@ CRITICAL CSS SELECTOR REQUIREMENTS:
 CORRECT EXAMPLES:
 ✅ .portal-banner__wrapper { background: blue; }
 ✅ .portal-directory-card.portal-directory-card { padding: 20px; }
-✅ .portal-common-header__actions-container { display: flex; }
 
 INCORRECT EXAMPLES:
 ❌ div[portal-banner__wrapper] { background: blue; }
-❌ button[portal-common-header__actions-container__login-button] { color: white; }
 
 EVALUATION & REGENERATION:
 
-1. **Visual Assessment:**
-   - Compare current result (Image 2) with target reference (Image 1)
-   - Identify what's working well and what needs improvement
-   - Focus on color scheme, typography, layout, spacing, and visual hierarchy
+1. **Visual Assessment (Critique Image 2 against Image 1 and Professional Help Center Standards):**
+   - **Search Bar:** Is it prominent, well-styled, and fully functional? If not, this is the #1 priority to fix.
+   - **Professionalism:** Does it look clean, modern, and trustworthy? Identify any unprofessional elements.
+   - **Readability & Clarity:** Is text easy to read? Is navigation clear?
+   - **Visual Gaps:** What are the biggest differences between the current result (Image 2) and the desired professional look (inspired by Image 1)?
+   - **Functionality:** Are all essential elements (buttons, links, navigation) visible and usable?
 
 2. **Decision Criteria:**
-   - If visual match is 85%+ satisfactory: Return "COMPLETE"
-   - If improvements needed: Generate completely NEW CSS from scratch
+   - If visual match to a professional help center aesthetic is 85%+ satisfactory (AND search bar is excellent): Return "COMPLETE"
+   - If improvements needed (especially to search bar or professionalism): Generate completely NEW CSS from scratch.
 
 **OUTPUT FORMAT:**
 
-If transformation is complete (85%+ match):
+If transformation is complete (85%+ match AND excellent search bar):
 MATCH_STATUS: COMPLETE
 
 If improvements needed:
 MATCH_STATUS: NEEDS_IMPROVEMENT
 
-/* Complete CSS for Feedback Loop ${feedbackLoopCount} */
+/* Complete NEW CSS for Feedback Loop ${feedbackLoopCount} - Aiming for Professional Help Center */
 [Generate COMPLETE CSS from scratch - NOT incremental changes]
 
 REQUIREMENTS for CSS regeneration:
-- Analyze the reference image and current result
-- Generate COMPLETE CSS that addresses all visual gaps
-- Use correct CSS class selectors: .portal-class-name (NOT div[portal-class])
-- Use high specificity selectors (.portal-class.portal-class) for strong overrides
-- Include !important for strong overrides where needed
-- Target only portal classes found in the DOM structure
-- Create cohesive styling that transforms the portal completely
-- Build upon what was working from previous CSS but fix what wasn't
+- **Prioritize Search Bar:** Ensure it is perfectly styled and functional.
+- **Professionalism First:** Focus on creating a clean, modern, and trustworthy design suitable for a help center.
+- **Use Correct Class Selectors:** .portal-class-name (NOT div[portal-class]).
+- **High Specificity:** Use .portal-class.portal-class and !important where necessary to override previous styles.
+- **Complete Stylesheet:** Generate all CSS rules needed. Do not assume base styles.
+- **Preserve Functionality:** Do not hide or break critical elements.
+- **Organized CSS:** Include comments for major sections.
 
-REMEMBER: All portal-* are CSS classes - use .portal-class-name syntax!
+REMEMBER: All portal-* are CSS classes - use .portal-class-name syntax! The goal is a professional help center with an excellent search experience.
 
-Generate a complete, production-ready CSS solution that brings the current result closer to the reference design.`;
+Generate a complete, production-ready CSS solution.`;
 
       const parts: MessagePart[] = [{ text: feedbackPrompt }];
 
@@ -642,14 +618,15 @@ Generate a complete, production-ready CSS solution that brings the current resul
         },
       ];
 
-      const { model } = await getApiParameters();
+      const { model, temperatureFeedbackLoop } = await getApiParameters();
 
-      const feedbackResult = await makeGeminiRequest(
+      const feedbackResult = await makeGeminiRequest({
         apiKey,
         messages,
-        model,
-        feedbackSessionId,
-      );
+        modelName: model,
+        sessionId: feedbackSessionId,
+        temperature: temperatureFeedbackLoop,
+      });
 
       if (!feedbackResult) {
         addLog(
