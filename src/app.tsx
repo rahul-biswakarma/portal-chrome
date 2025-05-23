@@ -2,7 +2,7 @@ import './globals.css';
 
 import { ViewTabs } from './components/view-tabs';
 import { StatusBar } from './components/status-bar';
-import { CustomizeView } from './components/views/customize-view/customize-view';
+import { PilotModeView } from './components/views/customize-view/pilot-mode-view';
 import { HierarchyView } from './components/views/hierarchy-view/hierarchy-view';
 import { Settings } from './components/views/settings/settings';
 import { CssEditorView } from './components/views/css-editor-view/css-editor-view';
@@ -14,9 +14,9 @@ import { useState } from 'react';
 
 const views: ViewTabsSchema[] = [
   {
-    id: 'customize',
-    trigger: 'Customize',
-    content: <CustomizeView />,
+    id: 'pilot-mode',
+    trigger: 'Pilot Mode',
+    content: <PilotModeView />,
   },
   {
     id: 'css-editor',
@@ -41,7 +41,7 @@ const views: ViewTabsSchema[] = [
 ];
 
 function App() {
-  const [activeTab, setActiveTab] = useState<string>('customize');
+  const [activeTab, setActiveTab] = useState<string>('pilot-mode');
 
   return (
     <AppProvider>

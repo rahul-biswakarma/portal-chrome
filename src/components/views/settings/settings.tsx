@@ -6,11 +6,12 @@ import { Input } from '@/components/ui/input';
 import { uploadCssToDevRev } from '@/services/devrev-api';
 import { AppContext } from '@/contexts/app-context';
 import { useLogger } from '@/services/logger';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 export const Settings = () => {
   const [apiKey, setApiKey] = useState('');
+  const [geminiKey, setGeminiKey] = useState('');
   const [devrevPat, setDevrevPat] = useState('');
   const [devrevOrgDonId, setDevrevOrgDonId] = useState('');
   const [devrevApiUrl, setDevrevApiUrl] = useState(
@@ -33,12 +34,16 @@ export const Settings = () => {
     const loadSettings = async () => {
       try {
         const storedKey = await getEnvVariable('OPENAI_API_KEY');
+        const storedGeminiKey = await getEnvVariable('GEMINI_API_KEY');
         const storedDevrevPat = await getEnvVariable('DEVREV_PAT');
         const storedDevrevOrgDonId = await getEnvVariable('DEVREV_ORG_DON_ID');
         const storedDevrevApiUrl = await getEnvVariable('DEVREV_API_URL');
 
         if (storedKey) {
           setApiKey(storedKey);
+        }
+        if (storedGeminiKey) {
+          setGeminiKey(storedGeminiKey);
         }
         if (storedDevrevPat) {
           setDevrevPat(storedDevrevPat);
@@ -81,6 +86,28 @@ export const Settings = () => {
       }, 3000);
     } catch (error) {
       console.error('Error saving API key:', error);
+    }
+  };
+
+  const handleSaveGeminiKey = async () => {
+    try {
+      const trimmedKey = geminiKey.trim();
+      if (!trimmedKey) {
+        alert('Please enter a valid Gemini API key');
+        return;
+      }
+
+      // Store in chrome.storage.local (persists between sessions)
+      await setEnvVariable('GEMINI_API_KEY', trimmedKey);
+
+      setIsSaved(true);
+
+      // Reset the saved indicator after 3 seconds
+      setTimeout(() => {
+        setIsSaved(false);
+      }, 3000);
+    } catch (error) {
+      console.error('Error saving Gemini API key:', error);
     }
   };
 
@@ -172,7 +199,7 @@ export const Settings = () => {
     <div className="flex flex-col gap-2 rounded-lg p-4 pb-12">
       <h3 className="text-lg font-medium mb-2">Settings</h3>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <label
           htmlFor="apiKey"
           className="block text-sm font-medium text-foreground mb-1"
@@ -194,6 +221,38 @@ export const Settings = () => {
           Your API key is stored securely in your browser's local storage and
           in-memory during the current session. It is never sent to our servers
           or stored elsewhere.
+        </p>
+      </div>
+
+      <div className="mb-6">
+        <label
+          htmlFor="geminiKey"
+          className="block text-sm font-medium text-foreground mb-1 flex items-center"
+        >
+          <Sparkles size={16} className="text-purple-500 mr-1" />
+          Gemini API Key
+        </label>
+        <div className="flex gap-1">
+          <Input
+            type="password"
+            id="geminiKey"
+            value={geminiKey}
+            className="text-sm"
+            onChange={(e) => setGeminiKey(e.target.value)}
+            placeholder="AIza..."
+          />
+          <Button onClick={handleSaveGeminiKey}>Save</Button>
+        </div>
+        <p className="mt-1 text-sm text-secondary-foreground">
+          Required for using Google's Gemini 2.5 Flash. Get your API key from{' '}
+          <a
+            href="https://ai.google.dev/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:underline"
+          >
+            Google AI Studio
+          </a>
         </p>
       </div>
 
