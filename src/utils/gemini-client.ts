@@ -13,7 +13,7 @@ type MetadataValue =
   | null
   | Record<string, unknown>;
 
-interface GeminiMessage {
+export interface GeminiMessage {
   role: Role;
   parts: MessagePart[];
 }
@@ -29,7 +29,7 @@ interface ImagePart {
   };
 }
 
-type MessagePart = TextPart | ImagePart;
+export type MessagePart = TextPart | ImagePart;
 
 // Chat session management
 class ChatSession {
@@ -209,16 +209,16 @@ const dataUrlToBase64 = (dataUrl: string): string => {
 };
 
 /**
- * Make a Gemini API request reusing chat history from an existing session
+ * Make a Gemini API request specifically for CSS generation using structured outputs
  * @param apiKey The Gemini API key
- * @param newMessages New messages to add to the conversation
+ * @param messages Messages to send to Gemini
  * @param model Gemini model to use
- * @param sessionId Optional session ID to use (creates new if not provided)
- * @returns The API response content
+ * @param sessionId Optional session ID
+ * @returns The generated CSS content
  */
-async function makeGeminiRequest(
+async function makeCSSGenerationRequest(
   apiKey: string,
-  newMessages: GeminiMessage[],
+  messages: GeminiMessage[],
   model: string,
   sessionId?: string,
 ): Promise<string> {
@@ -227,135 +227,89 @@ async function makeGeminiRequest(
 
   const session = sessionId
     ? chatManager.getOrCreateSession(sessionId)
-    : chatManager.createSession(`session_${Date.now()}`);
+    : chatManager.createSession(`css_session_${Date.now()}`);
 
   // Add new messages to the session
-  newMessages.forEach((msg) => {
+  messages.forEach((msg) => {
     session.addMessage(msg.role, msg.parts);
   });
 
   // Get all messages from the session
-  const messages = session.getMessages();
+  const sessionMessages = session.getMessages();
 
-  // Used for tracking continuation attempts
-  let fullContent = '';
-  let continuationAttempts = 0;
-  const MAX_CONTINUATION_ATTEMPTS = 3;
-
-  // Keep track of whether we're in a continuation
-  let continueGenerating = true;
-
-  while (
-    continueGenerating &&
-    continuationAttempts <= MAX_CONTINUATION_ATTEMPTS
-  ) {
-    try {
-      // Prepare messages for continuation
-      const requestMessages = [...messages];
-
-      // If this is a continuation, add a continuation instruction
-      if (continuationAttempts > 0) {
-        // Add a continuation instruction
-        requestMessages.push({
-          role: 'user',
-          parts: [
-            { text: 'Please continue your response from where you left off.' },
-          ],
-        });
-      }
-
-      // Make the API request with properly structured messages
-      const requestBody = {
-        contents: requestMessages,
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 8192,
+  try {
+    // Make the API request with structured output for CSS
+    const requestBody = {
+      contents: sessionMessages,
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            css: {
+              type: 'string',
+              description:
+                'Pure CSS code without any comments, explanations, or markdown. Only valid CSS selectors and properties.',
+            },
+          },
+          required: ['css'],
         },
-      };
+      },
+    };
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          `API error: ${errorData.error?.message || response.statusText}`,
-        );
-      }
-
-      const data = await response.json();
-
-      if (
-        data.candidates &&
-        data.candidates[0] &&
-        data.candidates[0].content &&
-        data.candidates[0].content.parts &&
-        data.candidates[0].content.parts[0] &&
-        data.candidates[0].content.parts[0].text
-      ) {
-        const content = data.candidates[0].content.parts[0].text.trim();
-
-        // Append to the full content
-        fullContent += (continuationAttempts > 0 ? ' ' : '') + content;
-
-        // Check if we need to continue generating
-        const finishReason = data.candidates[0].finishReason;
-        if (finishReason === 'MAX_TOKENS') {
-          continuationAttempts++;
-        } else {
-          // Normal completion - we're done
-          continueGenerating = false;
-
-          // Add the complete assistant response to the session
-          session.addMessage('model', [{ text: fullContent }]);
-        }
-
-        // If we've reached max attempts, stop and return what we have
-        if (continuationAttempts >= MAX_CONTINUATION_ATTEMPTS) {
-          console.warn(
-            `Reached maximum continuation attempts (${MAX_CONTINUATION_ATTEMPTS}). Returning partial content.`,
-          );
-          continueGenerating = false;
-
-          // Add the partial response to the session
-          session.addMessage('model', [{ text: fullContent }]);
-        }
-      } else {
-        // Handle cases where response is incomplete or empty
-        const finishReason = data.candidates?.[0]?.finishReason;
-
-        if (finishReason === 'MAX_TOKENS') {
-          console.warn(
-            'Response hit MAX_TOKENS with no content. Attempting continuation...',
-          );
-          continuationAttempts++;
-
-          if (continuationAttempts >= MAX_CONTINUATION_ATTEMPTS) {
-            console.error(
-              'MAX_TOKENS hit with no content after max attempts. Prompt may be too large.',
-            );
-            throw new Error(
-              'Response too large - try reducing the prompt size or number of reference images',
-            );
-          }
-        } else {
-          console.error('Unexpected API response:', data);
-          throw new Error('Invalid response format from API');
-        }
-      }
-    } catch (error) {
-      console.error('Error making Gemini request:', error);
-      continueGenerating = false;
-      throw error;
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        `API error: ${errorData.error?.message || response.statusText}`,
+      );
     }
-  }
 
-  return fullContent;
+    const data = await response.json();
+
+    if (
+      data.candidates &&
+      data.candidates[0] &&
+      data.candidates[0].content &&
+      data.candidates[0].content.parts &&
+      data.candidates[0].content.parts[0] &&
+      data.candidates[0].content.parts[0].text
+    ) {
+      const jsonResponse = data.candidates[0].content.parts[0].text.trim();
+
+      try {
+        // Parse the structured JSON response
+        const parsedResponse = JSON.parse(jsonResponse);
+
+        if (parsedResponse.css && typeof parsedResponse.css === 'string') {
+          // Add the CSS response to the session
+          session.addMessage('model', [{ text: parsedResponse.css }]);
+          return parsedResponse.css.trim();
+        } else {
+          throw new Error('Invalid CSS structure in response');
+        }
+      } catch (parseError) {
+        console.error('Error parsing JSON response:', parseError);
+        console.error('Raw response:', jsonResponse);
+        throw new Error('Failed to parse structured CSS response');
+      }
+    } else {
+      console.error('Unexpected API response structure:', data);
+      throw new Error('Invalid response format from API');
+    }
+  } catch (error) {
+    console.error('Error making CSS generation request:', error);
+    throw error;
+  }
 }
 
 /**
@@ -435,10 +389,11 @@ CSS GENERATION INSTRUCTIONS:
 2. Use ONLY selectors targeting classes that start with "portal-" (e.g., .portal-header).
 3. Your response should be COMPLETE CSS, including all necessary styles.
 4. Do NOT include any comments, markdown, or explanations in your output - just pure CSS.
-5. When overriding Tailwind, use sufficient specificity or strategic !important declarations.
-6. If there is existing CSS, incorporate it into your solution with improvements.
-7. Focus on creating pixel-perfect styling that matches the provided reference images.
-${retryCount > 0 ? `8. This is iteration ${retryCount + 1}. Focus on improving the match to the reference design.` : ''}
+5. When overriding Tailwind, prefer higher specificity selectors over !important (e.g., .portal-card.portal-card instead of !important).
+6. Only use !important when absolutely necessary for critical overrides.
+7. If there is existing CSS, incorporate it into your solution with improvements.
+8. Focus on creating pixel-perfect styling that matches the provided reference images.
+${retryCount > 0 ? `9. This is iteration ${retryCount + 1}. Focus on improving the match to the reference design.` : ''}
 
 RESPOND ONLY WITH VALID CSS CODE. DO NOT INCLUDE COMMENTS OR EXPLANATIONS.`;
 
@@ -480,20 +435,16 @@ RESPOND ONLY WITH VALID CSS CODE. DO NOT INCLUDE COMMENTS OR EXPLANATIONS.`;
   const chatSessionId = sessionId || `css_gen_${Date.now()}`;
 
   try {
-    // Use the makeGeminiRequest function
-    const content = await makeGeminiRequest(
+    // Use the makeCSSGenerationRequest function
+    const content = await makeCSSGenerationRequest(
       apiKey,
       messages,
       model,
       chatSessionId,
     );
 
-    // Clean the response by removing markdown code blocks if present
-    return content
-      .replace(/```css\s*/g, '')
-      .replace(/```\s*$/g, '')
-      .replace(/```/g, '')
-      .trim();
+    // No need to clean response since it's already structured CSS
+    return content;
   } catch (error) {
     console.error('Error generating CSS with Gemini:', error);
     throw error;
@@ -589,7 +540,8 @@ IMPORTANT CSS GUIDELINES:
 1. Your CSS must ONLY use selectors targeting classes starting with "portal-"
 2. Do NOT include any comments in the CSS.
 3. Include precise values (exact colors, measurements) to achieve a pixel-perfect match
-4. Use !important and high specificity selectors to ensure your styles are applied
+4. Use proper CSS specificity (e.g., .portal-card.portal-card) instead of !important when possible
+5. Only use !important for critical overrides that cannot be achieved with specificity
 
 NOTE: The FIRST image is the REFERENCE design, the SECOND image is the CURRENT state.
 
@@ -766,4 +718,154 @@ function formatEnhancedTree(
   }
 
   return result;
+}
+
+/**
+ * Make a Gemini API request reusing chat history from an existing session
+ * @param apiKey The Gemini API key
+ * @param newMessages New messages to add to the conversation
+ * @param model Gemini model to use
+ * @param sessionId Optional session ID to use (creates new if not provided)
+ * @returns The API response content
+ */
+export async function makeGeminiRequest(
+  apiKey: string,
+  newMessages: GeminiMessage[],
+  model: string,
+  sessionId?: string,
+): Promise<string> {
+  const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+  const url = `${baseUrl}/${model}:generateContent?key=${apiKey}`;
+
+  const session = sessionId
+    ? chatManager.getOrCreateSession(sessionId)
+    : chatManager.createSession(`session_${Date.now()}`);
+
+  // Add new messages to the session
+  newMessages.forEach((msg) => {
+    session.addMessage(msg.role, msg.parts);
+  });
+
+  // Get all messages from the session
+  const messages = session.getMessages();
+
+  // Used for tracking continuation attempts
+  let fullContent = '';
+  let continuationAttempts = 0;
+  const MAX_CONTINUATION_ATTEMPTS = 3;
+
+  // Keep track of whether we're in a continuation
+  let continueGenerating = true;
+
+  while (
+    continueGenerating &&
+    continuationAttempts <= MAX_CONTINUATION_ATTEMPTS
+  ) {
+    try {
+      // Prepare messages for continuation
+      const requestMessages = [...messages];
+
+      // If this is a continuation, add a continuation instruction
+      if (continuationAttempts > 0) {
+        // Add a continuation instruction
+        requestMessages.push({
+          role: 'user',
+          parts: [
+            { text: 'Please continue your response from where you left off.' },
+          ],
+        });
+      }
+
+      // Make the API request with properly structured messages
+      const requestBody = {
+        contents: requestMessages,
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 8192,
+        },
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `API error: ${errorData.error?.message || response.statusText}`,
+        );
+      }
+
+      const data = await response.json();
+
+      if (
+        data.candidates &&
+        data.candidates[0] &&
+        data.candidates[0].content &&
+        data.candidates[0].content.parts &&
+        data.candidates[0].content.parts[0] &&
+        data.candidates[0].content.parts[0].text
+      ) {
+        const content = data.candidates[0].content.parts[0].text.trim();
+
+        // Append to the full content
+        fullContent += (continuationAttempts > 0 ? ' ' : '') + content;
+
+        // Check if we need to continue generating
+        const finishReason = data.candidates[0].finishReason;
+        if (finishReason === 'MAX_TOKENS') {
+          continuationAttempts++;
+        } else {
+          // Normal completion - we're done
+          continueGenerating = false;
+
+          // Add the complete assistant response to the session
+          session.addMessage('model', [{ text: fullContent }]);
+        }
+
+        // If we've reached max attempts, stop and return what we have
+        if (continuationAttempts >= MAX_CONTINUATION_ATTEMPTS) {
+          console.warn(
+            `Reached maximum continuation attempts (${MAX_CONTINUATION_ATTEMPTS}). Returning partial content.`,
+          );
+          continueGenerating = false;
+
+          // Add the partial response to the session
+          session.addMessage('model', [{ text: fullContent }]);
+        }
+      } else {
+        // Handle cases where response is incomplete or empty
+        const finishReason = data.candidates?.[0]?.finishReason;
+
+        if (finishReason === 'MAX_TOKENS') {
+          console.warn(
+            'Response hit MAX_TOKENS with no content. Attempting continuation...',
+          );
+          continuationAttempts++;
+
+          if (continuationAttempts >= MAX_CONTINUATION_ATTEMPTS) {
+            console.error(
+              'MAX_TOKENS hit with no content after max attempts. Prompt may be too large.',
+            );
+            throw new Error(
+              'Response too large - try reducing the prompt size or number of reference images',
+            );
+          }
+        } else {
+          console.error('Unexpected API response:', data);
+          throw new Error('Invalid response format from API');
+        }
+      }
+    } catch (error) {
+      console.error('Error making Gemini request:', error);
+      continueGenerating = false;
+      throw error;
+    }
+  }
+
+  return fullContent;
 }

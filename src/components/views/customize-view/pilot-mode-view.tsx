@@ -19,7 +19,9 @@ import {
   generateCSSWithGemini,
   evaluateCSSResultWithGemini,
   isValidImageData,
+  makeGeminiRequest,
 } from '@/utils/gemini-client';
+import type { GeminiMessage, MessagePart } from '@/utils/gemini-client';
 import { useLogger } from '@/services/logger';
 
 // Simplified workflow stages
@@ -47,20 +49,6 @@ interface PortalElement {
   children: PortalElement[];
 }
 
-// Types for Gemini message parts
-interface TextPart {
-  text: string;
-}
-
-interface ImagePart {
-  inline_data: {
-    data: string;
-    mime_type: string;
-  };
-}
-
-type MessagePart = TextPart | ImagePart;
-
 export const PilotModeView = () => {
   const [geminiKeyMissing, setGeminiKeyMissing] = useState(false);
   const { setApiKey, apiKey, setCssContent, cssContent, fileInputRef } =
@@ -72,7 +60,7 @@ export const PilotModeView = () => {
     useState<PilotStage>('collect-references');
   const [feedbackStage, setFeedbackStage] = useState<FeedbackStage>('idle');
   const [feedbackLoopCount, setFeedbackLoopCount] = useState(0);
-  const [maxFeedbackLoops] = useState(3);
+  const [maxFeedbackLoops] = useState(4);
   const [isProcessing, setIsProcessing] = useState(false);
   const [shouldStop, setShouldStop] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -80,7 +68,6 @@ export const PilotModeView = () => {
   const [screenshots, setScreenshots] = useState<string[]>([]);
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [currentPageTitle, setCurrentPageTitle] = useState('Home Page');
-  const [statusMessage, setStatusMessage] = useState('');
 
   // Helper functions
   const dataUrlToBase64 = (dataUrl: string): string => {
@@ -88,9 +75,7 @@ export const PilotModeView = () => {
   };
 
   const getApiParameters = async () => {
-    const model =
-      (await getEnvVariable('GEMINI_MODEL')) ||
-      'gemini-2.5-flash-preview-05-20';
+    const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-2.0-flash';
     return { model };
   };
 
@@ -115,7 +100,6 @@ export const PilotModeView = () => {
   // Handle stopping the pilot mode
   const stopPilotMode = () => {
     setShouldStop(true);
-    setStatusMessage('Stopping pilot mode...');
     addLog('Pilot mode stopped by user', 'info');
   };
 
@@ -247,7 +231,6 @@ export const PilotModeView = () => {
     // Only allow up to 3 reference images
     if (referenceImages.length + files.length > 3) {
       addLog('Maximum 3 reference images allowed', 'warning');
-      setStatusMessage('Maximum 3 reference images allowed');
       return;
     }
 
@@ -265,9 +248,6 @@ export const PilotModeView = () => {
     }
 
     setReferenceImages(newImages);
-    setStatusMessage(
-      `${newImages.length} reference image${newImages.length !== 1 ? 's' : ''} uploaded`,
-    );
 
     // Reset file input
     if (e.target) e.target.value = '';
@@ -288,9 +268,6 @@ export const PilotModeView = () => {
     const newImages = [...referenceImages];
     newImages.splice(index, 1);
     setReferenceImages(newImages);
-    setStatusMessage(
-      `${newImages.length} reference image${newImages.length !== 1 ? 's' : ''} remaining`,
-    );
   };
 
   // Take a screenshot of the current page
@@ -298,21 +275,13 @@ export const PilotModeView = () => {
     try {
       setFeedbackStage('taking-screenshot');
       setProgress(20);
-      setStatusMessage('Taking screenshot of current page...');
-      addLog('Taking screenshot...', 'info');
 
       const screenshot = await captureScreenshot({ fullPage: true });
       setScreenshots([...screenshots, screenshot]);
       setProgress(30);
-      addLog('Screenshot captured successfully', 'success');
       return screenshot;
     } catch (error) {
       console.error('Error taking screenshot:', error);
-      addLog(
-        `Screenshot failed: ${error instanceof Error ? error.message : String(error)}`,
-        'error',
-      );
-      setStatusMessage('Failed to take screenshot');
       return null;
     }
   };
@@ -323,105 +292,76 @@ export const PilotModeView = () => {
     currentScreenshot: string,
   ): Promise<string> => {
     try {
-      setStatusMessage(
-        'Analyzing differences between reference and current design...',
-      );
-      addLog('Generating image diff analysis...', 'info');
-
-      // Check if we should stop
-      if (shouldStop) {
-        setStatusMessage('Operation stopped by user');
-        return '';
-      }
-
       // Get Gemini API key
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
-
-      const { model } = await getApiParameters();
 
       // Get DOM structure for component analysis
       const domStructure = await getPortalDOMStructure();
 
       // Create enhanced diff analysis prompt that includes DOM structure
-      const diffPrompt = `Analyze these two images to understand how to transform the current portal design.
+      const diffPrompt = `TASK: Analyze these images to extract EXACT visual characteristics for portal transformation.
 
-The FIRST image is the REFERENCE design - extract its design principles and aesthetic.
-The SECOND image is the CURRENT portal that needs transformation.
+🎯 IMAGE IDENTIFICATION:
+- IMAGE 1 (REFERENCE): Target design to replicate exactly
+- IMAGE 2 (CURRENT): Portal that needs complete transformation
 
-CURRENT PORTAL DOM STRUCTURE:
+CURRENT PORTAL STRUCTURE:
 ${domStructure || 'No portal elements found'}
 
-ANALYSIS APPROACH:
-The reference and current images may have completely different layouts. Your goal is to extract the DESIGN PRINCIPLES from the reference and apply them to the current portal structure.
+REQUIRED ANALYSIS:
 
-STEP 1 - DESIGN PRINCIPLE EXTRACTION:
-Analyze the reference image and identify:
-- **Color Palette**: Primary colors, accent colors, background tones, gradients
-- **Typography Style**: Font weights, sizes, hierarchy, spacing patterns
-- **Visual Hierarchy**: How content is organized and emphasized
-- **Spacing Philosophy**: Padding patterns, margins, whitespace usage
-- **Component Aesthetics**: Card styles, button designs, input field appearances
-- **Layout Patterns**: Grid systems, alignment, content organization
-- **Visual Effects**: Shadows, borders, hover states, animations suggested by static design
+**STEP 1 - PRECISE COLOR EXTRACTION:**
+Extract EXACT hex/RGB values from REFERENCE:
+- Background: [Exact background color/gradient from reference]
+- Primary text: [Exact heading text color from reference]
+- Secondary text: [Exact body text color from reference]
+- Card backgrounds: [Exact card background colors from reference]
+- Accent colors: [Any accent/highlight colors from reference]
+- Search bar colors: [Search input background, border, text colors]
 
-STEP 2 - PORTAL STRUCTURE MAPPING:
-Based on the DOM structure above, identify how to map design principles to existing components:
-- Map reference aesthetics to portal-common-header
-- Apply design principles to portal-banner/hero sections
-- Transform portal-directory-card styling
-- Adapt search/input element designs
-- Enhance overall layout containers
+**STEP 2 - TYPOGRAPHY ANALYSIS:**
+From REFERENCE image, identify:
+- Heading font weight: [Extract apparent font weight - light/regular/medium/bold]
+- Heading size relationship: [Relative size compared to other text]
+- Text color hierarchy: [How text colors create visual hierarchy]
+- Line spacing: [Apparent line height and spacing patterns]
 
-STEP 3 - PRACTICAL TRANSFORMATION STRATEGY:
-Focus on what can be realistically achieved with CSS targeting portal-* classes.
+**STEP 3 - LAYOUT & SPACING ANALYSIS:**
+Measure reference design:
+- Card spacing: [Distance between cards in reference]
+- Container padding: [Padding around main content areas]
+- Card internal padding: [Spacing inside cards]
+- Overall layout density: [Tight/medium/loose spacing approach]
 
-FORMAT YOUR RESPONSE AS:
+**STEP 4 - VISUAL STYLE EXTRACTION:**
+Copy reference aesthetics:
+- Card styling: [Background, shadows, borders, corner radius from reference]
+- Search bar design: [Input field styling, shadows, borders from reference]
+- Overall visual depth: [Flat design vs shadows/depth in reference]
+- Visual hierarchy: [How elements are emphasized in reference]
 
-**EXTRACTED DESIGN PRINCIPLES:**
+**STEP 5 - SPECIFIC TRANSFORMATION MAPPING:**
+Map reference design to current portal:
 
-COLOR PALETTE:
-- Primary: [Extract main colors from reference]
-- Secondary: [Extract accent colors]
-- Background: [Extract background patterns/colors]
-- Text: [Extract text color hierarchy]
+BACKGROUND TRANSFORMATION:
+- Apply reference background [specific color/gradient] to portal-banner__wrapper
+- Change overall color temperature to match reference
 
-TYPOGRAPHY & SPACING:
-- [Extract font styling patterns, size relationships, spacing philosophies]
+CARD SYSTEM TRANSFORMATION:
+- Transform portal-directory-card to match reference card design exactly
+- Apply reference card background, shadows, spacing
+- Match reference text styling within cards
 
-VISUAL STYLE:
-- [Extract card styling, shadows, borders, effects that define the aesthetic]
+SEARCH BAR TRANSFORMATION:
+- Change portal search elements to match reference search design
+- Apply reference input styling, colors, shadows
 
-LAYOUT PHILOSOPHY:
-- [Extract grid patterns, alignment principles, content organization]
+HEADER TRANSFORMATION:
+- Update portal-common-header to match reference navigation style
+- Apply reference header colors and typography
 
-**PORTAL COMPONENT TRANSFORMATIONS:**
-
-HEADER (portal-common-header):
-- Apply [specific color/styling] from reference aesthetic
-- Transform to match [specific design principle] extracted above
-
-BANNER/HERO (portal-banner__wrapper):
-- Adapt [background style/color] from reference
-- Apply [typography principles] to hero text
-- Transform search bar to match [input styling] from reference
-
-DIRECTORY CARDS (portal-directory-card):
-- Apply [card aesthetic] extracted from reference
-- Use [color scheme] and [spacing patterns] identified above
-- Transform shadows/borders to match [visual effects] from reference
-
-LAYOUT CONTAINER (portal-home-page__card-list):
-- Apply [grid philosophy] from reference design
-- Use [spacing patterns] identified in reference
-- Ensure card sizing follows [layout principles] extracted
-
-**SPECIFIC CSS RECOMMENDATIONS:**
-- [Provide specific CSS properties and values based on extracted principles]
-- [Focus on achievable transformations using portal-* selectors]
-- [Address any layout issues like card width while applying new aesthetic]
-
-IMPORTANT: Don't try to replicate the exact layout structure of the reference. Instead, extract its aesthetic qualities and apply them thoughtfully to the existing portal structure. Focus on colors, typography, spacing, and visual effects that can transform the current portal while maintaining its functional layout.`;
+Provide SPECIFIC, ACTIONABLE recommendations with exact colors and measurements for each portal component.`;
 
       // Prepare the message parts
       const parts: MessagePart[] = [{ text: diffPrompt }];
@@ -449,66 +389,35 @@ IMPORTANT: Don't try to replicate the exact layout structure of the reference. I
         });
       }
 
-      // Make request to Gemini
-      const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
-      const url = `${baseUrl}/${model}:generateContent?key=${apiKey}`;
-
-      const requestBody = {
-        contents: [{ role: 'user', parts }],
-        generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 3000,
+      // Prepare the messages for Gemini
+      const { model } = await getApiParameters();
+      const messages: GeminiMessage[] = [
+        {
+          role: 'user',
+          parts,
         },
-      };
+      ];
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
+      // Generate a session ID for this diff analysis
+      const diffSessionId = sessionId
+        ? `${sessionId}_diff`
+        : `diff_${Date.now()}`;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(
-          `API error: ${errorData.error?.message || response.statusText}`,
-        );
-      }
-
-      const data = await response.json();
-      console.log('Diff analysis API response:', data);
-
-      // Improved response parsing with better error handling
-      if (data.candidates && data.candidates.length > 0) {
-        const candidate = data.candidates[0];
-
-        if (
-          candidate.content &&
-          candidate.content.parts &&
-          candidate.content.parts.length > 0
-        ) {
-          const textPart = candidate.content.parts[0];
-          if (textPart.text) {
-            const diffAnalysis = textPart.text.trim();
-            addLog('Image diff analysis completed', 'success');
-            return diffAnalysis;
-          }
-        }
-
-        // Check if there's a finish reason that explains why no content was returned
-        if (candidate.finishReason) {
-          throw new Error(
-            `API response incomplete. Finish reason: ${candidate.finishReason}`,
-          );
-        }
-      }
-
-      // If we get here, the response structure is unexpected
-      throw new Error(
-        'Invalid response structure from API - no valid content found',
+      // Use the shared makeGeminiRequest function
+      const fullContent = await makeGeminiRequest(
+        apiKey,
+        messages,
+        model,
+        diffSessionId,
       );
+
+      if (!fullContent) {
+        throw new Error('No content returned from API after all attempts');
+      }
+
+      return fullContent.trim();
     } catch (error) {
       console.error('Error generating image diff:', error);
-      addLog(`Error generating image diff: ${error}`, 'warning');
       return 'Unable to generate detailed diff analysis. Proceeding with basic comparison.';
     }
   };
@@ -518,31 +427,16 @@ IMPORTANT: Don't try to replicate the exact layout structure of the reference. I
     try {
       setFeedbackStage('generating-css');
       setProgress(40);
-      setStatusMessage(
-        'Analyzing differences between reference and current design...',
-      );
-      addLog('Generating CSS with Gemini...', 'info');
-
-      // Check if we should stop
-      if (shouldStop) {
-        setStatusMessage('Operation stopped by user');
-        return null;
-      }
 
       // Get Gemini API key
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
       // Get DOM structure
-      setStatusMessage('Analyzing DOM structure...');
       const domStructure = await getPortalDOMStructure();
 
       // Log the DOM structure for debugging
       console.log('Extracted DOM structure:', domStructure);
-      addLog(
-        `DOM structure extracted: ${domStructure ? 'Found portal elements' : 'No portal elements found'}`,
-        'info',
-      );
 
       // Generate image diff analysis first
       let diffAnalysis = '';
@@ -556,7 +450,6 @@ IMPORTANT: Don't try to replicate the exact layout structure of the reference. I
       }
 
       setProgress(50);
-      setStatusMessage('Generating CSS based on analysis...');
 
       // Create empty TreeNode structure to satisfy type requirements
       const emptyTreeNode = { element: 'div', portalClasses: [], children: [] };
@@ -564,35 +457,73 @@ IMPORTANT: Don't try to replicate the exact layout structure of the reference. I
       // Create comprehensive prompt that includes DOM structure and diff analysis
       const referencePrompt =
         referenceImages.length > 0
-          ? `Please analyze the provided reference images and generate CSS to transform the current portal design to match the reference style.
+          ? `CRITICAL: Transform the current portal to EXACTLY match the reference design aesthetic.
 
 ${
   diffAnalysis
-    ? `DETAILED DIFFERENCE ANALYSIS:
+    ? `DETAILED DESIGN ANALYSIS:
 ${diffAnalysis}
 
 `
     : ''
-}CURRENT DOM STRUCTURE WITH PORTAL CLASSES:
+}CURRENT DOM STRUCTURE:
 ${domStructure || 'No portal elements found on this page'}
 
 CURRENT CSS:
 ${cssContent || 'No existing CSS'}
 
-INSTRUCTIONS:
-- Focus on colors, typography, layout, spacing, and visual effects
-- ONLY use CSS selectors that target classes starting with "portal-"
-- Use the DOM structure above to understand the current layout hierarchy
-- Apply styles that work with the existing Tailwind classes shown in brackets
-- Use the difference analysis above to understand exactly what needs to be changed
-- Generate complete, valid CSS code (not just snippets)
-- Include all necessary styles to match the reference design
-- Prioritize the specific changes identified in the difference analysis
+TRANSFORMATION REQUIREMENTS:
 
-Generate CSS to transform the current portal to match the reference design:`
+1. **BACKGROUND & LAYOUT:**
+   - Analyze the reference image background color/gradient EXACTLY
+   - Apply the SAME background treatment to portal-banner__wrapper or main background containers
+   - Match the reference's overall color temperature and saturation
+
+2. **TYPOGRAPHY TRANSFORMATION:**
+   - Extract the EXACT heading style from reference (font weight, size, color)
+   - Apply to portal headings to match reference typography precisely
+   - Match text hierarchy and spacing shown in reference
+
+3. **SEARCH BAR STYLING:**
+   - Analyze reference search bar: background, border, shadow, size
+   - Transform portal search elements to match reference styling exactly
+   - Copy reference input field aesthetic completely
+
+4. **CARD SYSTEM OVERHAUL:**
+   - Study reference card design: background, shadows, borders, spacing
+   - Apply IDENTICAL card styling to .portal-directory-card elements
+   - Match reference card proportions, text styling, and visual hierarchy
+   - Copy reference icon/content styling within cards
+
+5. **COLOR SCHEME EXTRACTION:**
+   - Extract PRIMARY colors from reference image
+   - Extract ACCENT colors used in reference
+   - Extract BACKGROUND colors and gradients
+   - Apply these EXACT colors to corresponding portal elements
+
+6. **LAYOUT & SPACING:**
+   - Match reference grid layout and card spacing
+   - Copy reference container padding and margins
+   - Replicate reference visual rhythm and proportions
+
+CSS REQUIREMENTS:
+- Use HIGH SPECIFICITY: .portal-class.portal-class or .portal-class[portal-public]
+- Make DRAMATIC changes that completely transform the appearance
+- Extract and apply EXACT colors from reference image
+- Override ALL existing styles that don't match reference
+- Focus on complete visual transformation, not subtle adjustments
+
+TARGET ELEMENTS TO TRANSFORM:
+- portal-banner__wrapper (main background/hero)
+- portal-common-header (navigation)
+- portal search elements (search bar styling)
+- portal-directory-card (card system)
+- portal-home-page__card-list (layout container)
+
+Generate CSS that creates a COMPLETE visual transformation to match the reference design.`
           : 'Generate CSS to improve the portal design.';
 
-      setStatusMessage('Generating CSS with AI...');
+      setProgress(70);
 
       // Generate CSS with Gemini - pass reference images and screenshot correctly
       const generatedCSS = await generateCSSWithGemini(
@@ -610,16 +541,15 @@ Generate CSS to transform the current portal to match the reference design:`
 
       // Check if we should stop after generation
       if (shouldStop) {
-        setStatusMessage('Operation stopped by user');
         return null;
       }
 
-      addLog('CSS generated successfully', 'success');
+      // Log the generated CSS for debugging
+      console.log('Generated CSS (structured output):', generatedCSS);
+
       return generatedCSS;
     } catch (error) {
       console.error('Error generating CSS:', error);
-      addLog(`Error generating CSS: ${error}`, 'error');
-      setStatusMessage('Failed to generate CSS');
       return null;
     }
   };
@@ -629,14 +559,14 @@ Generate CSS to transform the current portal to match the reference design:`
     try {
       setFeedbackStage('applying-css');
       setProgress(70);
-      setStatusMessage('Applying CSS through CSS editor...');
-      addLog('Setting CSS in CSS editor...', 'info');
 
       // Check if we should stop
       if (shouldStop) {
-        setStatusMessage('Operation stopped by user');
         throw new Error('Stopped by user');
       }
+
+      // Log the CSS for debugging
+      console.log('Applying CSS from structured output:', css);
 
       // Set CSS content - the CSS editor will handle auto-applying to the page
       setCssContent(css);
@@ -646,15 +576,10 @@ Generate CSS to transform the current portal to match the reference design:`
 
       // Check again after waiting
       if (shouldStop) {
-        setStatusMessage('Operation stopped by user');
         throw new Error('Stopped by user');
       }
-
-      addLog('CSS applied successfully through CSS editor', 'success');
     } catch (error) {
       console.error('Error applying CSS:', error);
-      addLog(`Error applying CSS: ${error}`, 'error');
-      setStatusMessage('Failed to apply CSS');
       throw error; // Re-throw to stop the feedback loop
     }
   };
@@ -664,14 +589,6 @@ Generate CSS to transform the current portal to match the reference design:`
     try {
       setFeedbackStage('getting-feedback');
       setProgress(85);
-      setStatusMessage('Getting AI feedback on the result...');
-      addLog('Getting AI feedback...', 'info');
-
-      // Check if we should stop
-      if (shouldStop) {
-        setStatusMessage('Operation stopped by user');
-        return false;
-      }
 
       // Get Gemini API key
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
@@ -694,32 +611,21 @@ Generate CSS to transform the current portal to match the reference design:`
 
       // Check if we should stop after getting feedback
       if (shouldStop) {
-        setStatusMessage('Operation stopped by user');
         return false;
       }
 
       const feedback = result.feedback;
 
-      // Check if the response contains "DONE" in caps (as per user requirement)
-      const isDone = feedback.toUpperCase().includes('DONE');
-
-      if (isDone) {
-        addLog('Design is complete! AI confirmed good match.', 'success');
-        setStatusMessage('Design completed successfully!');
+      // Check if the evaluation indicates a match
+      if (result.isMatch) {
         return true; // Stop feedback loop
       } else {
         // Apply the new CSS from feedback
-        addLog('AI provided improvements, applying them...', 'info');
-        setStatusMessage('Applying AI improvements...');
         await applyCSSToEditor(feedback);
         return false; // Continue feedback loop
       }
     } catch (error) {
       console.error('Error getting AI feedback:', error);
-      addLog(`Error getting AI feedback: ${error}`, 'error');
-      setStatusMessage(
-        'Failed to get AI feedback - will continue with current CSS',
-      );
       return false; // Continue with what we have
     }
   };
@@ -734,20 +640,12 @@ Generate CSS to transform the current portal to match the reference design:`
       // Step 1: Take initial screenshot
       const initialScreenshot = await takeScreenshot();
       if (!initialScreenshot || shouldStop) {
-        setStatusMessage(
-          shouldStop
-            ? 'Operation stopped by user'
-            : 'Failed to capture initial screenshot',
-        );
         return false;
       }
 
       // Step 2: Generate CSS
       const newCSS = await generateCSS(initialScreenshot);
       if (!newCSS || shouldStop) {
-        setStatusMessage(
-          shouldStop ? 'Operation stopped by user' : 'Failed to generate CSS',
-        );
         return false;
       }
 
@@ -756,10 +654,8 @@ Generate CSS to transform the current portal to match the reference design:`
         await applyCSSToEditor(newCSS);
       } catch (error) {
         if (shouldStop) {
-          setStatusMessage('Operation stopped by user');
           return false;
         }
-        setStatusMessage(`Failed to apply initial CSS: ${error}`);
         return false;
       }
 
@@ -767,41 +663,29 @@ Generate CSS to transform the current portal to match the reference design:`
       for (let i = 0; i < maxFeedbackLoops; i++) {
         // Check if we should stop before each loop
         if (shouldStop) {
-          setStatusMessage('Operation stopped by user');
-          addLog('Feedback loop stopped by user', 'info');
           return false;
         }
 
         setFeedbackLoopCount(i + 1);
-        setStatusMessage(`Feedback loop ${i + 1}/${maxFeedbackLoops}...`);
-        addLog(`Starting feedback loop ${i + 1}/${maxFeedbackLoops}`, 'info');
 
         // Take screenshot after CSS application
         const feedbackScreenshot = await takeScreenshot();
         if (!feedbackScreenshot || shouldStop) {
           if (shouldStop) {
-            setStatusMessage('Operation stopped by user');
             return false;
           }
-          addLog(
-            `Failed to take screenshot for feedback loop ${i + 1}`,
-            'warning',
-          );
           break;
         }
 
         // Get AI feedback
         const isComplete = await getFeedback(feedbackScreenshot);
         if (shouldStop) {
-          setStatusMessage('Operation stopped by user');
           return false;
         }
 
         if (isComplete) {
           setProgress(100);
-          setStatusMessage('Page customization completed!');
           setFeedbackStage('complete');
-          addLog('AI confirmed design is complete', 'success');
           return true;
         }
 
@@ -811,19 +695,10 @@ Generate CSS to transform the current portal to match the reference design:`
 
       // If we've reached max loops without completion
       setProgress(100);
-      setStatusMessage(
-        `Completed ${maxFeedbackLoops} feedback loops - customization finished`,
-      );
       setFeedbackStage('complete');
-      addLog(
-        `Reached maximum feedback loops (${maxFeedbackLoops}) - design process complete`,
-        'info',
-      );
       return true;
     } catch (error) {
       console.error('Error in feedback loop:', error);
-      addLog(`Feedback loop error: ${error}`, 'error');
-      setStatusMessage('Customization process encountered an error');
       return false;
     } finally {
       setIsProcessing(false);
@@ -835,12 +710,9 @@ Generate CSS to transform the current portal to match the reference design:`
     try {
       setIsProcessing(true);
       setProgress(30);
-      setStatusMessage('Navigating to inner page...');
-      addLog('Navigating to inner page...', 'info');
 
       // Check if we should stop
       if (shouldStop) {
-        setStatusMessage('Navigation stopped by user');
         return false;
       }
 
@@ -868,14 +740,11 @@ Generate CSS to transform the current portal to match the reference design:`
 
       // Wait for page to load
       setProgress(60);
-      setStatusMessage('Waiting for page to load...');
-      addLog('Waiting for page to load...', 'info');
 
       // Check for stop during wait
       for (let i = 0; i < 30; i++) {
         // 3 seconds in 100ms chunks
         if (shouldStop) {
-          setStatusMessage('Navigation stopped by user');
           return false;
         }
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -889,17 +758,10 @@ Generate CSS to transform the current portal to match the reference design:`
 
       setCurrentPageTitle(titleResult[0]?.result || 'Inner Page');
       setProgress(100);
-      setStatusMessage('Navigation completed successfully');
-      addLog('Navigation completed successfully', 'success');
 
       return true;
     } catch (error) {
       console.error('Error navigating:', error);
-      addLog(
-        `Navigation failed: ${error instanceof Error ? error.message : String(error)}`,
-        'error',
-      );
-      setStatusMessage('Navigation failed');
       return false;
     } finally {
       setIsProcessing(false);
@@ -910,7 +772,6 @@ Generate CSS to transform the current portal to match the reference design:`
   const startCustomization = async () => {
     if (referenceImages.length === 0) {
       addLog('Please upload at least one reference image', 'warning');
-      setStatusMessage('Please upload at least one reference image');
       return;
     }
 
@@ -960,7 +821,6 @@ Generate CSS to transform the current portal to match the reference design:`
   // Handle completing the process
   const completeProcess = () => {
     setPilotStage('complete');
-    setStatusMessage('All pages customized successfully!');
     addLog('Pilot mode completed successfully', 'success');
   };
 
@@ -974,7 +834,6 @@ Generate CSS to transform the current portal to match the reference design:`
     setSessionId(`pilot_session_${Date.now()}`);
     setCssContent('');
     setProgress(0);
-    setStatusMessage('');
     setShouldStop(false);
     addLog('Starting new pilot session', 'info');
   };
@@ -1035,12 +894,6 @@ Generate CSS to transform the current portal to match the reference design:`
                 Images will be used to generate CSS that makes your portal look
                 similar to the reference design.
               </p>
-
-              {statusMessage && (
-                <div className="mt-3 text-sm text-blue-600">
-                  {statusMessage}
-                </div>
-              )}
             </div>
 
             <div className="flex justify-end">
@@ -1102,12 +955,6 @@ Generate CSS to transform the current portal to match the reference design:`
                   </span>
                 </div>
               </div>
-
-              {statusMessage && (
-                <div className="mb-3 text-sm text-blue-600">
-                  {statusMessage}
-                </div>
-              )}
 
               {feedbackStage === 'idle' && (
                 <Button
@@ -1193,12 +1040,6 @@ Generate CSS to transform the current portal to match the reference design:`
               <div className="mb-3">
                 <Progress value={progress} className="h-2 mb-1" />
               </div>
-
-              {statusMessage && (
-                <div className="mb-3 text-sm text-yellow-600">
-                  {statusMessage}
-                </div>
-              )}
 
               <div className="space-y-3">
                 <div className="flex items-center justify-center text-yellow-600 py-2">

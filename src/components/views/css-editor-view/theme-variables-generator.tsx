@@ -192,6 +192,7 @@ export const ThemeVariablesGenerator = ({
 }: ThemeVariablesGeneratorProps) => {
   const { setCssContent } = useAppContext();
   const [showGenerator, setShowGenerator] = useState(forceShow);
+  const [hasUserMadeChanges, setHasUserMadeChanges] = useState(false);
 
   // Color variables
   const [colorVariables, setColorVariables] = useState<
@@ -293,7 +294,7 @@ export const ThemeVariablesGenerator = ({
 
   // Auto apply CSS changes when any variable changes
   useEffect(() => {
-    if (showGenerator) {
+    if (showGenerator && hasUserMadeChanges) {
       const cssVariables = generateCSSVariables();
       setCssContent((prevContent) => {
         // Check if there's already a theme variables section
@@ -330,6 +331,7 @@ export const ThemeVariablesGenerator = ({
     paragraphFont,
     codeFont,
     showGenerator,
+    hasUserMadeChanges,
     setCssContent,
   ]);
 
@@ -340,6 +342,7 @@ export const ThemeVariablesGenerator = ({
       ...prev,
       [varKey]: { ...prev[varKey], h, s, l },
     }));
+    setHasUserMadeChanges(true);
   };
 
   // Handler for font variable changes
@@ -352,6 +355,7 @@ export const ThemeVariablesGenerator = ({
       ...prev,
       [varKey]: { ...prev[varKey], [type]: value },
     }));
+    setHasUserMadeChanges(true);
   };
 
   const handleTextChange = (
@@ -363,6 +367,7 @@ export const ThemeVariablesGenerator = ({
       ...prev,
       [varKey]: { ...prev[varKey], [type]: value },
     }));
+    setHasUserMadeChanges(true);
   };
 
   // Handler for spacing variable changes
@@ -371,6 +376,7 @@ export const ThemeVariablesGenerator = ({
       ...prev,
       [varKey]: { ...prev[varKey], value },
     }));
+    setHasUserMadeChanges(true);
   };
 
   // Reset all values to defaults
@@ -382,6 +388,7 @@ export const ThemeVariablesGenerator = ({
     setHeadingFont(defaultFonts.heading);
     setParagraphFont(defaultFonts.paragraph);
     setCodeFont(defaultFonts.code);
+    setHasUserMadeChanges(true);
   };
 
   if (!showGenerator && !forceShow) {
@@ -432,7 +439,10 @@ export const ThemeVariablesGenerator = ({
               </label>
               <select
                 value={headingFont}
-                onChange={(e) => setHeadingFont(e.target.value)}
+                onChange={(e) => {
+                  setHeadingFont(e.target.value);
+                  setHasUserMadeChanges(true);
+                }}
                 className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary"
               >
                 {fontOptions.map((font) => (
@@ -455,7 +465,10 @@ export const ThemeVariablesGenerator = ({
               </label>
               <select
                 value={paragraphFont}
-                onChange={(e) => setParagraphFont(e.target.value)}
+                onChange={(e) => {
+                  setParagraphFont(e.target.value);
+                  setHasUserMadeChanges(true);
+                }}
                 className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary"
               >
                 {fontOptions.map((font) => (
@@ -481,7 +494,10 @@ export const ThemeVariablesGenerator = ({
               </label>
               <select
                 value={codeFont}
-                onChange={(e) => setCodeFont(e.target.value)}
+                onChange={(e) => {
+                  setCodeFont(e.target.value);
+                  setHasUserMadeChanges(true);
+                }}
                 className="w-full p-2.5 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm focus:ring-2 focus:ring-primary"
               >
                 {codeFontOptions.map((font) => (
