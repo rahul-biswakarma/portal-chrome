@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FontFamilySettings } from './font-family-settings';
 import { ColorSettings } from './color-settings';
-import { LayoutSettings } from './layout-settings';
-import { ThemeSuggestions, Theme } from './theme-suggestions';
+import type { Theme } from './theme-suggestions';
+import { ThemeSuggestions } from './theme-suggestions';
 import { useAppContext } from '@/contexts';
+import { LayoutSettings } from './layout-settings';
 
-// Utility functions for color conversion
 // HEX to HSL conversion
 function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -63,7 +63,6 @@ function hslToHex(h: number, s: number, l: number): string {
 const defaultFonts = {
   heading: 'Inter',
   paragraph: 'Inter',
-  // code: 'Consolas', // Not currently used in UI
 };
 
 export const ThemeEditorControls = () => {
@@ -73,15 +72,15 @@ export const ThemeEditorControls = () => {
   const [headingFont, setHeadingFont] = useState(defaultFonts.heading);
   const [paragraphFont, setParagraphFont] = useState(defaultFonts.paragraph);
 
-  // Color settings - Initialized from provided HSL values
-  const [accentColor, setAccentColor] = useState(hslToHex(237, 81, 56)); // --accent-h/s/l
-  const [accentLabelColor, setAccentLabelColor] = useState(hslToHex(0, 0, 100)); // --accent-label-h/s/l (using 0,0,100 for white as 0,100,100 is also white)
-  const [neutralColor, setNeutralColor] = useState(hslToHex(228, 10, 97)); // --neutral-h/s + assumed L for light background
+  // Color settings
+  const [accentColor, setAccentColor] = useState(hslToHex(237, 81, 56));
+  const [accentLabelColor, setAccentLabelColor] = useState(hslToHex(0, 0, 100));
+  const [neutralColor, setNeutralColor] = useState(hslToHex(228, 10, 97));
 
-  // Layout settings
-  const [spacingUnit, setSpacingUnit] = useState(0.25); // --spacing-unit: 0.25rem
-  const [radiusUnit, setRadiusUnit] = useState(0.0625); // --radius-unit: 0.0625rem
-  const [borderWidthUnit, setBorderWidthUnit] = useState(0.0625); // --border-width-unit: 0.0625rem
+  // Layout settings - updated to pixel-based defaults
+  const [spacingUnit, setSpacingUnit] = useState(4); // e.g., 4px
+  const [radiusUnit, setRadiusUnit] = useState(4); // e.g., 4px
+  const [borderWidthUnit, setBorderWidthUnit] = useState(1); // e.g., 1px
 
   // Function to apply a suggested theme
   const handleApplySuggestedTheme = (theme: Theme) => {
@@ -95,7 +94,7 @@ export const ThemeEditorControls = () => {
     setBorderWidthUnit(theme.borderWidthUnit);
   };
 
-  const generateThemeCSS = () => {
+  const generateThemeCSS = useCallback(() => {
     const accentHsl = hexToHsl(accentColor) || { h: 237, s: 81, l: 56 };
     const accentLabelHsl = hexToHsl(accentLabelColor) || { h: 0, s: 0, l: 100 };
     const neutralHsl = hexToHsl(neutralColor) || { h: 228, s: 10, l: 97 };
@@ -114,11 +113,13 @@ export const ThemeEditorControls = () => {
 
     return `
       ${fontImports}
+      h1, h2, h3, h4, h5, h6 {
+        font-family: var(--font-heading);
+      }
+      p {
+        font-family: var(--font-paragraph);
+      }
       :root {
-        /* Font Variables */
-        --font-heading: ${headingFont};
-        --font-paragraph: ${paragraphFont};
-
         /* Color Variables */
         --accent-h: ${accentHsl.h};
         --accent-s: ${accentHsl.s}%;
@@ -132,106 +133,85 @@ export const ThemeEditorControls = () => {
         --neutral-s: ${neutralHsl.s}%;
         --neutral-l: ${neutralHsl.l}%; /* Added neutral lightness */
 
-        /* Static Color Variables (as provided by user) */
-        --alert-h: 360;
-        --alert-s: 72%;
-        --alert-l: 52%;
+         --alert-h: 360;
+  --alert-s: 72%;
+  --alert-l: 52%;
 
-        --warning-h: 47;
-        --warning-s: 74%;
-        --warning-l: 55%;
+  --warning-h: 47;
+  --warning-s: 74%;
+  --warning-l: 55%;
 
-        --success-h: 135;
-        --success-s: 55%;
-        --success-l: 55%;
+  --success-h: 135;
+  --success-s: 55%;
+  --success-l: 55%;
 
-        --smart-h: 256;
-        --smart-s: 94%;
-        --smart-l: 63%;
+  --smart-h: 256;
+  --smart-s: 94%;
+  --smart-l: 63%;
 
-        /* Layout Variables */
-        --spacing-unit: ${spacingUnit}rem;
-        --radius-unit: ${radiusUnit}rem;
-        --border-width-unit: ${borderWidthUnit}rem;
+  --fontSize-h1: 1.75rem;
+  --lineHeight-h1: 2.25rem;
+  --fontWeight-h1-medium: 500;
 
-        /* Font Size/Weight Variables (as provided by user, static for now) */
-        --fontSize-h1: 1.75rem;
-        --lineHeight-h1: 2.25rem;
-        --fontWeight-h1-medium: 500;
+  --fontSize-h2: 1.5rem;
+  --lineHeight-h2: 2rem;
+  --fontWeight-h2-medium: 500;
 
-        --fontSize-h2: 1.5rem;
-        --lineHeight-h2: 2rem;
-        --fontWeight-h2-medium: 500;
+  --fontSize-h3: 1.25rem;
+  --lineHeight-h3: 1.75rem;
+  --fontWeight-h3-medium: 500;
 
-        --fontSize-h3: 1.25rem;
-        --lineHeight-h3: 1.75rem;
-        --fontWeight-h3-medium: 500;
+  --fontSize-h4: 1.125rem;
+  --lineHeight-h4: 1.5rem;
+  --fontWeight-h4-medium: 500;
 
-        --fontSize-h4: 1.125rem;
-        --lineHeight-h4: 1.5rem;
-        --fontWeight-h4-medium: 500;
+  --fontSize-h5: 1rem;
+  --lineHeight-h5: 1.375rem;
+  --fontWeight-h5-medium: 500;
 
-        --fontSize-h5: 1rem;
-        --lineHeight-h5: 1.375rem;
-        --fontWeight-h5-medium: 500;
+  --fontSize-h6: 0.875rem;
+  --lineHeight-h6: 1.25rem;
+  --fontWeight-h6-medium: 500;
 
-        --fontSize-h6: 0.875rem;
-        --lineHeight-h6: 1.25rem;
-        --fontWeight-h6-medium: 500;
+  --fontSize-large: 1rem;
+  --lineHeight-large: 1.375rem;
+  --fontWeight-large-regular: 400;
 
-        --fontSize-large: 1rem;
-        --lineHeight-large: 1.375rem;
-        --fontWeight-large-regular: 400;
+  --fontSize-default: 0.875rem;
+  --lineHeight-default: 1.125rem;
+  --fontWeight-default-regular: 400;
+  --fontWeight-default-medium: 500;
 
-        --fontSize-default: 0.875rem;
-        --lineHeight-default: 1.125rem;
-        --fontWeight-default-regular: 400;
-        --fontWeight-default-medium: 500;
+  --fontSize-small: 0.75rem;
+  --lineHeight-small: 1.125rem;
+  --fontWeight-small-regular: 400;
+  --fontWeight-small-medium: 500;
 
-        --fontSize-small: 0.75rem;
-        --lineHeight-small: 1.125rem;
-        --fontWeight-small-regular: 400;
-        --fontWeight-small-medium: 500;
+  --fontSize-mini: 0.6875rem;
+  --lineHeight-mini: 1rem;
+  --fontWeight-mini-regular: 400;
+  --fontWeight-mini-medium: 500;
 
-        --fontSize-mini: 0.6875rem;
-        --lineHeight-mini: 1rem;
-        --fontWeight-mini-regular: 400;
-        --fontWeight-mini-medium: 500;
+        /* Layout Variables - updated to use px */
+        --spacing-unit: ${spacingUnit}px;
+        --radius-unit: ${radiusUnit}px;
+        --border-width-unit: ${borderWidthUnit}px;
       }
     `;
-  };
+  }, [
+    headingFont,
+    paragraphFont,
+    accentColor,
+    accentLabelColor,
+    neutralColor,
+    spacingUnit,
+    radiusUnit,
+    borderWidthUnit,
+  ]);
 
   useEffect(() => {
     const themeCSS = generateThemeCSS();
     setCssContent(themeCSS);
-
-    // Apply styles directly to documentElement for instant preview
-    const root = document.documentElement;
-
-    // Fonts
-    root.style.setProperty('--font-heading', headingFont);
-    root.style.setProperty('--font-paragraph', paragraphFont);
-
-    // Colors (HSL components)
-    const accentHsl = hexToHsl(accentColor) || { h: 237, s: 81, l: 56 };
-    root.style.setProperty('--accent-h', String(accentHsl.h));
-    root.style.setProperty('--accent-s', `${accentHsl.s}%`);
-    root.style.setProperty('--accent-l', `${accentHsl.l}%`);
-
-    const accentLabelHsl = hexToHsl(accentLabelColor) || { h: 0, s: 0, l: 100 };
-    root.style.setProperty('--accent-label-h', String(accentLabelHsl.h));
-    root.style.setProperty('--accent-label-s', `${accentLabelHsl.s}%`);
-    root.style.setProperty('--accent-label-l', `${accentLabelHsl.l}%`);
-
-    const neutralHsl = hexToHsl(neutralColor) || { h: 228, s: 10, l: 97 };
-    root.style.setProperty('--neutral-h', String(neutralHsl.h));
-    root.style.setProperty('--neutral-s', `${neutralHsl.s}%`);
-    root.style.setProperty('--neutral-l', `${neutralHsl.l}%`);
-
-    // Layout Units
-    root.style.setProperty('--spacing-unit', `${spacingUnit}rem`);
-    root.style.setProperty('--radius-unit', `${radiusUnit}rem`);
-    root.style.setProperty('--border-width-unit', `${borderWidthUnit}rem`);
   }, [
     headingFont,
     paragraphFont,
@@ -242,6 +222,7 @@ export const ThemeEditorControls = () => {
     radiusUnit,
     borderWidthUnit,
     setCssContent,
+    generateThemeCSS,
   ]);
 
   // Handlers for color changes
@@ -257,7 +238,20 @@ export const ThemeEditorControls = () => {
     setBorderWidthUnit(value);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 overflow-y-auto h-full">
+      <ThemeSuggestions
+        onApplyTheme={handleApplySuggestedTheme}
+        currentTheme={{
+          headingFont,
+          paragraphFont,
+          accentColor,
+          accentLabelColor,
+          neutralColor,
+          spacingUnit,
+          radiusUnit,
+          borderWidthUnit,
+        }}
+      />
       <FontFamilySettings
         headingFont={headingFont}
         paragraphFont={paragraphFont}
@@ -280,7 +274,6 @@ export const ThemeEditorControls = () => {
         onRadiusUnitChange={handleRadiusUnitChange}
         onBorderWidthUnitChange={handleBorderWidthUnitChange}
       />
-      <ThemeSuggestions onApplyTheme={handleApplySuggestedTheme} />
     </div>
   );
 };

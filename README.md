@@ -1,76 +1,169 @@
-# Portal Design Customizer Chrome Extension
+# Portal Chrome Extension
 
-A Chrome extension that allows you to customize portal designs with AI-generated CSS based on natural language prompts.
+A Chrome extension for customizing portal interfaces with AI-powered theme generation.
 
 ## Features
 
-- Side panel interface for easy access
-- Customize portal designs with natural language prompts
-- View and modify the HTML hierarchy
-- Save and load different versions of your designs
-- Configure your OpenAI API key
+### 🎨 AI Theme Generation with Gemini
 
-## Development
+- **Smart Theme Suggestions**: Uses Google's Gemini AI to analyze your current page and generate 6 personalized theme suggestions
+- **Context-Aware**: Takes into account your current theme settings, page layout, and visual elements
+- **Real-time Screenshot Analysis**: Captures your current page to provide relevant theme recommendations
+- **Professional Design**: Generated themes are carefully crafted for professional web applications
+- **Fallback Support**: Automatically falls back to curated themes if Gemini API is unavailable
+
+### Theme Customization
+
+- **Font Management**: Customize heading and paragraph fonts from a curated selection
+- **Color Schemes**: Adjust accent, label, and neutral colors with real-time preview
+- **Layout Controls**: Fine-tune spacing, border radius, and border width
+- **Live Preview**: See changes applied instantly to your page
+
+### CSS Generation
+
+- **AI-Powered CSS**: Generate CSS from reference images using OpenAI
+- **Visual Feedback Loop**: Iterative improvement based on visual comparisons
+- **Manual CSS Editor**: Direct CSS editing with syntax highlighting
+- **DevRev Integration**: Save and load themes from DevRev portal preferences
+
+## Setup
 
 ### Prerequisites
 
-- Node.js (version 18 or higher)
-- npm (version 9 or higher)
+1. **Gemini API Key**: Get your free API key from [Google AI Studio](https://ai.google.dev/)
+2. **OpenAI API Key** (optional): For image-to-CSS generation
+3. **DevRev Credentials** (optional): For theme persistence
 
-### Setup
+### Installation
 
-1. Clone the repository
-2. Install dependencies:
-   ```
-   npm install
-   ```
+1. Clone this repository
+2. Run `npm install`
+3. Run `npm run build`
+4. Load the `dist` folder as an unpacked extension in Chrome
 
-### Development Build
+### Configuration
 
-To build the extension in development mode with file watching:
+1. Open the extension popup
+2. Go to **Settings** tab
+3. Enter your API keys:
+   - **Gemini API Key**: Required for AI theme generation
+   - **OpenAI API Key**: Optional, for image-to-CSS features
+   - **DevRev Credentials**: Optional, for theme saving
+
+## Usage
+
+### AI Theme Generation
+
+1. Navigate to any portal or web application
+2. Open the extension popup
+3. Go to **Theme Editor** tab
+4. Click **✨ Generate Themes** button
+5. Wait for Gemini to analyze your page and generate suggestions
+6. Click **Apply Theme** on any suggestion you like
+
+The AI will:
+
+- Take a screenshot of your current page
+- Analyze the visual elements and layout
+- Consider your current theme settings
+- Generate 6 unique, professional theme suggestions
+- Provide creative names and cohesive color schemes
+
+### Manual Theme Editing
+
+- Use the **Font Settings** to change typography
+- Adjust **Color Settings** for accent, label, and neutral colors
+- Modify **Layout Settings** for spacing and borders
+- All changes are applied in real-time
+
+### CSS Generation from Images
+
+1. Go to **Customize** tab
+2. Upload a reference image
+3. The AI will generate CSS to match the design
+4. Refine through multiple iterations
+
+## API Integration
+
+### Gemini AI Integration
+
+The extension uses Google's Gemini 2.0 Flash model for theme generation:
+
+```typescript
+// Example usage
+const themes = await generateThemesWithGemini({
+  headingFont: 'Inter',
+  paragraphFont: 'Inter',
+  accentColor: '#8B5CF6',
+  // ... other current theme properties
+});
+```
+
+The AI receives:
+
+- Current page screenshot
+- Current theme context
+- Professional design requirements
+- Response format specifications
+
+### Error Handling
+
+- Graceful fallback to curated themes if API fails
+- Clear error messages for missing API keys
+- Automatic retry logic for network issues
+
+## Development
+
+### Building
+
+```bash
+npm run build
+```
+
+### Development Mode
+
+```bash
+npm run dev
+```
+
+### Project Structure
 
 ```
-npm run watch
+src/
+├── components/
+│   └── views/
+│       └── theme-editor/
+│           └── components/
+│               ├── theme-suggestions.tsx    # Gemini AI integration
+│               ├── theme-editor-controls.tsx
+│               └── ...
+├── utils/
+│   ├── gemini-client.ts                     # Gemini API client
+│   ├── screenshot.ts                        # Screenshot utilities
+│   └── ...
+└── ...
 ```
 
-### Production Build
+## Contributing
 
-To build the extension for production:
-
-```
-npm run build:extension
-```
-
-## Loading the Extension in Chrome
-
-1. Build the extension using one of the commands above
-2. Open Chrome and navigate to `chrome://extensions/`
-3. Enable "Developer mode" using the toggle in the top-right corner
-4. Click "Load unpacked" and select the `dist` directory
-5. The extension should now be loaded and visible in your extensions list
-
-## Using the Extension
-
-1. Click the extension icon in your toolbar to open the side panel
-2. Use the tabs to navigate between different features:
-   - **Customize**: Create custom CSS using AI
-   - **Hierarchy**: View and modify the HTML structure
-   - **Versions**: Save and load different design versions
-   - **Settings**: Configure your API key and other settings
-
-## Project Structure
-
-- `src/`: Source code
-  - `components/`: React components
-  - `services/`: API and service functions
-  - `utils/`: Utility functions
-  - `types/`: TypeScript type definitions
-  - `background.ts`: Extension background script
-  - `content.ts`: Content script injected into web pages
-  - `manifest.json`: Chrome extension manifest file
-  - `App.tsx`: Main React application
-- `dist/`: Built extension (created after build)
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
 ## License
 
-[MIT License](LICENSE)
+MIT License - see LICENSE file for details.
+
+## Support
+
+For issues related to:
+
+- **Gemini API**: Check your API key and quota at [Google AI Studio](https://ai.google.dev/)
+- **Theme Generation**: Ensure you have a stable internet connection
+- **Extension Issues**: Check the browser console for error messages
+
+---
+
+**Note**: This extension requires appropriate API keys for full functionality. The Gemini integration provides the most advanced theme generation capabilities.

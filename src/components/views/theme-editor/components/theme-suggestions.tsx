@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -7,6 +7,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { captureScreenshot } from '@/utils/screenshot';
+import { makeGeminiRequest, isValidImageData } from '@/utils/gemini-client';
+import type { GeminiMessage, MessagePart } from '@/utils/gemini-client';
+import { getEnvVariable } from '@/utils/environment';
 
 // Define the structure of a theme object
 export interface Theme {
@@ -23,10 +27,166 @@ export interface Theme {
 
 interface ThemeSuggestionsProps {
   onApplyTheme: (theme: Theme) => void;
-  // We can add currentTheme if the LLM needs context, but not for mock generation
+  // Current theme values to send to Gemini for context
+  currentTheme?: {
+    headingFont: string;
+    paragraphFont: string;
+    accentColor: string;
+    accentLabelColor: string;
+    neutralColor: string;
+    spacingUnit: number;
+    radiusUnit: number;
+    borderWidthUnit: number;
+  };
 }
 
-// Mock function to simulate LLM theme generation
+// Helper function to convert data URL to base64
+const dataUrlToBase64 = (dataUrl: string): string => {
+  return dataUrl.split(',')[1];
+};
+
+// Function to generate themes using Gemini AI
+const generateThemesWithGemini = async (
+  currentTheme?: ThemeSuggestionsProps['currentTheme'],
+): Promise<Theme[]> => {
+  try {
+    // Get Gemini API key
+    const apiKey = await getEnvVariable('GEMINI_API_KEY');
+    if (!apiKey) {
+      throw new Error('Gemini API key not found. Please set it in Settings.');
+    }
+
+    // Capture current page screenshot
+    const screenshot = await captureScreenshot({ fullPage: false });
+
+    // Create the prompt for theme generation
+    const themePrompt = `You are an expert UI/UX designer specializing in theme generation for web applications.
+
+TASK: Generate 6 diverse, professional theme suggestions based on the current page screenshot and theme context.
+
+CURRENT THEME CONTEXT:
+${
+  currentTheme
+    ? `
+- Heading Font: ${currentTheme.headingFont}
+- Paragraph Font: ${currentTheme.paragraphFont}
+- Accent Color: ${currentTheme.accentColor}
+- Accent Label Color: ${currentTheme.accentLabelColor}
+- Neutral Color: ${currentTheme.neutralColor}
+- Spacing Unit: ${currentTheme.spacingUnit}px
+- Radius Unit: ${currentTheme.radiusUnit}px
+- Border Width: ${currentTheme.borderWidthUnit}px
+`
+    : 'No current theme data available'
+}
+
+REQUIREMENTS:
+1. Generate 6 unique themes with creative names
+2. Each theme should be professionally designed and cohesive
+3. Vary font combinations from: Inter, Roboto, Open Sans, Lato, Montserrat, Poppins, Source Sans Pro, Nunito Sans, Work Sans, DM Sans
+4. Create harmonious color schemes with proper contrast
+5. Suggest appropriate spacing, radius, and border values
+6. Ensure themes work well for the application shown in the screenshot
+7. Make themes distinct from each other and the current theme
+
+RESPONSE FORMAT:
+Return a valid JSON array with exactly 6 theme objects. Each theme must have this exact structure:
+
+[
+  {
+    "name": "Theme Name",
+    "headingFont": "Font Name",
+    "paragraphFont": "Font Name",
+    "accentColor": "#HEXCODE",
+    "accentLabelColor": "#HEXCODE",
+    "neutralColor": "#HEXCODE",
+    "spacingUnit": number,
+    "radiusUnit": number,
+    "borderWidthUnit": number
+  }
+]
+
+IMPORTANT: Return ONLY the JSON array, no other text or explanations.`;
+
+    // Build message parts
+    const parts: MessagePart[] = [{ text: themePrompt }];
+
+    // Add screenshot if valid
+    if (isValidImageData(screenshot)) {
+      const imgData = dataUrlToBase64(screenshot);
+      const mimeType = screenshot.split(';')[0].split(':')[1];
+      parts.push({
+        inline_data: {
+          data: imgData,
+          mime_type: mimeType,
+        },
+      });
+    }
+
+    // Prepare messages for Gemini
+    const messages: GeminiMessage[] = [
+      {
+        role: 'user',
+        parts,
+      },
+    ];
+
+    // Get model from environment or use default
+    const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-2.0-flash';
+
+    // Make request to Gemini
+    const response = await makeGeminiRequest({
+      apiKey,
+      messages,
+      modelName: model,
+      sessionId: `theme_gen_${Date.now()}`,
+      temperature: 0.7, // Higher creativity for theme generation
+    });
+
+    // Parse JSON response
+    try {
+      // Clean the response - remove any markdown formatting
+      const cleanResponse = response
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+      const themes = JSON.parse(cleanResponse) as Theme[];
+
+      // Validate that we got an array of themes
+      if (!Array.isArray(themes) || themes.length === 0) {
+        throw new Error('Invalid response format from Gemini');
+      }
+
+      // Validate each theme has required properties
+      themes.forEach((theme, index) => {
+        if (
+          !theme.name ||
+          !theme.headingFont ||
+          !theme.paragraphFont ||
+          !theme.accentColor ||
+          !theme.accentLabelColor ||
+          !theme.neutralColor ||
+          typeof theme.spacingUnit !== 'number' ||
+          typeof theme.radiusUnit !== 'number' ||
+          typeof theme.borderWidthUnit !== 'number'
+        ) {
+          throw new Error(`Invalid theme structure at index ${index}`);
+        }
+      });
+
+      return themes;
+    } catch (parseError) {
+      console.error('Error parsing Gemini response:', parseError);
+      console.error('Raw response:', response);
+      throw new Error('Failed to parse theme suggestions from Gemini');
+    }
+  } catch (error) {
+    console.error('Error generating themes with Gemini:', error);
+    throw error;
+  }
+};
+
+// Mock function to simulate LLM theme generation (fallback)
 const generateMockThemes = (): Theme[] => {
   const mockThemes: Theme[] = [];
   const baseFonts = ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat'];
@@ -41,42 +201,76 @@ const generateMockThemes = (): Theme[] => {
 
   for (let i = 0; i < 6; i++) {
     mockThemes.push({
-      name: `Suggested Theme ${i + 1}`,
+      name: `Fallback Theme ${i + 1}`,
       headingFont: baseFonts[i % baseFonts.length],
       paragraphFont: baseFonts[(i + 1) % baseFonts.length],
       accentColor: baseColors[i % baseColors.length].accent,
       accentLabelColor: baseColors[i % baseColors.length].label,
       neutralColor: baseColors[i % baseColors.length].neutral,
-      spacingUnit: parseFloat((0.2 + i * 0.01).toFixed(2)),
-      radiusUnit: parseFloat((0.05 + i * 0.005).toFixed(3)),
-      borderWidthUnit: parseFloat((0.05 + i * 0.005).toFixed(3)),
+      spacingUnit: 4 + i, // e.g., 4px, 5px, ...
+      radiusUnit: 2 + i, // e.g., 2px, 3px, ...
+      borderWidthUnit: 1, // Keep border width at 1px for mock themes for now
     });
   }
   return mockThemes;
 };
 
-export const ThemeSuggestions = ({ onApplyTheme }: ThemeSuggestionsProps) => {
+export const ThemeSuggestions = ({
+  onApplyTheme,
+  currentTheme,
+}: ThemeSuggestionsProps) => {
   const [suggestedThemes, setSuggestedThemes] = useState<Theme[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleGenerateClick = async () => {
     setIsLoading(true);
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setSuggestedThemes(generateMockThemes());
-    setIsLoading(false);
+    setError(null);
+
+    try {
+      // Try to generate themes with Gemini
+      const themes = await generateThemesWithGemini(currentTheme);
+      setSuggestedThemes(themes);
+      console.log('Successfully generated themes with Gemini:', themes);
+    } catch (error) {
+      console.error(
+        'Failed to generate themes with Gemini, using fallback:',
+        error,
+      );
+      setError(
+        error instanceof Error ? error.message : 'Failed to generate AI themes',
+      );
+
+      // Fallback to mock themes
+      setSuggestedThemes(generateMockThemes());
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <div className="flex flex-col gap-4 pt-3">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold text-foreground">
-          AI Theme Suggestions
+          🎨 AI Theme Suggestions
         </h2>
         <Button onClick={handleGenerateClick} disabled={isLoading}>
-          {isLoading ? 'Generating...' : '✨ Generate Themes'}
+          {isLoading ? '🤖 Generating...' : '✨ Generate Themes'}
         </Button>
       </div>
+
+      {isLoading && (
+        <div className="text-sm text-blue-600 bg-blue-50 p-2 rounded flex items-center gap-2">
+          <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+          Analyzing page and generating personalized themes with Gemini AI...
+        </div>
+      )}
+
+      {error && (
+        <div className="text-sm text-orange-600 bg-orange-50 p-2 rounded">
+          ⚠️ {error}. Using fallback themes.
+        </div>
+      )}
 
       {suggestedThemes && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -104,7 +298,7 @@ export const ThemeSuggestions = ({ onApplyTheme }: ThemeSuggestionsProps) => {
                 </p>
                 <p>
                   <span className="font-medium">Spacing:</span>{' '}
-                  {theme.spacingUnit}rem
+                  {theme.spacingUnit}px
                 </p>
               </CardContent>
               <CardFooter>

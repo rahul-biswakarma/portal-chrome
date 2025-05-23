@@ -38,15 +38,15 @@ export const LayoutSettings = ({
           htmlFor="spacing-unit"
           className="text-sm font-medium text-muted-foreground"
         >
-          Spacing Unit (rem)
+          Spacing Unit (px)
         </Label>
         <Input
           type="number"
           id="spacing-unit"
           value={spacingUnit}
           onChange={(e) => handleInputChange(onSpacingUnitChange, e)}
-          step="0.01"
-          className="w-24 bg-background text-foreground border-border"
+          step="1"
+          className="w-24 text-sm bg-background text-foreground border-border"
         />
       </div>
 
@@ -56,15 +56,15 @@ export const LayoutSettings = ({
           htmlFor="radius-unit"
           className="text-sm font-medium text-muted-foreground"
         >
-          Radius Unit (rem)
+          Radius Unit (px)
         </Label>
         <Input
           type="number"
           id="radius-unit"
           value={radiusUnit}
           onChange={(e) => handleInputChange(onRadiusUnitChange, e)}
-          step="0.001"
-          className="w-24 bg-background text-foreground border-border"
+          step="1"
+          className="w-24 text-sm bg-background text-foreground border-border"
         />
       </div>
 
@@ -74,15 +74,15 @@ export const LayoutSettings = ({
           htmlFor="border-width-unit"
           className="text-sm font-medium text-muted-foreground"
         >
-          Border Width Unit (rem)
+          Border Width Unit (px)
         </Label>
         <Input
           type="number"
           id="border-width-unit"
           value={borderWidthUnit}
           onChange={(e) => handleInputChange(onBorderWidthUnitChange, e)}
-          step="0.001"
-          className="w-24 bg-background text-foreground border-border"
+          step="1"
+          className="w-24 text-sm bg-background text-foreground border-border"
         />
       </div>
     </div>
