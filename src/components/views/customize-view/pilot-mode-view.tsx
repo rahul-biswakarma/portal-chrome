@@ -344,52 +344,84 @@ export const PilotModeView = () => {
       const domStructure = await getPortalDOMStructure();
 
       // Create enhanced diff analysis prompt that includes DOM structure
-      const diffPrompt = `Analyze these two images and provide a detailed comparison of their visual differences.
+      const diffPrompt = `Analyze these two images to understand how to transform the current portal design.
 
-The FIRST image is the REFERENCE design that we want to achieve.
-The SECOND image is the CURRENT state that needs to be improved.
+The FIRST image is the REFERENCE design - extract its design principles and aesthetic.
+The SECOND image is the CURRENT portal that needs transformation.
 
-CURRENT PAGE DOM STRUCTURE:
+CURRENT PORTAL DOM STRUCTURE:
 ${domStructure || 'No portal elements found'}
 
-ANALYSIS INSTRUCTIONS:
-1. First, examine the DOM structure above and the current screenshot to identify the main components present on this page (e.g., header, banner, search bar, directory cards, navigation, footer, etc.)
+ANALYSIS APPROACH:
+The reference and current images may have completely different layouts. Your goal is to extract the DESIGN PRINCIPLES from the reference and apply them to the current portal structure.
 
-2. Then, compare the reference image with the current image and provide specific differences for each identified component.
+STEP 1 - DESIGN PRINCIPLE EXTRACTION:
+Analyze the reference image and identify:
+- **Color Palette**: Primary colors, accent colors, background tones, gradients
+- **Typography Style**: Font weights, sizes, hierarchy, spacing patterns
+- **Visual Hierarchy**: How content is organized and emphasized
+- **Spacing Philosophy**: Padding patterns, margins, whitespace usage
+- **Component Aesthetics**: Card styles, button designs, input field appearances
+- **Layout Patterns**: Grid systems, alignment, content organization
+- **Visual Effects**: Shadows, borders, hover states, animations suggested by static design
 
-3. Focus on these aspects for each component:
-   - Colors (backgrounds, text, borders, accents)
-   - Typography (font size, weight, spacing)
-   - Layout & Spacing (padding, margins, positioning)
-   - Visual Effects (shadows, borders, border-radius)
-   - Interactive states (hover effects, focus states)
+STEP 2 - PORTAL STRUCTURE MAPPING:
+Based on the DOM structure above, identify how to map design principles to existing components:
+- Map reference aesthetics to portal-common-header
+- Apply design principles to portal-banner/hero sections
+- Transform portal-directory-card styling
+- Adapt search/input element designs
+- Enhance overall layout containers
+
+STEP 3 - PRACTICAL TRANSFORMATION STRATEGY:
+Focus on what can be realistically achieved with CSS targeting portal-* classes.
 
 FORMAT YOUR RESPONSE AS:
 
-IDENTIFIED COMPONENTS:
-- [List the main UI components you can see in the current image based on DOM structure]
+**EXTRACTED DESIGN PRINCIPLES:**
 
-COMPONENT-SPECIFIC DIFFERENCES:
+COLOR PALETTE:
+- Primary: [Extract main colors from reference]
+- Secondary: [Extract accent colors]
+- Background: [Extract background patterns/colors]
+- Text: [Extract text color hierarchy]
 
-**HEADER/NAVIGATION:**
-- [Specific differences in header styling, colors, layout]
+TYPOGRAPHY & SPACING:
+- [Extract font styling patterns, size relationships, spacing philosophies]
 
-**BANNER/HERO SECTION:**
-- [Specific differences in banner styling, background, text]
+VISUAL STYLE:
+- [Extract card styling, shadows, borders, effects that define the aesthetic]
 
-**DIRECTORY CARDS/CONTENT CARDS:**
-- [Specific differences in card styling, shadows, spacing, colors]
+LAYOUT PHILOSOPHY:
+- [Extract grid patterns, alignment principles, content organization]
 
-**SEARCH BAR/INPUT ELEMENTS:**
-- [Specific differences in input styling, borders, focus states]
+**PORTAL COMPONENT TRANSFORMATIONS:**
 
-**OVERALL LAYOUT:**
-- [Differences in general spacing, alignment, color scheme]
+HEADER (portal-common-header):
+- Apply [specific color/styling] from reference aesthetic
+- Transform to match [specific design principle] extracted above
 
-**OTHER COMPONENTS:**
-- [Any other components you identify and their differences]
+BANNER/HERO (portal-banner__wrapper):
+- Adapt [background style/color] from reference
+- Apply [typography principles] to hero text
+- Transform search bar to match [input styling] from reference
 
-Be very specific and actionable. Reference the portal class names from the DOM structure when possible (e.g., "portal-common-header needs darker background", "portal-directory-card needs increased border-radius").`;
+DIRECTORY CARDS (portal-directory-card):
+- Apply [card aesthetic] extracted from reference
+- Use [color scheme] and [spacing patterns] identified above
+- Transform shadows/borders to match [visual effects] from reference
+
+LAYOUT CONTAINER (portal-home-page__card-list):
+- Apply [grid philosophy] from reference design
+- Use [spacing patterns] identified in reference
+- Ensure card sizing follows [layout principles] extracted
+
+**SPECIFIC CSS RECOMMENDATIONS:**
+- [Provide specific CSS properties and values based on extracted principles]
+- [Focus on achievable transformations using portal-* selectors]
+- [Address any layout issues like card width while applying new aesthetic]
+
+IMPORTANT: Don't try to replicate the exact layout structure of the reference. Instead, extract its aesthetic qualities and apply them thoughtfully to the existing portal structure. Focus on colors, typography, spacing, and visual effects that can transform the current portal while maintaining its functional layout.`;
 
       // Prepare the message parts
       const parts: MessagePart[] = [{ text: diffPrompt }];
