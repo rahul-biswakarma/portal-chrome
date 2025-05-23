@@ -1,7 +1,6 @@
 import './globals.css';
 
 import { ViewTabs } from './components/view-tabs';
-import { StatusBar } from './components/status-bar';
 import { PilotModeView } from './components/views/customize-view/pilot-mode-view';
 import { HierarchyView } from './components/views/hierarchy-view/hierarchy-view';
 import { Settings } from './components/views/settings/settings';
@@ -53,7 +52,6 @@ function App() {
             setActiveTab={setActiveTab}
           />
         </div>
-        <StatusBar />
       </div>
     </AppProvider>
   );
