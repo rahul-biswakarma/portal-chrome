@@ -15,12 +15,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import {
-  generateCSSWithGemini,
-  evaluateCSSResultWithGemini,
-  isValidImageData,
-  makeGeminiRequest,
-} from '@/utils/gemini-client';
+import { isValidImageData, makeGeminiRequest } from '@/utils/gemini-client';
 import type { GeminiMessage, MessagePart } from '@/utils/gemini-client';
 import { useLogger } from '@/services/logger';
 
@@ -32,10 +27,11 @@ type PilotStage =
   | 'customizing-inner'
   | 'complete';
 
-// Feedback loop stages
+// Feedback loop stages - updated to reflect new 3-stage approach
 type FeedbackStage =
   | 'idle'
   | 'taking-screenshot'
+  | 'generating-visual-diff'
   | 'generating-css'
   | 'applying-css'
   | 'getting-feedback'
@@ -286,82 +282,81 @@ export const PilotModeView = () => {
     }
   };
 
-  // Generate image diff analysis using Gemini
-  const generateImageDiffPrompt = async (
+  // Stage 1: Generate visual diff analysis using LLM - more dynamic approach
+  const generateVisualDiffAnalysis = async (
     referenceImage: string,
     currentScreenshot: string,
+    domStructure: string,
   ): Promise<string> => {
     try {
+      setFeedbackStage('generating-visual-diff');
+      setProgress(25);
+
       // Get Gemini API key
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      // Get DOM structure for component analysis
-      const domStructure = await getPortalDOMStructure();
+      // Create dynamic diff analysis prompt that adapts to actual DOM structure
+      const diffPrompt = `TASK: Analyze these images and DOM structure to create a precise visual transformation plan.
 
-      // Create enhanced diff analysis prompt that includes DOM structure
-      const diffPrompt = `TASK: Analyze these images to extract EXACT visual characteristics for portal transformation.
-
-🎯 IMAGE IDENTIFICATION:
+🎯 IMAGE ANALYSIS:
 - IMAGE 1 (REFERENCE): Target design to replicate exactly
-- IMAGE 2 (CURRENT): Portal that needs complete transformation
+- IMAGE 2 (CURRENT): Current portal state that needs transformation
 
-CURRENT PORTAL STRUCTURE:
+📋 CURRENT PORTAL STRUCTURE:
 ${domStructure || 'No portal elements found'}
 
-REQUIRED ANALYSIS:
+IMPORTANT CSS SELECTOR NOTE:
+- All portal-* identifiers in the DOM are CSS CLASSES, not HTML attributes
+- Use class selectors: .portal-class-name (NOT div[portal-class-name])
+- Example: .portal-banner__wrapper, .portal-directory-card, .portal-common-header
 
-**STEP 1 - PRECISE COLOR EXTRACTION:**
-Extract EXACT hex/RGB values from REFERENCE:
-- Background: [Exact background color/gradient from reference]
-- Primary text: [Exact heading text color from reference]
-- Secondary text: [Exact body text color from reference]
-- Card backgrounds: [Exact card background colors from reference]
-- Accent colors: [Any accent/highlight colors from reference]
-- Search bar colors: [Search input background, border, text colors]
+REQUIRED ANALYSIS - Generate a detailed visual diff:
 
-**STEP 2 - TYPOGRAPHY ANALYSIS:**
-From REFERENCE image, identify:
-- Heading font weight: [Extract apparent font weight - light/regular/medium/bold]
-- Heading size relationship: [Relative size compared to other text]
-- Text color hierarchy: [How text colors create visual hierarchy]
-- Line spacing: [Apparent line height and spacing patterns]
+**VISUAL ELEMENTS EXTRACTION:**
+From REFERENCE image, extract:
+1. **Color Palette:**
+   - Primary background colors/gradients
+   - Text colors (headings, body, links)
+   - Card/container background colors
+   - Accent and highlight colors
+   - Border and shadow colors
 
-**STEP 3 - LAYOUT & SPACING ANALYSIS:**
-Measure reference design:
-- Card spacing: [Distance between cards in reference]
-- Container padding: [Padding around main content areas]
-- Card internal padding: [Spacing inside cards]
-- Overall layout density: [Tight/medium/loose spacing approach]
+2. **Typography Characteristics:**
+   - Font weights and sizes for different text levels
+   - Text color hierarchy and contrast
+   - Line spacing and letter spacing patterns
 
-**STEP 4 - VISUAL STYLE EXTRACTION:**
-Copy reference aesthetics:
-- Card styling: [Background, shadows, borders, corner radius from reference]
-- Search bar design: [Input field styling, shadows, borders from reference]
-- Overall visual depth: [Flat design vs shadows/depth in reference]
-- Visual hierarchy: [How elements are emphasized in reference]
+3. **Layout & Spacing:**
+   - Container padding and margins
+   - Element spacing (cards, buttons, sections)
+   - Grid/layout density and rhythm
+   - Border radius and corner styling
 
-**STEP 5 - SPECIFIC TRANSFORMATION MAPPING:**
-Map reference design to current portal:
+4. **Visual Depth & Style:**
+   - Shadow patterns and depth
+   - Border styles and weights
+   - Background treatments (solid, gradient, patterns)
+   - Overall visual style (flat, material, etc.)
 
-BACKGROUND TRANSFORMATION:
-- Apply reference background [specific color/gradient] to portal-banner__wrapper
-- Change overall color temperature to match reference
+**TRANSFORMATION MAPPING:**
+Based on the actual DOM structure above, identify:
+1. **Background Elements:** Which portal CSS classes should receive background treatments
+2. **Card/Container Elements:** Which portal CSS classes represent cards or containers
+3. **Navigation Elements:** Which portal CSS classes represent headers or navigation
+4. **Text Elements:** Which portal CSS classes contain text that needs styling
+5. **Interactive Elements:** Which portal CSS classes represent buttons, inputs, or links
 
-CARD SYSTEM TRANSFORMATION:
-- Transform portal-directory-card to match reference card design exactly
-- Apply reference card background, shadows, spacing
-- Match reference text styling within cards
+**OUTPUT REQUIREMENTS:**
+Create a specific transformation plan that:
+- Maps reference design elements to actual portal CSS classes found in DOM
+- Provides exact color values and measurements
+- Gives specific CSS property recommendations using CLASS SELECTORS (.portal-class)
+- Focuses only on portal classes that actually exist in the current page
 
-SEARCH BAR TRANSFORMATION:
-- Change portal search elements to match reference search design
-- Apply reference input styling, colors, shadows
+CRITICAL: Remember all portal-* are CSS classes - use .portal-class-name syntax for CSS selectors.
 
-HEADER TRANSFORMATION:
-- Update portal-common-header to match reference navigation style
-- Apply reference header colors and typography
-
-Provide SPECIFIC, ACTIONABLE recommendations with exact colors and measurements for each portal component.`;
+Do not assume any specific portal class names - work with what's actually present in the DOM structure provided.`;
 
       // Prepare the message parts
       const parts: MessagePart[] = [{ text: diffPrompt }];
@@ -398,194 +393,145 @@ Provide SPECIFIC, ACTIONABLE recommendations with exact colors and measurements 
         },
       ];
 
-      // Generate a session ID for this diff analysis
-      const diffSessionId = sessionId
-        ? `${sessionId}_diff`
-        : `diff_${Date.now()}`;
+      // Use session ID to maintain conversation context
+      const diffSessionId = sessionId || `diff_${Date.now()}`;
 
       // Use the shared makeGeminiRequest function
-      const fullContent = await makeGeminiRequest(
+      const visualDiffAnalysis = await makeGeminiRequest(
         apiKey,
         messages,
         model,
         diffSessionId,
       );
 
-      if (!fullContent) {
-        throw new Error('No content returned from API after all attempts');
+      if (!visualDiffAnalysis) {
+        throw new Error('No visual diff analysis returned from API');
       }
 
-      return fullContent.trim();
+      console.log('Generated visual diff analysis:', visualDiffAnalysis);
+      addLog('Visual diff analysis completed', 'info');
+
+      return visualDiffAnalysis.trim();
     } catch (error) {
-      console.error('Error generating image diff:', error);
-      return 'Unable to generate detailed diff analysis. Proceeding with basic comparison.';
+      console.error('Error generating visual diff analysis:', error);
+      addLog('Failed to generate visual diff analysis', 'error');
+      return 'Unable to generate detailed visual analysis. Proceeding with basic comparison.';
     }
   };
 
-  // Generate CSS using Gemini
-  const generateCSS = async (screenshot: string): Promise<string | null> => {
+  // Stage 2: Generate CSS using the visual diff analysis
+  const generateCSSFromDiff = async (
+    visualDiffAnalysis: string,
+    domStructure: string,
+  ): Promise<string | null> => {
     try {
       setFeedbackStage('generating-css');
-      setProgress(40);
+      setProgress(50);
 
       // Get Gemini API key
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      // Get DOM structure
-      const domStructure = await getPortalDOMStructure();
+      // Create CSS generation prompt using the visual diff analysis
+      const cssPrompt = `TASK: Generate CSS based on the visual analysis and DOM structure.
 
-      // Log the DOM structure for debugging
-      console.log('Extracted DOM structure:', domStructure);
+📋 VISUAL TRANSFORMATION PLAN:
+${visualDiffAnalysis}
 
-      // Generate image diff analysis first
-      let diffAnalysis = '';
-      if (referenceImages.length > 0) {
-        setProgress(45);
-        diffAnalysis = await generateImageDiffPrompt(
-          referenceImages[0],
-          screenshot,
-        );
-        console.log('Generated diff analysis:', diffAnalysis);
-      }
+📋 CURRENT DOM STRUCTURE:
+${domStructure || 'No portal elements found'}
 
-      setProgress(50);
-
-      // Create empty TreeNode structure to satisfy type requirements
-      const emptyTreeNode = { element: 'div', portalClasses: [], children: [] };
-
-      // Create comprehensive prompt that includes DOM structure and diff analysis
-      const referencePrompt =
-        referenceImages.length > 0
-          ? `CRITICAL: Transform the current portal to EXACTLY match the reference design aesthetic.
-
-${
-  diffAnalysis
-    ? `DETAILED DESIGN ANALYSIS:
-${diffAnalysis}
-
-`
-    : ''
-}CURRENT DOM STRUCTURE:
-${domStructure || 'No portal elements found on this page'}
-
-CURRENT CSS:
+📋 CURRENT CSS:
 ${cssContent || 'No existing CSS'}
 
-TRANSFORMATION REQUIREMENTS:
+CRITICAL CSS SELECTOR REQUIREMENTS:
+- All portal-* identifiers are CSS CLASSES, not HTML attributes
+- ALWAYS use class selectors: .portal-class-name
+- NEVER use attribute selectors: div[portal-class-name] ❌
+- For high specificity use: .portal-class.portal-class or .portal-class.portal-class {}
 
-1. **BACKGROUND & LAYOUT:**
-   - Analyze the reference image background color/gradient EXACTLY
-   - Apply the SAME background treatment to portal-banner__wrapper or main background containers
-   - Match the reference's overall color temperature and saturation
+CORRECT EXAMPLES:
+✅ .portal-banner__wrapper { background: blue; }
+✅ .portal-directory-card.portal-directory-card { padding: 20px; }
+✅ .portal-common-header__actions-container { display: flex; }
 
-2. **TYPOGRAPHY TRANSFORMATION:**
-   - Extract the EXACT heading style from reference (font weight, size, color)
-   - Apply to portal headings to match reference typography precisely
-   - Match text hierarchy and spacing shown in reference
+INCORRECT EXAMPLES:
+❌ div[portal-banner__wrapper] { background: blue; }
+❌ button[portal-common-header__actions-container__login-button] { color: white; }
 
-3. **SEARCH BAR STYLING:**
-   - Analyze reference search bar: background, border, shadow, size
-   - Transform portal search elements to match reference styling exactly
-   - Copy reference input field aesthetic completely
+CSS GENERATION REQUIREMENTS:
 
-4. **CARD SYSTEM OVERHAUL:**
-   - Study reference card design: background, shadows, borders, spacing
-   - Apply IDENTICAL card styling to .portal-directory-card elements
-   - Match reference card proportions, text styling, and visual hierarchy
-   - Copy reference icon/content styling within cards
+1. **Use Correct CSS Class Selectors:**
+   - Target portal CSS classes with: .portal-class-name
+   - For high specificity use: .portal-class.portal-class
+   - Add !important for strong overrides where needed
 
-5. **COLOR SCHEME EXTRACTION:**
-   - Extract PRIMARY colors from reference image
-   - Extract ACCENT colors used in reference
-   - Extract BACKGROUND colors and gradients
-   - Apply these EXACT colors to corresponding portal elements
+2. **Apply Visual Diff Recommendations:**
+   - Implement the exact color palette extracted from reference
+   - Apply typography changes as specified in the analysis
+   - Implement layout and spacing changes
+   - Add visual depth and styling as recommended
 
-6. **LAYOUT & SPACING:**
-   - Match reference grid layout and card spacing
-   - Copy reference container padding and margins
-   - Replicate reference visual rhythm and proportions
+3. **Focus on Actual DOM Elements:**
+   - Only generate CSS for portal classes that exist in the provided DOM structure
+   - Use the transformation mapping from the visual analysis
+   - Ensure selectors match the actual HTML structure using CLASS SELECTORS
 
-CSS REQUIREMENTS:
-- Use HIGH SPECIFICITY: .portal-class.portal-class or .portal-class[portal-public]
-- Make DRAMATIC changes that completely transform the appearance
-- Extract and apply EXACT colors from reference image
-- Override ALL existing styles that don't match reference
-- Focus on complete visual transformation, not subtle adjustments
+4. **Complete Transformation:**
+   - Make dramatic changes that completely transform the appearance
+   - Override ALL existing styles that conflict with the reference design
+   - Create a cohesive visual transformation
 
-TARGET ELEMENTS TO TRANSFORM:
-- portal-banner__wrapper (main background/hero)
-- portal-common-header (navigation)
-- portal search elements (search bar styling)
-- portal-directory-card (card system)
-- portal-home-page__card-list (layout container)
+5. **CSS Organization:**
+   - Organize CSS logically (layout, colors, typography, effects)
+   - Include comments explaining major transformations
+   - Ensure cross-browser compatibility
 
-Generate CSS that creates a COMPLETE visual transformation to match the reference design.`
-          : 'Generate CSS to improve the portal design.';
+REMEMBER: portal-banner__wrapper, portal-directory-card, portal-common-header etc. are CSS classes - use .portal-class-name syntax!
 
-      setProgress(70);
+Generate production-ready CSS that transforms the portal to match the reference design exactly.`;
 
-      // Generate CSS with Gemini - pass reference images and screenshot correctly
-      const generatedCSS = await generateCSSWithGemini(
+      // Use same session ID to continue the conversation context
+      const cssSessionId = sessionId || `css_${Date.now()}`;
+
+      // Prepare messages - this continues the conversation from the visual diff
+      const messages: GeminiMessage[] = [
+        {
+          role: 'user',
+          parts: [{ text: cssPrompt }],
+        },
+      ];
+
+      const { model } = await getApiParameters();
+
+      // Generate CSS with Gemini using the conversation context
+      const generatedCSS = await makeGeminiRequest(
         apiKey,
-        referencePrompt,
-        emptyTreeNode,
-        {}, // No Tailwind data for simplicity
-        cssContent, // Current CSS
-        0, // No retry count
-        referenceImages[0], // Primary reference image
-        screenshot, // Current screenshot
-        {}, // No computed styles for simplicity
-        sessionId || '',
+        messages,
+        model,
+        cssSessionId,
       );
 
-      // Check if we should stop after generation
-      if (shouldStop) {
-        return null;
+      if (!generatedCSS) {
+        throw new Error('No CSS generated from visual diff analysis');
       }
 
-      // Log the generated CSS for debugging
-      console.log('Generated CSS (structured output):', generatedCSS);
+      console.log('Generated CSS from diff analysis:', generatedCSS);
+      addLog('CSS generation completed', 'info');
 
-      return generatedCSS;
+      return generatedCSS.trim();
     } catch (error) {
-      console.error('Error generating CSS:', error);
+      console.error('Error generating CSS from diff:', error);
+      addLog('Failed to generate CSS from visual analysis', 'error');
       return null;
     }
   };
 
-  // Apply CSS to CSS editor (which will auto-apply to page)
-  const applyCSSToEditor = async (css: string): Promise<void> => {
-    try {
-      setFeedbackStage('applying-css');
-      setProgress(70);
-
-      // Check if we should stop
-      if (shouldStop) {
-        throw new Error('Stopped by user');
-      }
-
-      // Log the CSS for debugging
-      console.log('Applying CSS from structured output:', css);
-
-      // Set CSS content - the CSS editor will handle auto-applying to the page
-      setCssContent(css);
-
-      // Wait a moment for the CSS to be applied
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Check again after waiting
-      if (shouldStop) {
-        throw new Error('Stopped by user');
-      }
-    } catch (error) {
-      console.error('Error applying CSS:', error);
-      throw error; // Re-throw to stop the feedback loop
-    }
-  };
-
-  // Get feedback from Gemini about the current result
-  const getFeedback = async (newScreenshot: string): Promise<boolean> => {
+  // Stage 3: Get feedback from Gemini about the current result (updated)
+  const getFeedback = async (
+    newScreenshot: string,
+    domStructure: string,
+  ): Promise<boolean> => {
     try {
       setFeedbackStage('getting-feedback');
       setProgress(85);
@@ -594,62 +540,247 @@ Generate CSS that creates a COMPLETE visual transformation to match the referenc
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      // Create empty TreeNode structure to satisfy type requirements
-      const emptyTreeNode = { element: 'div', portalClasses: [], children: [] };
+      // Create feedback prompt that regenerates CSS from scratch
+      const feedbackPrompt = `TASK: Evaluate transformation results and generate improved CSS.
 
-      // Get evaluation from Gemini
-      const result = await evaluateCSSResultWithGemini(
+📋 CONTEXT:
+This is feedback loop ${feedbackLoopCount} of ${maxFeedbackLoops} for the current page transformation.
+
+📋 IMAGES:
+- IMAGE 1 (REFERENCE): Target design to match exactly
+- IMAGE 2 (CURRENT RESULT): Current transformation result after previous CSS
+
+📋 CURRENT DOM STRUCTURE:
+${domStructure || 'No portal elements found'}
+
+📋 PREVIOUS CSS (for reference):
+${cssContent || 'No CSS applied'}
+
+CRITICAL CSS SELECTOR REQUIREMENTS:
+- All portal-* identifiers are CSS CLASSES, not HTML attributes
+- ALWAYS use class selectors: .portal-class-name
+- NEVER use attribute selectors: div[portal-class-name] ❌
+- For high specificity use: .portal-class.portal-class
+
+CORRECT EXAMPLES:
+✅ .portal-banner__wrapper { background: blue; }
+✅ .portal-directory-card.portal-directory-card { padding: 20px; }
+✅ .portal-common-header__actions-container { display: flex; }
+
+INCORRECT EXAMPLES:
+❌ div[portal-banner__wrapper] { background: blue; }
+❌ button[portal-common-header__actions-container__login-button] { color: white; }
+
+EVALUATION & REGENERATION:
+
+1. **Visual Assessment:**
+   - Compare current result (Image 2) with target reference (Image 1)
+   - Identify what's working well and what needs improvement
+   - Focus on color scheme, typography, layout, spacing, and visual hierarchy
+
+2. **Decision Criteria:**
+   - If visual match is 85%+ satisfactory: Return "COMPLETE"
+   - If improvements needed: Generate completely NEW CSS from scratch
+
+**OUTPUT FORMAT:**
+
+If transformation is complete (85%+ match):
+MATCH_STATUS: COMPLETE
+
+If improvements needed:
+MATCH_STATUS: NEEDS_IMPROVEMENT
+
+/* Complete CSS for Feedback Loop ${feedbackLoopCount} */
+[Generate COMPLETE CSS from scratch - NOT incremental changes]
+
+REQUIREMENTS for CSS regeneration:
+- Analyze the reference image and current result
+- Generate COMPLETE CSS that addresses all visual gaps
+- Use correct CSS class selectors: .portal-class-name (NOT div[portal-class])
+- Use high specificity selectors (.portal-class.portal-class) for strong overrides
+- Include !important for strong overrides where needed
+- Target only portal classes found in the DOM structure
+- Create cohesive styling that transforms the portal completely
+- Build upon what was working from previous CSS but fix what wasn't
+
+REMEMBER: All portal-* are CSS classes - use .portal-class-name syntax!
+
+Generate a complete, production-ready CSS solution that brings the current result closer to the reference design.`;
+
+      const parts: MessagePart[] = [{ text: feedbackPrompt }];
+
+      // Add images for comparison
+      if (referenceImages.length > 0 && isValidImageData(referenceImages[0])) {
+        const imgData = dataUrlToBase64(referenceImages[0]);
+        const mimeType = referenceImages[0].split(';')[0].split(':')[1];
+        parts.push({
+          inline_data: {
+            data: imgData,
+            mime_type: mimeType,
+          },
+        });
+      }
+
+      if (isValidImageData(newScreenshot)) {
+        const imgData = dataUrlToBase64(newScreenshot);
+        const mimeType = newScreenshot.split(';')[0].split(':')[1];
+        parts.push({
+          inline_data: {
+            data: imgData,
+            mime_type: mimeType,
+          },
+        });
+      }
+
+      // Use same session ID to maintain context
+      const feedbackSessionId = sessionId || `feedback_${Date.now()}`;
+
+      const messages: GeminiMessage[] = [
+        {
+          role: 'user',
+          parts,
+        },
+      ];
+
+      const { model } = await getApiParameters();
+
+      const feedbackResult = await makeGeminiRequest(
         apiKey,
-        referenceImages[0], // Primary reference image
-        newScreenshot, // Current result screenshot
-        cssContent, // Current CSS
-        emptyTreeNode,
-        {}, // Empty Tailwind data
-        {}, // Empty computed styles
-        sessionId || '',
+        messages,
+        model,
+        feedbackSessionId,
       );
 
-      // Check if we should stop after getting feedback
-      if (shouldStop) {
+      if (!feedbackResult) {
+        addLog(
+          'No feedback received, continuing with current result',
+          'warning',
+        );
         return false;
       }
 
-      const feedback = result.feedback;
+      // Parse the feedback result
+      const isComplete =
+        feedbackResult.includes('MATCH_STATUS: COMPLETE') ||
+        feedbackResult.includes('MATCH_STATUS:COMPLETE');
 
-      // Check if the evaluation indicates a match
-      if (result.isMatch) {
-        return true; // Stop feedback loop
+      if (isComplete) {
+        addLog(
+          'AI evaluation: Transformation completed successfully',
+          'success',
+        );
+        return true;
+      } else if (
+        feedbackResult.includes('MATCH_STATUS: NEEDS_IMPROVEMENT') ||
+        feedbackResult.includes('MATCH_STATUS:NEEDS_IMPROVEMENT')
+      ) {
+        // Extract complete new CSS - look for CSS after the status line
+        const lines = feedbackResult.split('\n');
+        const statusIndex = lines.findIndex(
+          (line) =>
+            line.includes('MATCH_STATUS: NEEDS_IMPROVEMENT') ||
+            line.includes('MATCH_STATUS:NEEDS_IMPROVEMENT'),
+        );
+
+        if (statusIndex >= 0) {
+          // Get everything after the status line
+          const cssLines = lines.slice(statusIndex + 1);
+
+          // Find the start of CSS (look for CSS comment or selector)
+          const cssStartIndex = cssLines.findIndex(
+            (line) =>
+              line.trim().startsWith('/*') ||
+              line.trim().startsWith('.') ||
+              line.trim().startsWith('#') ||
+              line.includes('{'),
+          );
+
+          if (cssStartIndex >= 0) {
+            const newCompleteCSS = cssLines
+              .slice(cssStartIndex)
+              .join('\n')
+              .trim();
+
+            if (newCompleteCSS && newCompleteCSS.length > 10) {
+              // Replace entire CSS content with new version
+              await applyCSSToEditor(newCompleteCSS);
+              addLog(
+                `Generated new complete CSS for feedback loop ${feedbackLoopCount}`,
+                'info',
+              );
+              console.log('Generated new complete CSS:', newCompleteCSS);
+            } else {
+              addLog('No valid CSS found in feedback response', 'warning');
+            }
+          } else {
+            addLog('No CSS code found in feedback response', 'warning');
+            console.log('Feedback response:', feedbackResult);
+          }
+        }
+
+        return false;
       } else {
-        // Apply the new CSS from feedback
-        await applyCSSToEditor(feedback);
-        return false; // Continue feedback loop
+        addLog(
+          'Unexpected feedback format, continuing with current result',
+          'warning',
+        );
+        console.log('Unexpected feedback:', feedbackResult);
+        return false;
       }
     } catch (error) {
       console.error('Error getting AI feedback:', error);
-      return false; // Continue with what we have
+      addLog(
+        'Error getting AI feedback, continuing with current result',
+        'warning',
+      );
+      return false;
     }
   };
 
-  // Run the complete feedback loop for current page
+  // Updated feedback loop with new 3-stage approach
   const runFeedbackLoop = async (): Promise<boolean> => {
     try {
       setIsProcessing(true);
-      resetStopFlag(); // Reset stop flag when starting
+      resetStopFlag();
       setProgress(0);
 
       // Step 1: Take initial screenshot
+      setFeedbackStage('taking-screenshot');
       const initialScreenshot = await takeScreenshot();
       if (!initialScreenshot || shouldStop) {
         return false;
       }
 
-      // Step 2: Generate CSS
-      const newCSS = await generateCSS(initialScreenshot);
+      // Get DOM structure for analysis
+      const domStructure = await getPortalDOMStructure();
+      console.log('Extracted DOM structure for analysis:', domStructure);
+
+      // Stage 1: Generate visual diff analysis
+      if (referenceImages.length === 0) {
+        addLog('No reference images available for comparison', 'warning');
+        return false;
+      }
+
+      const visualDiffAnalysis = await generateVisualDiffAnalysis(
+        referenceImages[0],
+        initialScreenshot,
+        domStructure,
+      );
+
+      if (!visualDiffAnalysis || shouldStop) {
+        return false;
+      }
+
+      // Stage 2: Generate CSS from visual diff analysis
+      const newCSS = await generateCSSFromDiff(
+        visualDiffAnalysis,
+        domStructure,
+      );
       if (!newCSS || shouldStop) {
         return false;
       }
 
-      // Step 3: Apply CSS
+      // Stage 3: Apply CSS and run feedback loops
       try {
         await applyCSSToEditor(newCSS);
       } catch (error) {
@@ -659,9 +790,8 @@ Generate CSS that creates a COMPLETE visual transformation to match the referenc
         return false;
       }
 
-      // Step 4: Start feedback loops
+      // Stage 3: Feedback loops for refinement - regenerate CSS from scratch each time
       for (let i = 0; i < maxFeedbackLoops; i++) {
-        // Check if we should stop before each loop
         if (shouldStop) {
           return false;
         }
@@ -677,8 +807,14 @@ Generate CSS that creates a COMPLETE visual transformation to match the referenc
           break;
         }
 
-        // Get AI feedback
-        const isComplete = await getFeedback(feedbackScreenshot);
+        // Get fresh DOM structure for this iteration (in case it changed)
+        const currentDomStructure = await getPortalDOMStructure();
+
+        // Get AI feedback and regenerate complete CSS from scratch
+        const isComplete = await getFeedback(
+          feedbackScreenshot,
+          currentDomStructure,
+        );
         if (shouldStop) {
           return false;
         }
@@ -686,6 +822,7 @@ Generate CSS that creates a COMPLETE visual transformation to match the referenc
         if (isComplete) {
           setProgress(100);
           setFeedbackStage('complete');
+          addLog('Transformation completed successfully', 'success');
           return true;
         }
 
@@ -696,9 +833,14 @@ Generate CSS that creates a COMPLETE visual transformation to match the referenc
       // If we've reached max loops without completion
       setProgress(100);
       setFeedbackStage('complete');
+      addLog(
+        `Transformation completed after ${maxFeedbackLoops} feedback loops`,
+        'info',
+      );
       return true;
     } catch (error) {
       console.error('Error in feedback loop:', error);
+      addLog('Error in transformation process', 'error');
       return false;
     } finally {
       setIsProcessing(false);
@@ -838,6 +980,36 @@ Generate CSS that creates a COMPLETE visual transformation to match the referenc
     addLog('Starting new pilot session', 'info');
   };
 
+  // Apply CSS to CSS editor (which will auto-apply to page)
+  const applyCSSToEditor = async (css: string): Promise<void> => {
+    try {
+      setFeedbackStage('applying-css');
+      setProgress(70);
+
+      // Check if we should stop
+      if (shouldStop) {
+        throw new Error('Stopped by user');
+      }
+
+      // Log the CSS for debugging
+      console.log('Applying CSS from structured output:', css);
+
+      // Set CSS content - the CSS editor will handle auto-applying to the page
+      setCssContent(css);
+
+      // Wait a moment for the CSS to be applied
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Check again after waiting
+      if (shouldStop) {
+        throw new Error('Stopped by user');
+      }
+    } catch (error) {
+      console.error('Error applying CSS:', error);
+      throw error; // Re-throw to stop the feedback loop
+    }
+  };
+
   // Render different content based on the current pilot stage
   const renderStageContent = () => {
     switch (pilotStage) {
@@ -934,8 +1106,10 @@ Generate CSS that creates a COMPLETE visual transformation to match the referenc
                   'Ready to start customization process.'}
                 {feedbackStage === 'taking-screenshot' &&
                   'Taking screenshot of current page...'}
+                {feedbackStage === 'generating-visual-diff' &&
+                  'Analyzing visual differences between reference and current page...'}
                 {feedbackStage === 'generating-css' &&
-                  'Generating CSS based on reference images...'}
+                  'Generating CSS based on visual analysis...'}
                 {feedbackStage === 'applying-css' &&
                   'Applying generated CSS to the page...'}
                 {feedbackStage === 'getting-feedback' &&
