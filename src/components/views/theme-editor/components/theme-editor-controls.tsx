@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { FontFamilySettings } from './font-family-settings';
 import { ColorSettings } from './color-settings';
 import { LayoutSettings } from './layout-settings';
+import { ThemeSuggestions, Theme } from './theme-suggestions';
 import { useAppContext } from '@/contexts';
 
 // Utility functions for color conversion
@@ -81,6 +82,18 @@ export const ThemeEditorControls = () => {
   const [spacingUnit, setSpacingUnit] = useState(0.25); // --spacing-unit: 0.25rem
   const [radiusUnit, setRadiusUnit] = useState(0.0625); // --radius-unit: 0.0625rem
   const [borderWidthUnit, setBorderWidthUnit] = useState(0.0625); // --border-width-unit: 0.0625rem
+
+  // Function to apply a suggested theme
+  const handleApplySuggestedTheme = (theme: Theme) => {
+    setHeadingFont(theme.headingFont);
+    setParagraphFont(theme.paragraphFont);
+    setAccentColor(theme.accentColor);
+    setAccentLabelColor(theme.accentLabelColor);
+    setNeutralColor(theme.neutralColor);
+    setSpacingUnit(theme.spacingUnit);
+    setRadiusUnit(theme.radiusUnit);
+    setBorderWidthUnit(theme.borderWidthUnit);
+  };
 
   const generateThemeCSS = () => {
     const accentHsl = hexToHsl(accentColor) || { h: 237, s: 81, l: 56 };
@@ -267,6 +280,7 @@ export const ThemeEditorControls = () => {
         onRadiusUnitChange={handleRadiusUnitChange}
         onBorderWidthUnitChange={handleBorderWidthUnitChange}
       />
+      <ThemeSuggestions onApplyTheme={handleApplySuggestedTheme} />
     </div>
   );
 };
