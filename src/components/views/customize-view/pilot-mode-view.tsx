@@ -18,6 +18,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   generateCSSWithGemini,
   evaluateCSSResultWithGemini,
+  isValidImageData,
 } from '@/utils/gemini-client';
 import { useLogger } from '@/services/logger';
 
@@ -46,6 +47,20 @@ interface PortalElement {
   children: PortalElement[];
 }
 
+// Types for Gemini message parts
+interface TextPart {
+  text: string;
+}
+
+interface ImagePart {
+  inline_data: {
+    data: string;
+    mime_type: string;
+  };
+}
+
+type MessagePart = TextPart | ImagePart;
+
 export const PilotModeView = () => {
   const [geminiKeyMissing, setGeminiKeyMissing] = useState(false);
   const { setApiKey, apiKey, setCssContent, cssContent, fileInputRef } =
@@ -66,6 +81,18 @@ export const PilotModeView = () => {
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [currentPageTitle, setCurrentPageTitle] = useState('Home Page');
   const [statusMessage, setStatusMessage] = useState('');
+
+  // Helper functions
+  const dataUrlToBase64 = (dataUrl: string): string => {
+    return dataUrl.split(',')[1];
+  };
+
+  const getApiParameters = async () => {
+    const model =
+      (await getEnvVariable('GEMINI_MODEL')) ||
+      'gemini-2.5-flash-preview-05-20';
+    return { model };
+  };
 
   // Check if API keys are set whenever this component is shown or apiKey context changes
   useEffect(() => {
@@ -290,12 +317,178 @@ export const PilotModeView = () => {
     }
   };
 
+  // Generate image diff analysis using Gemini
+  const generateImageDiffPrompt = async (
+    referenceImage: string,
+    currentScreenshot: string,
+  ): Promise<string> => {
+    try {
+      setStatusMessage(
+        'Analyzing differences between reference and current design...',
+      );
+      addLog('Generating image diff analysis...', 'info');
+
+      // Check if we should stop
+      if (shouldStop) {
+        setStatusMessage('Operation stopped by user');
+        return '';
+      }
+
+      // Get Gemini API key
+      const apiKey = await getEnvVariable('GEMINI_API_KEY');
+      if (!apiKey) throw new Error('Gemini API key not found');
+
+      const { model } = await getApiParameters();
+
+      // Get DOM structure for component analysis
+      const domStructure = await getPortalDOMStructure();
+
+      // Create enhanced diff analysis prompt that includes DOM structure
+      const diffPrompt = `Analyze these two images and provide a detailed comparison of their visual differences.
+
+The FIRST image is the REFERENCE design that we want to achieve.
+The SECOND image is the CURRENT state that needs to be improved.
+
+CURRENT PAGE DOM STRUCTURE:
+${domStructure || 'No portal elements found'}
+
+ANALYSIS INSTRUCTIONS:
+1. First, examine the DOM structure above and the current screenshot to identify the main components present on this page (e.g., header, banner, search bar, directory cards, navigation, footer, etc.)
+
+2. Then, compare the reference image with the current image and provide specific differences for each identified component.
+
+3. Focus on these aspects for each component:
+   - Colors (backgrounds, text, borders, accents)
+   - Typography (font size, weight, spacing)
+   - Layout & Spacing (padding, margins, positioning)
+   - Visual Effects (shadows, borders, border-radius)
+   - Interactive states (hover effects, focus states)
+
+FORMAT YOUR RESPONSE AS:
+
+IDENTIFIED COMPONENTS:
+- [List the main UI components you can see in the current image based on DOM structure]
+
+COMPONENT-SPECIFIC DIFFERENCES:
+
+**HEADER/NAVIGATION:**
+- [Specific differences in header styling, colors, layout]
+
+**BANNER/HERO SECTION:**
+- [Specific differences in banner styling, background, text]
+
+**DIRECTORY CARDS/CONTENT CARDS:**
+- [Specific differences in card styling, shadows, spacing, colors]
+
+**SEARCH BAR/INPUT ELEMENTS:**
+- [Specific differences in input styling, borders, focus states]
+
+**OVERALL LAYOUT:**
+- [Differences in general spacing, alignment, color scheme]
+
+**OTHER COMPONENTS:**
+- [Any other components you identify and their differences]
+
+Be very specific and actionable. Reference the portal class names from the DOM structure when possible (e.g., "portal-common-header needs darker background", "portal-directory-card needs increased border-radius").`;
+
+      // Prepare the message parts
+      const parts: MessagePart[] = [{ text: diffPrompt }];
+
+      // Add images
+      if (isValidImageData(referenceImage)) {
+        const imgData = dataUrlToBase64(referenceImage);
+        const mimeType = referenceImage.split(';')[0].split(':')[1];
+        parts.push({
+          inline_data: {
+            data: imgData,
+            mime_type: mimeType,
+          },
+        });
+      }
+
+      if (isValidImageData(currentScreenshot)) {
+        const imgData = dataUrlToBase64(currentScreenshot);
+        const mimeType = currentScreenshot.split(';')[0].split(':')[1];
+        parts.push({
+          inline_data: {
+            data: imgData,
+            mime_type: mimeType,
+          },
+        });
+      }
+
+      // Make request to Gemini
+      const baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
+      const url = `${baseUrl}/${model}:generateContent?key=${apiKey}`;
+
+      const requestBody = {
+        contents: [{ role: 'user', parts }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 3000,
+        },
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          `API error: ${errorData.error?.message || response.statusText}`,
+        );
+      }
+
+      const data = await response.json();
+      console.log('Diff analysis API response:', data);
+
+      // Improved response parsing with better error handling
+      if (data.candidates && data.candidates.length > 0) {
+        const candidate = data.candidates[0];
+
+        if (
+          candidate.content &&
+          candidate.content.parts &&
+          candidate.content.parts.length > 0
+        ) {
+          const textPart = candidate.content.parts[0];
+          if (textPart.text) {
+            const diffAnalysis = textPart.text.trim();
+            addLog('Image diff analysis completed', 'success');
+            return diffAnalysis;
+          }
+        }
+
+        // Check if there's a finish reason that explains why no content was returned
+        if (candidate.finishReason) {
+          throw new Error(
+            `API response incomplete. Finish reason: ${candidate.finishReason}`,
+          );
+        }
+      }
+
+      // If we get here, the response structure is unexpected
+      throw new Error(
+        'Invalid response structure from API - no valid content found',
+      );
+    } catch (error) {
+      console.error('Error generating image diff:', error);
+      addLog(`Error generating image diff: ${error}`, 'warning');
+      return 'Unable to generate detailed diff analysis. Proceeding with basic comparison.';
+    }
+  };
+
   // Generate CSS using Gemini
   const generateCSS = async (screenshot: string): Promise<string | null> => {
     try {
       setFeedbackStage('generating-css');
-      setProgress(50);
-      setStatusMessage('Generating CSS based on reference images...');
+      setProgress(40);
+      setStatusMessage(
+        'Analyzing differences between reference and current design...',
+      );
       addLog('Generating CSS with Gemini...', 'info');
 
       // Check if we should stop
@@ -319,15 +512,36 @@ export const PilotModeView = () => {
         'info',
       );
 
+      // Generate image diff analysis first
+      let diffAnalysis = '';
+      if (referenceImages.length > 0) {
+        setProgress(45);
+        diffAnalysis = await generateImageDiffPrompt(
+          referenceImages[0],
+          screenshot,
+        );
+        console.log('Generated diff analysis:', diffAnalysis);
+      }
+
+      setProgress(50);
+      setStatusMessage('Generating CSS based on analysis...');
+
       // Create empty TreeNode structure to satisfy type requirements
       const emptyTreeNode = { element: 'div', portalClasses: [], children: [] };
 
-      // Create comprehensive prompt that includes DOM structure
+      // Create comprehensive prompt that includes DOM structure and diff analysis
       const referencePrompt =
         referenceImages.length > 0
           ? `Please analyze the provided reference images and generate CSS to transform the current portal design to match the reference style.
 
-CURRENT DOM STRUCTURE WITH PORTAL CLASSES:
+${
+  diffAnalysis
+    ? `DETAILED DIFFERENCE ANALYSIS:
+${diffAnalysis}
+
+`
+    : ''
+}CURRENT DOM STRUCTURE WITH PORTAL CLASSES:
 ${domStructure || 'No portal elements found on this page'}
 
 CURRENT CSS:
@@ -338,8 +552,10 @@ INSTRUCTIONS:
 - ONLY use CSS selectors that target classes starting with "portal-"
 - Use the DOM structure above to understand the current layout hierarchy
 - Apply styles that work with the existing Tailwind classes shown in brackets
+- Use the difference analysis above to understand exactly what needs to be changed
 - Generate complete, valid CSS code (not just snippets)
 - Include all necessary styles to match the reference design
+- Prioritize the specific changes identified in the difference analysis
 
 Generate CSS to transform the current portal to match the reference design:`
           : 'Generate CSS to improve the portal design.';
