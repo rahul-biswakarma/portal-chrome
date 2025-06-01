@@ -188,35 +188,6 @@ IMPORTANT: Return ONLY the JSON array, no other text or explanations.`;
   }
 };
 
-// Mock function to simulate LLM theme generation (fallback)
-const generateMockThemes = (): Theme[] => {
-  const mockThemes: Theme[] = [];
-  const baseFonts = ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat'];
-  const baseColors = [
-    { accent: '#8B5CF6', label: '#FFFFFF', neutral: '#F3F4F6' }, // Purple
-    { accent: '#10B981', label: '#FFFFFF', neutral: '#F0FDF4' }, // Green
-    { accent: '#3B82F6', label: '#FFFFFF', neutral: '#EFF6FF' }, // Blue
-    { accent: '#F59E0B', label: '#000000', neutral: '#FFFBEB' }, // Amber
-    { accent: '#EF4444', label: '#FFFFFF', neutral: '#FEF2F2' }, // Red
-    { accent: '#6366F1', label: '#FFFFFF', neutral: '#EEF2FF' }, // Indigo
-  ];
-
-  for (let i = 0; i < 6; i++) {
-    mockThemes.push({
-      name: `Fallback Theme ${i + 1}`,
-      headingFont: baseFonts[i % baseFonts.length],
-      paragraphFont: baseFonts[(i + 1) % baseFonts.length],
-      accentColor: baseColors[i % baseColors.length].accent,
-      accentLabelColor: baseColors[i % baseColors.length].label,
-      neutralColor: baseColors[i % baseColors.length].neutral,
-      spacingUnit: 4 + i, // e.g., 4px, 5px, ...
-      radiusUnit: 2 + i, // e.g., 2px, 3px, ...
-      borderWidthUnit: 1, // Keep border width at 1px for mock themes for now
-    });
-  }
-  return mockThemes;
-};
-
 export const ThemeSuggestions = ({
   onApplyTheme,
   currentTheme,
@@ -230,7 +201,6 @@ export const ThemeSuggestions = ({
     setError(null);
 
     try {
-      // Try to generate themes with Gemini
       const themes = await generateThemesWithGemini(currentTheme);
       setSuggestedThemes(themes);
       console.log('Successfully generated themes with Gemini:', themes);
@@ -242,9 +212,6 @@ export const ThemeSuggestions = ({
       setError(
         error instanceof Error ? error.message : 'Failed to generate AI themes',
       );
-
-      // Fallback to mock themes
-      setSuggestedThemes(generateMockThemes());
     } finally {
       setIsLoading(false);
     }
