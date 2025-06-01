@@ -71,7 +71,9 @@ export const PilotModeView = () => {
   };
 
   const getApiParameters = async () => {
-    const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-1.5-flash';
+    const model =
+      (await getEnvVariable('GEMINI_MODEL')) ||
+      'gemini-2.5-flash-preview-05-20';
     // Define temperatures for different stages
     const temperatureVisualDiff = parseFloat(
       (await getEnvVariable('GEMINI_TEMP_VISUAL_DIFF')) || '0.4',

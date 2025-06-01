@@ -132,7 +132,9 @@ IMPORTANT: Return ONLY the JSON array, no other text or explanations.`;
     ];
 
     // Get model from environment or use default
-    const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-2.0-flash';
+    const model =
+      (await getEnvVariable('GEMINI_MODEL')) ||
+      'gemini-2.5-flash-preview-05-20';
 
     // Make request to Gemini
     const response = await makeGeminiRequest({
@@ -273,20 +275,20 @@ export const ThemeSuggestions = ({
       )}
 
       {suggestedThemes && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {suggestedThemes.map((theme, index) => (
             <Card key={index} className="bg-card text-card-foreground">
-              <CardHeader>
-                <CardTitle className="text-md">{theme.name}</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">{theme.name}</CardTitle>
               </CardHeader>
-              <CardContent className="text-xs space-y-1">
-                <div className="flex items-center gap-2">
+              <CardContent className="text-xs space-y-1 pb-2">
+                <div className="flex items-center gap-1">
                   <span className="font-medium">Accent:</span>
                   <div
-                    className="w-4 h-4 rounded"
+                    className="w-3 h-3 rounded"
                     style={{ backgroundColor: theme.accentColor }}
                   />
-                  <span>{theme.accentColor}</span>
+                  <span className="text-xs">{theme.accentColor}</span>
                 </div>
                 <p>
                   <span className="font-medium">Heading:</span>{' '}
@@ -301,11 +303,11 @@ export const ThemeSuggestions = ({
                   {theme.spacingUnit}px
                 </p>
               </CardContent>
-              <CardFooter>
+              <CardFooter className="pt-2">
                 <Button
                   onClick={() => onApplyTheme(theme)}
                   size="sm"
-                  className="w-full"
+                  className="w-full text-xs"
                 >
                   Apply Theme
                 </Button>
