@@ -77,10 +77,10 @@ export const ThemeEditorControls = () => {
   const [accentLabelColor, setAccentLabelColor] = useState(hslToHex(0, 0, 100));
   const [neutralColor, setNeutralColor] = useState(hslToHex(228, 10, 97));
 
-  // Layout settings - updated to pixel-based defaults
-  const [spacingUnit, setSpacingUnit] = useState(4); // e.g., 4px
-  const [radiusUnit, setRadiusUnit] = useState(4); // e.g., 4px
-  const [borderWidthUnit, setBorderWidthUnit] = useState(1); // e.g., 1px
+  // Layout settings - updated to rem-based defaults
+  const [spacingUnit, setSpacingUnit] = useState(1); // e.g., 1rem
+  const [radiusUnit, setRadiusUnit] = useState(0.5); // e.g., 0.5rem
+  const [borderWidthUnit, setBorderWidthUnit] = useState(0.0625); // e.g., 0.0625rem (1px at 16px base)
 
   // Function to apply a suggested theme
   const handleApplySuggestedTheme = (theme: Theme) => {
@@ -192,10 +192,10 @@ export const ThemeEditorControls = () => {
   --fontWeight-mini-regular: 400;
   --fontWeight-mini-medium: 500;
 
-        /* Layout Variables - updated to use px */
-        --spacing-unit: ${spacingUnit}px;
-        --radius-unit: ${radiusUnit}px;
-        --border-width-unit: ${borderWidthUnit}px;
+        /* Layout Variables - updated to use rem */
+        --spacing-unit: ${spacingUnit}rem;
+        --radius-unit: ${radiusUnit}rem;
+        --border-width-unit: ${borderWidthUnit}rem;
       }
     `;
   }, [

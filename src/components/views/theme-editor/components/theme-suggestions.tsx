@@ -99,9 +99,9 @@ ${
 - Accent Color: ${currentTheme.accentColor}
 - Accent Label Color: ${currentTheme.accentLabelColor}
 - Neutral Color: ${currentTheme.neutralColor}
-- Spacing Unit: ${currentTheme.spacingUnit}px
-- Radius Unit: ${currentTheme.radiusUnit}px
-- Border Width: ${currentTheme.borderWidthUnit}px
+- Spacing Unit: ${currentTheme.spacingUnit}rem
+- Radius Unit: ${currentTheme.radiusUnit}rem
+- Border Width: ${currentTheme.borderWidthUnit}rem
 `
     : 'No current theme data available'
 }
@@ -113,7 +113,7 @@ REQUIREMENTS:
 4. Create harmonious color schemes with proper contrast.
    - Provide 'accentColor', 'accentLabelColor' (for text/icons on accent), 'neutralColor' (for backgrounds).
    - Optionally, provide 'neutralTextColor' for primary text on neutral backgrounds. If not provided, ensure 'accentLabelColor' or a standard dark/light color would be appropriate.
-5. Suggest appropriate spacing (8-16px typical for base unit), radius (0-16px typical), and border values (1-2px typical).
+5. Suggest appropriate spacing (0.5-1.5rem typical for base unit), radius (0-1rem typical), and border values (0.0625-0.1875rem typical).
 6. Ensure themes work well for the application shown in the screenshot.
 7. Make themes distinct from each other and the current theme.
 
@@ -268,15 +268,15 @@ const AestheticThemePreviewCardContent = ({ theme }: { theme: Theme }) => {
     <div
       className="flex flex-col gap-1 overflow-hidden" // Reduced gap for tighter look
       style={{
-        padding: `${spacing * 0.75}px`, // Use theme spacing
-        borderRadius: `${radius}px`, // Use theme radius
+        padding: `${spacing * 0.75}rem`, // Use theme spacing
+        borderRadius: `${radius}rem`, // Use theme radius
         // The main card will have theme.neutralColor as background
       }}
     >
       {/* Top bar */}
       <div
         className="flex items-center gap-1 px-1"
-        style={{ height: `${spacing * 1.5}px` }}
+        style={{ height: `${spacing * 1.5}rem` }}
       >
         <span
           className="block w-2 h-2 rounded-full"
@@ -297,7 +297,7 @@ const AestheticThemePreviewCardContent = ({ theme }: { theme: Theme }) => {
         className="relative p-2 overflow-hidden" // Reduced padding
         style={{
           backgroundColor: safeInnerContentBg, // Slightly different neutral
-          borderRadius: `${radius * 0.75}px`,
+          borderRadius: `${radius * 0.75}rem`,
           minHeight: '60px', // Ensure some height
         }}
       >
@@ -319,7 +319,7 @@ const AestheticThemePreviewCardContent = ({ theme }: { theme: Theme }) => {
               style={{
                 width: '70%',
                 backgroundColor: previewLineColor,
-                borderRadius: `${radius * 0.25}px`,
+                borderRadius: `${radius * 0.25}rem`,
               }}
             ></div>
             <div
@@ -327,7 +327,7 @@ const AestheticThemePreviewCardContent = ({ theme }: { theme: Theme }) => {
               style={{
                 width: '90%',
                 backgroundColor: previewLineColor,
-                borderRadius: `${radius * 0.25}px`,
+                borderRadius: `${radius * 0.25}rem`,
               }}
             ></div>
             <div
@@ -335,17 +335,17 @@ const AestheticThemePreviewCardContent = ({ theme }: { theme: Theme }) => {
               style={{
                 width: '50%',
                 backgroundColor: previewLineColor,
-                borderRadius: `${radius * 0.25}px`,
+                borderRadius: `${radius * 0.25}rem`,
               }}
             ></div>
           </div>
           <div // Accent placeholder shape
             className="flex-shrink-0"
             style={{
-              width: `${spacing * 3.5}px`,
-              height: `${spacing * 3.5}px`,
+              width: `${spacing * 3.5}rem`,
+              height: `${spacing * 3.5}rem`,
               backgroundColor: theme.accentColor,
-              borderRadius: `${radius * 0.5}px`,
+              borderRadius: `${radius * 0.5}rem`,
             }}
           ></div>
         </div>
@@ -356,7 +356,7 @@ const AestheticThemePreviewCardContent = ({ theme }: { theme: Theme }) => {
         className="p-2 mt-1" // Reduced padding and margin
         style={{
           backgroundColor: listSectionBg,
-          borderRadius: `${radius * 0.75}px`,
+          borderRadius: `${radius * 0.75}rem`,
         }}
       >
         {[
@@ -368,10 +368,10 @@ const AestheticThemePreviewCardContent = ({ theme }: { theme: Theme }) => {
             <span
               className="block flex-shrink-0"
               style={{
-                width: `${spacing * 1}px`,
-                height: `${spacing * 1}px`,
+                width: `${spacing * 1}rem`,
+                height: `${spacing * 1}rem`,
                 backgroundColor: color,
-                borderRadius: `${radius * 0.25}px`,
+                borderRadius: `${radius * 0.25}rem`,
               }}
             ></span>
             <div
@@ -379,7 +379,7 @@ const AestheticThemePreviewCardContent = ({ theme }: { theme: Theme }) => {
               style={{
                 backgroundColor: previewLineColor,
                 opacity: 0.7,
-                borderRadius: `${radius * 0.25}px`,
+                borderRadius: `${radius * 0.25}rem`,
               }}
             ></div>
             <div className="flex flex-col gap-px">
@@ -491,52 +491,44 @@ export const ThemeSuggestions = ({
           {suggestedThemes.map((theme, index) => (
             <Card
               key={index}
-              className="shadow-lg overflow-hidden transition-all hover:shadow-xl"
+              className="shadow-lg overflow-hidden transition-all hover:shadow-xl cursor-pointer"
               style={{
                 backgroundColor: theme.neutralColor,
                 borderRadius: '0px',
-                border: `${theme.borderWidthUnit}px solid ${isColorLight(theme.neutralColor) ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
+                border: `${theme.borderWidthUnit}rem solid ${isColorLight(theme.neutralColor) ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
                 aspectRatio: '1 / 1',
+                display: 'flex',
+                flexDirection: 'column',
               }}
+              onClick={() => onApplyTheme(theme)}
             >
-              <CardHeader className="pb-1 pt-2 px-2.5">
-                {' '}
-                {/* Adjusted padding */}
+              <CardHeader className="pb-1 pt-2 px-2.5 flex-shrink-0">
                 <CardTitle
-                  className="text-xs font-semibold truncate" // Smaller, bold, truncate
+                  className="text-xs font-semibold truncate"
                   style={{
-                    fontFamily: theme.headingFont, // Apply heading font
-                    color: getCardTitleColor(theme.neutralColor), // Dynamic color for title
+                    fontFamily: theme.headingFont,
+                    color: getCardTitleColor(theme.neutralColor),
                   }}
-                  title={theme.name} // Show full name on hover
+                  title={theme.name}
                 >
                   {theme.name}
                 </CardTitle>
               </CardHeader>
               {/* CardContent will now be our aesthetic preview */}
-              <CardContent className="p-0" style={{ height: '100%' }}>
-                {' '}
-                {/* Remove CardContent default padding */}
+              <CardContent className="p-0 flex-grow">
                 <AestheticThemePreviewCardContent theme={theme} />
               </CardContent>
-              <CardFooter className="pt-1.5 pb-2 px-2">
-                {' '}
-                {/* Adjusted padding */}
-                <Button
-                  onClick={() => onApplyTheme(theme)}
-                  size="sm"
-                  className="w-full text-xs font-medium"
+              <CardFooter className="pt-1.5 pb-2 px-2 flex-shrink-0">
+                <div
+                  className="w-full text-xs font-medium text-center py-1 px-2 rounded"
                   style={{
                     backgroundColor: theme.accentColor,
                     color: theme.accentLabelColor,
-                    borderRadius: `${theme.radiusUnit * 0.75}px`, // Consistent rounding
+                    borderRadius: `${theme.radiusUnit * 0.75}rem`,
                   }}
-                  // Add hover effect manually if needed, e.g. by adjusting brightness
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                 >
                   Apply Theme
-                </Button>
+                </div>
               </CardFooter>
             </Card>
           ))}
