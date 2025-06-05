@@ -760,7 +760,7 @@ export async function makeGeminiRequest(
   // Used for tracking continuation attempts
   let fullContent = '';
   let continuationAttempts = 0;
-  const MAX_CONTINUATION_ATTEMPTS = 3;
+  const MAX_CONTINUATION_ATTEMPTS = 10; // Increased limit for longer responses
 
   // Keep track of whether we're in a continuation
   let continueGenerating = true;
@@ -789,7 +789,7 @@ export async function makeGeminiRequest(
         contents: requestMessages,
         generationConfig: {
           temperature: temperature !== undefined ? temperature : 0.2,
-          maxOutputTokens: 8192,
+          // Removed maxOutputTokens limit to allow longer responses
         },
       };
 
@@ -856,12 +856,14 @@ export async function makeGeminiRequest(
           continuationAttempts++;
 
           if (continuationAttempts >= MAX_CONTINUATION_ATTEMPTS) {
-            console.error(
-              'MAX_TOKENS hit with no content after max attempts. Prompt may be too large.',
+            console.warn(
+              'Reached max continuation attempts, returning partial content if available.',
             );
-            throw new Error(
-              'Response too large - try reducing the prompt size or number of reference images',
-            );
+            // Don't throw error, just continue with what we have
+            continueGenerating = false;
+            if (fullContent) {
+              session.addMessage('model', [{ text: fullContent }]);
+            }
           }
         } else {
           console.error('Unexpected API response:', data);

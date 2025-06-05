@@ -47,8 +47,7 @@ interface PortalElement {
 
 export const PilotModeView = () => {
   const [geminiKeyMissing, setGeminiKeyMissing] = useState(false);
-  const { setApiKey, apiKey, setCssContent, cssContent, fileInputRef } =
-    useAppContext();
+  const { setApiKey, apiKey, setCssContent, fileInputRef } = useAppContext();
   const { addLog } = useLogger();
 
   // Pilot mode state
@@ -68,33 +67,6 @@ export const PilotModeView = () => {
   // Helper functions
   const dataUrlToBase64 = (dataUrl: string): string => {
     return dataUrl.split(',')[1];
-  };
-
-  // Compress image data URL to reduce token usage
-  const compressImageForAPI = (
-    dataUrl: string,
-    maxWidth = 800,
-  ): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-
-        // Calculate new dimensions
-        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
-        canvas.width = img.width * ratio;
-        canvas.height = img.height * ratio;
-
-        // Draw compressed image
-        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // Get compressed data URL
-        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        resolve(compressedDataUrl);
-      };
-      img.src = dataUrl;
-    });
   };
 
   // Clean CSS response from AI (remove markdown, extra text, etc.)
@@ -422,271 +394,143 @@ export const PilotModeView = () => {
     }
   };
 
-  // Stage 1: Generate visual diff analysis using LLM - more dynamic approach
-  const generateVisualDiffAnalysis = async (
+  // Stage 1: Generate initial CSS from reference and current images
+  const generateInitialCSS = async (
     referenceImage: string,
     currentScreenshot: string,
-    domStructure: string,
-  ): Promise<string> => {
-    try {
-      setFeedbackStage('generating-visual-diff');
-      setProgress(25);
-
-      const apiKey = await getEnvVariable('GEMINI_API_KEY');
-      if (!apiKey) throw new Error('Gemini API key not found');
-
-      const diffPrompt = `Compare Image 1 (reference) vs Image 2 (current). COPY the reference design EXACTLY.
-
-DOM: ${domStructure || 'No elements'}
-
-From reference image, identify EXACT colors and styling:
-- Header background color (extract exact hex/rgb)
-- Header text color
-- Main background color (usually white/light)
-- Search section background and text colors
-- Card backgrounds and borders
-- Button colors and styles
-
-CRITICAL: Make current page look IDENTICAL to reference. Use CONSERVATIVE colors only. NO gradients, NO decorative elements, NO fantasy themes. Keep it professional and minimal like the reference.`;
-
-      const parts: MessagePart[] = [{ text: diffPrompt }];
-
-      // Compress and add images to reduce token usage
-      if (isValidImageData(referenceImage)) {
-        try {
-          const compressedRef = await compressImageForAPI(referenceImage, 600);
-          const imgData = dataUrlToBase64(compressedRef);
-          const mimeType = compressedRef.split(';')[0].split(':')[1];
-          parts.push({
-            inline_data: {
-              data: imgData,
-              mime_type: mimeType,
-            },
-          });
-        } catch (error) {
-          console.warn('Failed to compress reference image, skipping:', error);
-        }
-      }
-
-      if (isValidImageData(currentScreenshot)) {
-        try {
-          const compressedCurrent = await compressImageForAPI(
-            currentScreenshot,
-            600,
-          );
-          const imgData = dataUrlToBase64(compressedCurrent);
-          const mimeType = compressedCurrent.split(';')[0].split(':')[1];
-          parts.push({
-            inline_data: {
-              data: imgData,
-              mime_type: mimeType,
-            },
-          });
-        } catch (error) {
-          console.warn(
-            'Failed to compress current screenshot, skipping:',
-            error,
-          );
-        }
-      }
-      const { model, temperatureVisualDiff } = await getApiParameters();
-      const messages: GeminiMessage[] = [{ role: 'user', parts }];
-      const diffSessionId = sessionId || `diff_${Date.now()}`;
-
-      // Retry logic for API calls
-      let retryCount = 0;
-      const maxRetries = 3;
-
-      while (retryCount < maxRetries) {
-        try {
-          const visualDiffAnalysis = await makeGeminiRequest({
-            apiKey,
-            messages,
-            modelName: model,
-            sessionId: diffSessionId,
-            temperature: temperatureVisualDiff,
-          });
-
-          if (!visualDiffAnalysis) {
-            throw new Error('No visual diff analysis returned from API');
-          }
-          console.log('Generated visual diff analysis:', visualDiffAnalysis);
-          addLog('Visual diff analysis completed', 'info');
-          return visualDiffAnalysis.trim();
-        } catch (error) {
-          retryCount++;
-          console.warn(`Visual diff attempt ${retryCount} failed:`, error);
-
-          if (retryCount >= maxRetries) {
-            throw error;
-          }
-
-          // Wait before retry (exponential backoff)
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * retryCount),
-          );
-          addLog(
-            `Retrying visual diff analysis (${retryCount}/${maxRetries})`,
-            'warning',
-          );
-        }
-      }
-
-      // This should never be reached due to the throw in the while loop
-      throw new Error('Unexpected end of retry loop');
-    } catch (error) {
-      console.error('Error generating visual diff analysis:', error);
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      addLog(
-        `Failed to generate visual diff analysis: ${errorMessage}`,
-        'error',
-      );
-
-      // Return a basic fallback analysis
-      return `Basic transformation plan:
-- Make search bar prominent with white background and shadow
-- Style cards with modern design and hover effects
-- Clean header with professional colors
-- Use .portal-class-name selectors with !important for overrides`;
-    }
-  };
-
-  // Stage 2: Generate CSS using the visual diff analysis
-  const generateCSSFromDiff = async (
-    visualDiffAnalysis: string,
     domStructure: string,
   ): Promise<string | null> => {
     try {
       setFeedbackStage('generating-css');
-      setProgress(50);
+      setProgress(40);
 
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const cssPrompt = `Generate CSS implementing: ${visualDiffAnalysis}
+      const cssPrompt = `Generate CSS to make Image 2 (current) look exactly like Image 1 (reference).
 
-DOM: ${domStructure || 'None'}
-Current: ${cssContent || 'None'}
+Image 1 = REFERENCE TARGET (what the final result should look like)
+Image 2 = CURRENT STATE (what needs to be changed)
 
-Requirements:
-- Generate COMPLETE CSS that EXACTLY matches the reference image
-- Use .portal-class-name selectors with !important
-- NO CSS variables, NO @import, NO :root definitions, NO comments
-- Use ONLY colors from the reference image
-- NO gradients, NO decorative elements, NO creative interpretations
-- Keep design MINIMAL and PROFESSIONAL like reference
-- Use simple, clean styling - no fancy effects
+DOM STRUCTURE: ${domStructure || 'No elements'}
 
-CRITICAL: Copy reference design EXACTLY. Be conservative, not creative.
+REQUIREMENTS:
+- Analyze Image 1 reference colors, styling, layout
+- Generate CSS to transform Image 2 to match Image 1 exactly
+- Use CSS CLASS selectors with DOT notation: .portal-class-name { }
+- NO attribute selectors [portal-class-name] - ONLY class selectors .portal-class-name
+- Apply !important to ensure styles override existing ones
+- Target portal-* classes shown in DOM structure
 
-Output ONLY direct CSS rules:`;
+Output ONLY CSS class rules with DOT notation:`;
 
-      const cssSessionId = sessionId || `css_${Date.now()}`;
-      const messages: GeminiMessage[] = [
-        { role: 'user', parts: [{ text: cssPrompt }] },
-      ];
-      const { model, temperatureCssGeneration } = await getApiParameters();
+      const parts: MessagePart[] = [{ text: cssPrompt }];
 
-      // Retry logic for CSS generation
-      let retryCount = 0;
-      const maxRetries = 3;
-
-      while (retryCount < maxRetries) {
+      // Add reference image
+      if (isValidImageData(referenceImage)) {
         try {
-          const generatedCSS = await makeGeminiRequest({
-            apiKey,
-            messages,
-            modelName: model,
-            sessionId: cssSessionId,
-            temperature: temperatureCssGeneration,
+          const imgData = dataUrlToBase64(referenceImage);
+          const mimeType = referenceImage.split(';')[0].split(':')[1];
+          parts.push({
+            inline_data: {
+              data: imgData,
+              mime_type: mimeType,
+            },
           });
-
-          if (!generatedCSS) {
-            throw new Error('No CSS generated from visual diff analysis');
-          }
-
-          // Clean the generated CSS
-          const cleanedCSS = cleanCSSResponse(generatedCSS);
-          console.log('Generated CSS from diff analysis:', cleanedCSS);
-          addLog('CSS generation completed', 'info');
-          return cleanedCSS;
         } catch (error) {
-          retryCount++;
-          console.warn(`CSS generation attempt ${retryCount} failed:`, error);
-
-          if (retryCount >= maxRetries) {
-            throw error;
-          }
-
-          // Wait before retry
-          await new Promise((resolve) =>
-            setTimeout(resolve, 2000 * retryCount),
-          );
-          addLog(
-            `Retrying CSS generation (${retryCount}/${maxRetries})`,
-            'warning',
-          );
+          console.warn('Failed to add reference image:', error);
         }
       }
 
-      // This should never be reached due to the throw in the while loop
-      throw new Error('Unexpected end of retry loop');
+      // Add current screenshot
+      if (isValidImageData(currentScreenshot)) {
+        try {
+          const imgData = dataUrlToBase64(currentScreenshot);
+          const mimeType = currentScreenshot.split(';')[0].split(':')[1];
+          parts.push({
+            inline_data: {
+              data: imgData,
+              mime_type: mimeType,
+            },
+          });
+        } catch (error) {
+          console.warn('Failed to add current screenshot:', error);
+        }
+      }
+
+      const { model, temperatureCssGeneration } = await getApiParameters();
+      const cssSessionId = sessionId || `css_${Date.now()}`;
+      const messages: GeminiMessage[] = [{ role: 'user', parts }];
+
+      const generatedCSS = await makeGeminiRequest({
+        apiKey,
+        messages,
+        modelName: model,
+        sessionId: cssSessionId,
+        temperature: temperatureCssGeneration,
+      });
+
+      if (!generatedCSS) {
+        throw new Error('No CSS generated from images');
+      }
+
+      const cleanedCSS = cleanCSSResponse(generatedCSS);
+      console.log('Generated initial CSS:', cleanedCSS);
+      addLog('Initial CSS generation completed', 'info');
+      return cleanedCSS;
     } catch (error) {
-      console.error('Error generating CSS from diff:', error);
+      console.error('Error generating initial CSS:', error);
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      addLog(`Failed to generate CSS: ${errorMessage}`, 'error');
-
-      // Return basic fallback CSS with common portal patterns if all retries failed
-      return `[class*="portal-banner"] { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
-[class*="portal-search"] { background: white !important; border-radius: 12px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; padding: 12px !important; border: none !important; }
-[class*="portal-card"], [class*="portal-directory"] { background: white !important; border-radius: 16px !important; box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important; padding: 24px !important; border: none !important; transition: all 0.3s ease !important; margin: 16px !important; }
-[class*="portal-card"]:hover, [class*="portal-directory"]:hover { transform: translateY(-4px) !important; box-shadow: 0 8px 24px rgba(0,0,0,0.2) !important; }
-[class*="portal-header"] { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; border: none !important; color: white !important; }`;
+      addLog(`Failed to generate initial CSS: ${errorMessage}`, 'error');
+      return null;
     }
   };
 
-  // Stage 3: Get feedback from Gemini about the current result (updated)
-  const getFeedback = async (
+  // Stage 2: Simple feedback - generate new CSS or return DONE
+  const getSimpleFeedback = async (
     newScreenshot: string,
-    _domStructure: string,
-  ): Promise<boolean> => {
+    domStructure: string,
+  ): Promise<{ isDone: boolean; newCSS?: string }> => {
     try {
       setFeedbackStage('getting-feedback');
-      setProgress(85);
+      setProgress(75);
 
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const feedbackPrompt = `Image 1 = REFERENCE target design. Image 2 = CURRENT result. Loop ${feedbackLoopCount}/${maxFeedbackLoops}
+      const feedbackPrompt = `Compare these two images:
 
-CRITICAL: Make current page look EXACTLY like reference image. Be CONSERVATIVE, not creative.
+Image 1 = REFERENCE TARGET (the goal)
+Image 2 = CURRENT RESULT (what we have now)
 
-Current CSS: ${cssContent || 'None'}
+TASK: Look at both images and decide:
 
-If visually matches reference 90%+: "MATCH_STATUS: COMPLETE"
-If needs changes: "MATCH_STATUS: NEEDS_IMPROVEMENT" + CSS to match reference EXACTLY
+1. Do they look virtually identical? (headers, backgrounds, search, cards, overall styling)
+2. If YES → respond with: "DONE"
+3. If NO → generate COMPLETE CSS to make Image 2 match Image 1 exactly
 
-NEW CSS MUST:
-- Copy EXACT colors from reference image
-- Use MINIMAL, professional styling like reference
-- NO gradients, NO decorative elements, NO creative additions
-- NO CSS variables, NO @import statements, NO complex root definitions
-- ONLY direct styling: .class { property: value !important; }
-- Target portal-* classes to match reference appearance EXACTLY`;
+If generating CSS:
+- Generate COMPLETE CSS for the entire page transformation
+- Include ALL necessary styling: header, background, search, cards, text, etc.
+- Use CSS CLASS selectors: .portal-class-name { }
+- Extract exact colors from reference image
+- Apply !important for all properties
+- Target these DOM classes: ${domStructure}
+
+IMPORTANT: Generate COMPLETE CSS, not just incremental changes.
+
+Response format:
+- If identical: just say "DONE"
+- If not identical: provide COMPLETE CSS only`;
 
       const parts: MessagePart[] = [{ text: feedbackPrompt }];
 
-      // Add compressed images for comparison
+      // Add reference image
       if (referenceImages.length > 0 && isValidImageData(referenceImages[0])) {
         try {
-          const compressedRef = await compressImageForAPI(
-            referenceImages[0],
-            500,
-          );
-          const imgData = dataUrlToBase64(compressedRef);
-          const mimeType = compressedRef.split(';')[0].split(':')[1];
+          const imgData = dataUrlToBase64(referenceImages[0]);
+          const mimeType = referenceImages[0].split(';')[0].split(':')[1];
           parts.push({
             inline_data: {
               data: imgData,
@@ -694,18 +538,15 @@ NEW CSS MUST:
             },
           });
         } catch (error) {
-          console.warn(
-            'Failed to compress reference image for feedback:',
-            error,
-          );
+          console.warn('Failed to add reference image for feedback:', error);
         }
       }
 
+      // Add current screenshot
       if (isValidImageData(newScreenshot)) {
         try {
-          const compressedNew = await compressImageForAPI(newScreenshot, 500);
-          const imgData = dataUrlToBase64(compressedNew);
-          const mimeType = compressedNew.split(';')[0].split(':')[1];
+          const imgData = dataUrlToBase64(newScreenshot);
+          const mimeType = newScreenshot.split(';')[0].split(':')[1];
           parts.push({
             inline_data: {
               data: imgData,
@@ -713,24 +554,14 @@ NEW CSS MUST:
             },
           });
         } catch (error) {
-          console.warn(
-            'Failed to compress new screenshot for feedback:',
-            error,
-          );
+          console.warn('Failed to add new screenshot for feedback:', error);
         }
       }
 
-      // Use same session ID to maintain context
+      const { model, temperatureFeedbackLoop } = await getApiParameters();
       const feedbackSessionId = sessionId || `feedback_${Date.now()}`;
 
-      const messages: GeminiMessage[] = [
-        {
-          role: 'user',
-          parts,
-        },
-      ];
-
-      const { model, temperatureFeedbackLoop } = await getApiParameters();
+      const messages: GeminiMessage[] = [{ role: 'user', parts }];
 
       const feedbackResult = await makeGeminiRequest({
         apiKey,
@@ -741,116 +572,48 @@ NEW CSS MUST:
       });
 
       if (!feedbackResult) {
-        addLog(
-          'No feedback received, continuing with current result',
-          'warning',
-        );
-        return false;
+        addLog('No feedback received, stopping', 'warning');
+        return { isDone: true };
       }
 
-      console.log('Full feedback result from AI:', feedbackResult);
-      addLog(
-        `AI feedback response: ${feedbackResult.substring(0, 200)}...`,
-        'info',
-      );
+      console.log('Feedback result:', feedbackResult);
 
-      // Parse the feedback result
-      const isComplete =
-        feedbackResult.includes('MATCH_STATUS: COMPLETE') ||
-        feedbackResult.includes('MATCH_STATUS:COMPLETE') ||
-        feedbackResult.toUpperCase().includes('COMPLETE');
+      // Simple detection - if response contains "DONE", we're finished
+      if (feedbackResult.trim().toUpperCase().includes('DONE')) {
+        addLog('AI says transformation is complete', 'success');
+        return { isDone: true };
+      }
 
-      if (isComplete) {
+      // Otherwise, extract CSS
+      const cleanedCSS = cleanCSSResponse(feedbackResult);
+      if (cleanedCSS && cleanedCSS.length > 10) {
         addLog(
-          'AI evaluation: Transformation completed successfully',
-          'success',
+          `Generated new CSS for feedback loop ${feedbackLoopCount}`,
+          'info',
         );
-        return true;
-      } else if (
-        feedbackResult.includes('MATCH_STATUS: NEEDS_IMPROVEMENT') ||
-        feedbackResult.includes('MATCH_STATUS:NEEDS_IMPROVEMENT') ||
-        feedbackResult.toUpperCase().includes('NEEDS_IMPROVEMENT')
-      ) {
-        // Extract complete new CSS - try multiple approaches
-        let cssContent = '';
-
-        // First try: Look for CSS after the status line
-        const lines = feedbackResult.split('\n');
-        const statusIndex = lines.findIndex(
-          (line) =>
-            line.includes('MATCH_STATUS: NEEDS_IMPROVEMENT') ||
-            line.includes('MATCH_STATUS:NEEDS_IMPROVEMENT') ||
-            line.toUpperCase().includes('NEEDS_IMPROVEMENT'),
-        );
-
-        if (statusIndex >= 0) {
-          // Get everything after the status line
-          cssContent = lines
-            .slice(statusIndex + 1)
-            .join('\n')
-            .trim();
-        } else {
-          // Second try: Look for CSS patterns in the entire response
-          cssContent = feedbackResult;
-        }
-
-        console.log('Raw CSS content before cleaning:', cssContent);
-
-        // Clean up markdown formatting and extract CSS
-        cssContent = cleanCSSResponse(cssContent);
-
-        console.log('Cleaned CSS content:', cssContent);
-
-        if (cssContent && cssContent.length > 10) {
-          // Replace entire CSS content with new version
-          await applyCSSToEditor(cssContent);
-          addLog(
-            `Generated new complete CSS for feedback loop ${feedbackLoopCount}`,
-            'info',
-          );
-          console.log('Generated new complete CSS:', cssContent);
-          console.log(
-            '[PILOT-DEBUG] About to apply new CSS from feedback:',
-            cssContent.substring(0, 500) + '...',
-          );
-
-          // Wait for CSS to be applied to the page
-          addLog('Allowing CSS to take effect...', 'info');
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-        } else {
-          addLog('No valid CSS found in feedback response', 'warning');
-          console.log('Raw feedback response:', feedbackResult);
-          console.log(
-            '[PILOT-DEBUG] No valid CSS found, cssContent:',
-            cssContent,
-          );
-        }
-
-        return false;
+        return { isDone: false, newCSS: cleanedCSS };
       } else {
-        addLog(
-          'Unexpected feedback format, continuing with current result',
-          'warning',
-        );
-        console.log('Unexpected feedback:', feedbackResult);
-        return false;
+        addLog('No valid CSS found in feedback, stopping', 'warning');
+        return { isDone: true };
       }
     } catch (error) {
-      console.error('Error getting AI feedback:', error);
-      addLog(
-        'Error getting AI feedback, continuing with current result',
-        'warning',
-      );
-      return false;
+      console.error('Error getting feedback:', error);
+      addLog('Error getting feedback, stopping', 'error');
+      return { isDone: true };
     }
   };
 
-  // Updated feedback loop with new 3-stage approach
+  // Simplified feedback loop with 2-stage approach
   const runFeedbackLoop = async (): Promise<boolean> => {
     try {
       setIsProcessing(true);
       resetStopFlag();
       setProgress(0);
+
+      if (referenceImages.length === 0) {
+        addLog('No reference images available', 'warning');
+        return false;
+      }
 
       // Step 1: Take initial screenshot
       setFeedbackStage('taking-screenshot');
@@ -859,100 +622,79 @@ NEW CSS MUST:
         return false;
       }
 
-      // Get DOM structure for analysis (limit size for token efficiency)
+      // Get DOM structure
       const fullDomStructure = await getPortalDOMStructure();
       const domStructure =
-        fullDomStructure.length > 1000
-          ? fullDomStructure.substring(0, 1000) + '...'
+        fullDomStructure.length > 800
+          ? fullDomStructure.substring(0, 800) + '...'
           : fullDomStructure;
-      console.log(
-        'Extracted DOM structure for analysis (limited):',
-        domStructure,
-      );
 
-      // Stage 1: Generate visual diff analysis
-      if (referenceImages.length === 0) {
-        addLog('No reference images available for comparison', 'warning');
-        return false;
-      }
+      console.log('DOM structure:', domStructure);
 
-      const visualDiffAnalysis = await generateVisualDiffAnalysis(
+      // Step 2: Generate initial CSS from both images
+      const initialCSS = await generateInitialCSS(
         referenceImages[0],
         initialScreenshot,
         domStructure,
       );
 
-      if (!visualDiffAnalysis || shouldStop) {
+      if (!initialCSS || shouldStop) {
+        addLog('Failed to generate initial CSS', 'error');
         return false;
       }
 
-      // Stage 2: Generate CSS from visual diff analysis
-      const newCSS = await generateCSSFromDiff(
-        visualDiffAnalysis,
-        domStructure,
-      );
-      if (!newCSS || shouldStop) {
-        return false;
-      }
-
-      // Stage 3: Apply CSS and run feedback loops
+      // Apply initial CSS
       try {
-        await applyCSSToEditor(newCSS);
+        await applyCSSToEditor(initialCSS);
+        setProgress(60);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (error) {
-        if (shouldStop) {
-          return false;
-        }
+        if (shouldStop) return false;
+        addLog('Failed to apply initial CSS', 'error');
         return false;
       }
 
-      // Stage 3: Feedback loops for refinement - regenerate CSS from scratch each time
+      // Step 3: Simple feedback loops
       for (let i = 0; i < maxFeedbackLoops; i++) {
-        if (shouldStop) {
-          return false;
-        }
+        if (shouldStop) return false;
 
         setFeedbackLoopCount(i + 1);
+        addLog(`Starting feedback loop ${i + 1}/${maxFeedbackLoops}`, 'info');
 
-        // Take screenshot after CSS application
-        const feedbackScreenshot = await takeScreenshot();
-        if (!feedbackScreenshot || shouldStop) {
-          if (shouldStop) {
-            return false;
-          }
+        // Take new screenshot
+        const newScreenshot = await takeScreenshot();
+        if (!newScreenshot || shouldStop) {
+          if (shouldStop) return false;
           break;
         }
 
-        // Get fresh DOM structure for this iteration (in case it changed)
-        const currentDomStructure = await getPortalDOMStructure();
+        // Get simple feedback
+        const feedback = await getSimpleFeedback(newScreenshot, domStructure);
+        if (shouldStop) return false;
 
-        // Get AI feedback and regenerate complete CSS from scratch
-        const isComplete = await getFeedback(
-          feedbackScreenshot,
-          currentDomStructure,
-        );
-        if (shouldStop) {
-          return false;
-        }
-
-        if (isComplete) {
+        if (feedback.isDone) {
           setProgress(100);
           setFeedbackStage('complete');
-          addLog('Transformation completed successfully', 'success');
+          addLog('Transformation completed successfully!', 'success');
           return true;
         }
 
-        // Wait longer for new CSS to be applied and settle before next iteration
-        addLog('Waiting for CSS changes to take effect...', 'info');
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        // Apply new CSS if provided
+        if (feedback.newCSS) {
+          try {
+            await applyCSSToEditor(feedback.newCSS);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          } catch (error) {
+            if (shouldStop) return false;
+            addLog('Failed to apply feedback CSS', 'warning');
+          }
+        }
       }
 
-      // If we've reached max loops without completion
+      // Max loops reached
       setProgress(100);
       setFeedbackStage('complete');
-      addLog(
-        `Transformation completed after ${maxFeedbackLoops} feedback loops`,
-        'info',
-      );
+      addLog(`Completed after ${maxFeedbackLoops} feedback loops`, 'info');
       return true;
     } catch (error) {
       console.error('Error in feedback loop:', error);
