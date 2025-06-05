@@ -55,7 +55,7 @@ export const PilotModeView = () => {
     useState<PilotStage>('collect-references');
   const [feedbackStage, setFeedbackStage] = useState<FeedbackStage>('idle');
   const [feedbackLoopCount, setFeedbackLoopCount] = useState(0);
-  const [maxFeedbackLoops] = useState(4);
+  const [maxFeedbackLoops] = useState(8);
   const [isProcessing, setIsProcessing] = useState(false);
   const [shouldStop, setShouldStop] = useState(false);
   const [progress, setProgress] = useState(0);
