@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  insertNewlineAndIndent,
+} from '@codemirror/commands';
 import { css } from '@codemirror/lang-css';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 import { AppContext } from '@/contexts/app-context';
@@ -15,9 +20,8 @@ import {
   Copy,
   CheckIcon,
   Download,
-  Info as InfoIcon,
-  Pause as PauseIcon,
-  Play as PlayIcon,
+  Save,
+  X,
 } from 'lucide-react';
 import { useLogger } from '@/services/logger';
 import { FetchCssModal } from './fetch-css-modal';
@@ -29,7 +33,7 @@ export const CssEditor = () => {
   const [isCopied, setIsCopied] = useState(false);
   const [showFetchModal, setShowFetchModal] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
-  const [autoApplyEnabled, setAutoApplyEnabled] = useState(true); // State to control auto-apply feature
+  const [isSaving, setIsSaving] = useState(false);
   const appContext = useContext(AppContext);
   const { addLog } = useLogger();
 
@@ -106,22 +110,20 @@ export const CssEditor = () => {
         return;
       }
 
-      addLog('Applying modified CSS...', 'info');
+      addLog('Applying CSS...', 'info');
       await applyCSS(content);
       addLog('CSS applied successfully', 'success');
     }
   };
 
   // Auto-apply CSS when editor content changes
-  // This makes the theme editor changes apply instantly
   useEffect(() => {
     // Skip initial empty content
     if (
       currentEditorContent &&
       currentEditorContent.trim() !== '' &&
       currentEditorContent.trim() !==
-        '/* CSS will appear here when generated */' &&
-      autoApplyEnabled
+        '/* CSS will appear here when generated */'
     ) {
       // Apply the CSS automatically with a slight debounce
       const timer = setTimeout(() => {
@@ -130,7 +132,57 @@ export const CssEditor = () => {
 
       return () => clearTimeout(timer);
     }
-  }, [currentEditorContent, autoApplyEnabled]);
+  }, [currentEditorContent]);
+
+  const handleSave = async () => {
+    if (viewRef.current) {
+      const content = viewRef.current.state.doc.toString();
+
+      if (
+        !content ||
+        content.trim() === '' ||
+        content.trim() === '/* CSS will appear here when generated */'
+      ) {
+        addLog('No CSS content to save', 'error');
+        return;
+      }
+
+      setIsSaving(true);
+      try {
+        // Update the context with current editor content
+        setCssContent(content);
+        addLog('CSS saved successfully', 'success');
+      } catch (error) {
+        addLog('Failed to save CSS', 'error');
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
+  const handleRemoveStyles = async () => {
+    const tab = await getActiveTab();
+    if (!tab.id) {
+      console.error('No active tab found');
+      return;
+    }
+
+    chrome.scripting.executeScript(
+      {
+        target: { tabId: tab.id as number },
+        func: () => {
+          // Remove the applied style element
+          const existingStyle = document.getElementById('portal-generated-css');
+          if (existingStyle) {
+            existingStyle.remove();
+          }
+        },
+      },
+      () => {
+        addLog('Applied styles removed from page', 'success');
+      },
+    );
+  };
 
   const handleFetchFromDevRev = async () => {
     setShowFetchModal(true);
@@ -213,31 +265,50 @@ export const CssEditor = () => {
         doc: startingDoc,
         extensions: [
           lineNumbers(),
-          keymap.of(defaultKeymap),
+          keymap.of([
+            ...defaultKeymap,
+            ...historyKeymap,
+            { key: 'Enter', run: insertNewlineAndIndent },
+          ]),
           css(),
           vscodeDark,
           history(),
-          keymap.of(historyKeymap),
           EditorView.theme({
             '&': {
-              fontSize: '0.875rem', // text-sm
-              fontFamily: 'monospace',
-              height: '100%', // Take full available height
-              borderRadius: '0.375rem', // rounded-md
+              fontSize: '0.875rem',
+              fontFamily: 'var(--font-mono)',
+              height: '100%',
+              borderRadius: 'var(--radius)',
+              backgroundColor: 'hsl(var(--background))',
+              color: 'hsl(var(--foreground))',
             },
             '.cm-content': {
-              minHeight: '16rem', // h-64, ensure a minimum height
+              minHeight: '16rem',
               height: '100%',
+              padding: '0.75rem',
             },
             '.cm-gutters': {
-              // vscodeDark theme will style this, but you can override if needed
-              // e.g., backgroundColor: '#2a2f3a',
+              backgroundColor: 'hsl(var(--muted))',
+              borderRight: '1px solid hsl(var(--border))',
+            },
+            '.cm-lineNumbers': {
+              color: 'hsl(var(--muted-foreground))',
+            },
+            '.cm-activeLineGutter': {
+              backgroundColor: 'hsl(var(--accent))',
+            },
+            '.cm-activeLine': {
+              backgroundColor: 'hsl(var(--accent) / 0.1)',
             },
             '&.cm-focused': {
-              outline: 'none', // Remove default focus outline
+              outline: 'none',
             },
             '.cm-scroller': {
               overflow: 'auto',
+            },
+            '.cm-editor.cm-focused': {
+              outline: '2px solid hsl(var(--ring))',
+              outlineOffset: '2px',
             },
           }),
           EditorView.lineWrapping,
@@ -245,11 +316,6 @@ export const CssEditor = () => {
             if (update.docChanged) {
               const content = update.state.doc.toString();
               setCurrentEditorContent(content);
-              // Update the appContext cssContent when editor content changes
-              setCssContent(content);
-
-              // The content update is detected here and propagated through state.
-              // Auto-apply is handled in the useEffect hook with debouncing.
             }
           }),
         ],
@@ -285,10 +351,6 @@ export const CssEditor = () => {
           },
         });
         setCurrentEditorContent(cleanedContent);
-
-        // When cssContent is updated by other components (like Theme Editor),
-        // it's automatically updated here and will be auto-applied through the
-        // useEffect hook that watches currentEditorContent.
       }
     }
   }, [cssContent]);
@@ -301,38 +363,11 @@ export const CssEditor = () => {
 
   const isEditorEmpty = !currentEditorContent;
 
-  // Toggle auto-apply feature
-  const toggleAutoApply = () => {
-    setAutoApplyEnabled((prev) => !prev);
-    addLog(`Auto-apply ${!autoApplyEnabled ? 'enabled' : 'disabled'}`, 'info');
-  };
-
-  // Ensure the parent div can expand and has rounded corners
   return (
     <div className="flex flex-col w-full h-full gap-4">
-      {/* Auto-apply notification */}
-      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-1 shadow-sm">
-        <div className="flex items-start">
-          <InfoIcon className="text-blue-500 dark:text-blue-400 mt-0.5 h-4 w-4 mr-2 flex-shrink-0" />
-          <div>
-            <p className="text-sm text-blue-800 dark:text-blue-300 font-medium mb-1">
-              Auto-Apply {autoApplyEnabled ? 'Enabled' : 'Disabled'}
-            </p>
-            <p className="text-xs text-blue-700/80 dark:text-blue-400/80">
-              CSS changes are{' '}
-              {autoApplyEnabled
-                ? 'automatically applied to the page as you type'
-                : 'only applied when you click the Apply button'}
-              . Theme editor changes will update this editor and{' '}
-              {autoApplyEnabled && 'automatically'} apply.
-            </p>
-          </div>
-        </div>
-      </div>
-
       <div
         ref={editorRef}
-        className="w-full h-full rounded-lg max-h-full flex-1 border border-gray-300 dark:border-gray-700 shadow-sm overflow-hidden"
+        className="w-full h-full rounded-lg max-h-full flex-1 border border-border shadow-sm overflow-hidden bg-background"
       />
 
       <div className="flex justify-between items-center pt-1">
@@ -340,7 +375,7 @@ export const CssEditor = () => {
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5 w-9 h-9 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="flex items-center gap-1.5 w-9 h-9"
             onClick={handleUndo}
             title="Undo"
             disabled={isLoading}
@@ -350,7 +385,7 @@ export const CssEditor = () => {
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5 w-9 h-9 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="flex items-center gap-1.5 w-9 h-9"
             onClick={handleRedo}
             title="Redo"
             disabled={isLoading}
@@ -360,7 +395,7 @@ export const CssEditor = () => {
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5 h-9 w-9 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="flex items-center gap-1.5 h-9 w-9"
             onClick={handleCopy}
             title="Copy CSS"
             disabled={isLoading || isEditorEmpty}
@@ -370,47 +405,44 @@ export const CssEditor = () => {
           <Button
             size="icon"
             variant="outline"
-            className="flex items-center gap-1.5 h-9 w-9 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="flex items-center gap-1.5 h-9 w-9"
             onClick={handleFetchFromDevRev}
             title="Fetch CSS from DevRev"
             disabled={isLoading}
           >
             <Download size={15} />
           </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            className="flex items-center gap-1.5 h-9 w-9"
+            onClick={handleRemoveStyles}
+            title="Remove applied styles"
+            disabled={isLoading}
+          >
+            <X size={15} />
+          </Button>
         </div>
         <div className="flex gap-2">
           <Button
             size="sm"
-            variant={autoApplyEnabled ? 'outline' : 'default'}
-            className={`flex items-center gap-1.5 h-9 px-3 shadow-sm ${
-              autoApplyEnabled
-                ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
-            onClick={toggleAutoApply}
+            variant="outline"
+            className="flex items-center gap-1.5 h-9 px-3"
+            onClick={handleSave}
+            disabled={isLoading || isEditorEmpty || isSaving}
           >
-            {autoApplyEnabled ? (
-              <>
-                <PauseIcon size={14} className="mr-1" /> Disable Auto-Apply
-              </>
-            ) : (
-              <>
-                <PlayIcon size={14} className="mr-1" /> Enable Auto-Apply
-              </>
-            )}
+            <Save size={14} className="mr-1" />
+            {isSaving ? 'Saving...' : 'Save'}
           </Button>
-
-          {!autoApplyEnabled && (
-            <Button
-              size="sm"
-              className="flex items-center gap-1.5 h-9 px-3 bg-green-600 hover:bg-green-700 shadow-sm"
-              onClick={handleApplyCss}
-              disabled={isLoading || isEditorEmpty}
-            >
-              <Play size={14} className="mr-1" />
-              Apply CSS
-            </Button>
-          )}
+          <Button
+            size="sm"
+            className="flex items-center gap-1.5 h-9 px-3"
+            onClick={handleApplyCss}
+            disabled={isLoading || isEditorEmpty}
+          >
+            <Play size={14} className="mr-1" />
+            Apply CSS
+          </Button>
         </div>
       </div>
 

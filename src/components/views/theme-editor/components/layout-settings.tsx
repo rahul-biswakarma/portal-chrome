@@ -1,4 +1,6 @@
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import { RotateCcw } from 'lucide-react';
 
 interface LayoutSettingsProps {
   spacingUnit: number;
@@ -9,28 +11,35 @@ interface LayoutSettingsProps {
   onBorderWidthUnitChange: (value: number) => void;
 }
 
-// Define preset options
+// Original default values
+const originalDefaults = {
+  spacingUnit: 0.25, // 100% base value
+  radiusUnit: 0.0625,
+  borderWidthUnit: 0.0625,
+};
+
+// Define preset options based on 0.25rem as 100%
 const radiusPresets = [
   { label: 'None', value: 0, remValue: '0rem' },
-  { label: 'Small', value: 0.25, remValue: '0.25rem' },
-  { label: 'Medium', value: 0.5, remValue: '0.5rem' },
-  { label: 'Large', value: 0.75, remValue: '0.75rem' },
-  { label: 'Full', value: 1, remValue: '1rem' },
+  { label: 'Small', value: 0.0625, remValue: '0.0625rem' }, // Original default
+  { label: 'Medium', value: 0.125, remValue: '0.125rem' },
+  { label: 'Large', value: 0.25, remValue: '0.25rem' },
+  { label: 'Full', value: 0.5, remValue: '0.5rem' },
 ];
 
 const spacingPresets = [
-  { label: '90%', value: 0.5, remValue: '0.5rem' },
-  { label: '95%', value: 0.75, remValue: '0.75rem' },
-  { label: '100%', value: 1, remValue: '1rem' },
-  { label: '105%', value: 1.25, remValue: '1.25rem' },
-  { label: '110%', value: 1.5, remValue: '1.5rem' },
+  { label: '90%', value: 0.225, remValue: '0.225rem' }, // 90% of 0.25rem
+  { label: '95%', value: 0.2375, remValue: '0.2375rem' }, // 95% of 0.25rem
+  { label: '100%', value: 0.25, remValue: '0.25rem' }, // Original default (100%)
+  { label: '105%', value: 0.2625, remValue: '0.2625rem' }, // 105% of 0.25rem
+  { label: '110%', value: 0.275, remValue: '0.275rem' }, // 110% of 0.25rem
 ];
 
 const borderPresets = [
   { label: 'None', value: 0, remValue: '0rem' },
-  { label: 'Thin', value: 0.0625, remValue: '0.0625rem' }, // 1px at 16px base
-  { label: 'Medium', value: 0.125, remValue: '0.125rem' }, // 2px at 16px base
-  { label: 'Thick', value: 0.1875, remValue: '0.1875rem' }, // 3px at 16px base
+  { label: 'Thin', value: 0.0625, remValue: '0.0625rem' }, // Original default
+  { label: 'Medium', value: 0.125, remValue: '0.125rem' },
+  { label: 'Thick', value: 0.1875, remValue: '0.1875rem' },
 ];
 
 export const LayoutSettings = ({
@@ -45,15 +54,15 @@ export const LayoutSettings = ({
   const getCurrentRadiusPreset = () => {
     return (
       radiusPresets.find(
-        (preset) => Math.abs(preset.value - radiusUnit) < 0.1,
-      ) || radiusPresets[2]
+        (preset) => Math.abs(preset.value - radiusUnit) < 0.01,
+      ) || radiusPresets[1]
     );
   };
 
   const getCurrentSpacingPreset = () => {
     return (
       spacingPresets.find(
-        (preset) => Math.abs(preset.value - spacingUnit) < 0.1,
+        (preset) => Math.abs(preset.value - spacingUnit) < 0.01,
       ) || spacingPresets[2]
     );
   };
@@ -61,14 +70,33 @@ export const LayoutSettings = ({
   const getCurrentBorderPreset = () => {
     return (
       borderPresets.find(
-        (preset) => Math.abs(preset.value - borderWidthUnit) < 0.1,
+        (preset) => Math.abs(preset.value - borderWidthUnit) < 0.01,
       ) || borderPresets[1]
     );
   };
 
+  const handleReset = () => {
+    onSpacingUnitChange(originalDefaults.spacingUnit);
+    onRadiusUnitChange(originalDefaults.radiusUnit);
+    onBorderWidthUnitChange(originalDefaults.borderWidthUnit);
+  };
+
   return (
     <div className="flex flex-col gap-6 border-b border-border pb-4">
-      <h2 className="text-lg font-semibold text-foreground">Layout Settings</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-foreground">
+          Layout Settings
+        </h2>
+        <Button
+          onClick={handleReset}
+          variant="outline"
+          size="sm"
+          className="gap-1"
+        >
+          <RotateCcw className="h-3 w-3" />
+          Reset
+        </Button>
+      </div>
 
       {/* Radius Section */}
       <div className="flex flex-col gap-3">
@@ -82,19 +110,21 @@ export const LayoutSettings = ({
                 onClick={() => onRadiusUnitChange(preset.value)}
                 className={`flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all ${
                   isSelected
-                    ? 'border-accent bg-accent/10'
-                    : 'border-border bg-background hover:border-accent/50'
+                    ? 'border-primary bg-accent/50'
+                    : 'border-border bg-card hover:border-primary/50'
                 }`}
               >
                 {/* Visual representation */}
                 <div
-                  className="w-8 h-8 bg-accent"
+                  className={`w-8 h-8 ${isSelected ? 'bg-primary' : 'bg-muted-foreground'}`}
                   style={{
                     borderRadius:
-                      preset.value === 1 ? '50%' : `${preset.value * 16}px`,
+                      preset.value === 0.5 ? '50%' : `${preset.value * 16}px`,
                   }}
                 />
-                <span className="text-xs font-medium text-foreground">
+                <span
+                  className={`text-xs font-medium ${isSelected ? 'text-primary-foreground' : 'text-foreground'}`}
+                >
                   {preset.label}
                 </span>
               </button>
@@ -115,11 +145,13 @@ export const LayoutSettings = ({
                 onClick={() => onSpacingUnitChange(preset.value)}
                 className={`flex items-center justify-center p-3 rounded-lg border-2 transition-all ${
                   isSelected
-                    ? 'border-accent bg-accent/10'
-                    : 'border-border bg-background hover:border-accent/50'
+                    ? 'border-primary bg-accent/50'
+                    : 'border-border bg-card hover:border-primary/50'
                 }`}
               >
-                <span className="text-sm font-medium text-foreground">
+                <span
+                  className={`text-sm font-medium ${isSelected ? 'text-primary-foreground' : 'text-foreground'}`}
+                >
                   {preset.label}
                 </span>
               </button>
@@ -142,18 +174,20 @@ export const LayoutSettings = ({
                 onClick={() => onBorderWidthUnitChange(preset.value)}
                 className={`flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all ${
                   isSelected
-                    ? 'border-accent bg-accent/10'
-                    : 'border-border bg-background hover:border-accent/50'
+                    ? 'border-primary bg-accent/50'
+                    : 'border-border bg-card hover:border-primary/50'
                 }`}
               >
                 {/* Visual representation */}
                 <div
-                  className="w-8 h-6 bg-accent/20"
+                  className={`w-8 h-6 ${isSelected ? 'bg-accent' : 'bg-muted'}`}
                   style={{
-                    border: `${Math.max(1, preset.value * 16)}px solid hsl(var(--accent))`,
+                    border: `${Math.max(1, preset.value * 16)}px solid hsl(var(${isSelected ? '--primary' : '--muted-foreground'}))`,
                   }}
                 />
-                <span className="text-xs font-medium text-foreground">
+                <span
+                  className={`text-xs font-medium ${isSelected ? 'text-primary-foreground' : 'text-foreground'}`}
+                >
                   {preset.label}
                 </span>
               </button>

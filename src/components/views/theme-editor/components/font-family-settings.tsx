@@ -61,7 +61,7 @@ FontFamilySettingsProps) => {
         <div className="flex-1">
           <Label
             htmlFor="heading-font"
-            className="text-sm font-medium text-muted-foreground"
+            className="text-sm font-medium text-foreground"
           >
             Headings Font Family
           </Label>
@@ -109,7 +109,7 @@ FontFamilySettingsProps) => {
         <div className="flex-1">
           <Label
             htmlFor="paragraph-font"
-            className="text-sm font-medium text-muted-foreground"
+            className="text-sm font-medium text-foreground"
           >
             Paragraphs
           </Label>

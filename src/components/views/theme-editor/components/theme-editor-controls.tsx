@@ -78,9 +78,9 @@ export const ThemeEditorControls = () => {
   const [neutralColor, setNeutralColor] = useState(hslToHex(228, 10, 97));
 
   // Layout settings - updated to rem-based defaults
-  const [spacingUnit, setSpacingUnit] = useState(1); // e.g., 1rem
-  const [radiusUnit, setRadiusUnit] = useState(0.5); // e.g., 0.5rem
-  const [borderWidthUnit, setBorderWidthUnit] = useState(0.0625); // e.g., 0.0625rem (1px at 16px base)
+  const [spacingUnit, setSpacingUnit] = useState(0.25); // e.g., 0.25rem (100% base)
+  const [radiusUnit, setRadiusUnit] = useState(0.0625); // e.g., 0.0625rem
+  const [borderWidthUnit, setBorderWidthUnit] = useState(0.0625); // e.g., 0.0625rem
 
   // Function to apply a suggested theme
   const handleApplySuggestedTheme = (theme: Theme) => {
@@ -120,7 +120,17 @@ export const ThemeEditorControls = () => {
         font-family: var(--font-paragraph);
       }
       :root {
-        /* Color Variables */
+        /* Theme Color Variables */
+        --primary: oklch(${accentHsl.l}% ${accentHsl.s / 100} ${accentHsl.h});
+        --primary-foreground: oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h});
+        --background: oklch(${neutralHsl.l}% ${neutralHsl.s / 100} ${neutralHsl.h});
+        --foreground: oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h});
+        --card: oklch(${neutralHsl.l}% ${neutralHsl.s / 100} ${neutralHsl.h});
+        --card-foreground: oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h});
+        --accent: oklch(${accentHsl.l}% ${accentHsl.s / 100} ${accentHsl.h});
+        --accent-foreground: oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h});
+
+        /* Legacy HSL Variables for compatibility */
         --accent-h: ${accentHsl.h};
         --accent-s: ${accentHsl.s}%;
         --accent-l: ${accentHsl.l}%;
@@ -131,7 +141,11 @@ export const ThemeEditorControls = () => {
 
         --neutral-h: ${neutralHsl.h};
         --neutral-s: ${neutralHsl.s}%;
-        --neutral-l: ${neutralHsl.l}%; /* Added neutral lightness */
+        --neutral-l: ${neutralHsl.l}%;
+
+        --surface-h: ${neutralHsl.h};
+        --surface-s: ${neutralHsl.s}%;
+        --surface-l: ${neutralHsl.l}%;
 
          --alert-h: 360;
   --alert-s: 72%;
@@ -196,6 +210,7 @@ export const ThemeEditorControls = () => {
         --spacing-unit: ${spacingUnit}rem;
         --radius-unit: ${radiusUnit}rem;
         --border-width-unit: ${borderWidthUnit}rem;
+        --radius: ${radiusUnit}rem;
       }
     `;
   }, [
@@ -238,7 +253,7 @@ export const ThemeEditorControls = () => {
     setBorderWidthUnit(value);
 
   return (
-    <div className="flex flex-col gap-4 overflow-y-auto h-full">
+    <div className="flex flex-col gap-4 overflow-y-auto h-full scrollbar-hide">
       <ThemeSuggestions
         onApplyTheme={handleApplySuggestedTheme}
         currentTheme={{

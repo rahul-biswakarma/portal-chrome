@@ -99,11 +99,11 @@ ${
 - Accent Color: ${currentTheme.accentColor}
 - Accent Label Color: ${currentTheme.accentLabelColor}
 - Neutral Color: ${currentTheme.neutralColor}
-- Spacing Unit: ${currentTheme.spacingUnit}rem
-- Radius Unit: ${currentTheme.radiusUnit}rem
-- Border Width: ${currentTheme.borderWidthUnit}rem
+- Spacing Unit: ${currentTheme.spacingUnit}rem (Default: 0.25rem = 100%)
+- Radius Unit: ${currentTheme.radiusUnit}rem (Default: 0.0625rem)
+- Border Width: ${currentTheme.borderWidthUnit}rem (Default: 0.0625rem)
 `
-    : 'No current theme data available'
+    : `Default values: Spacing=0.25rem (100% base), Radius=0.0625rem, Border=0.0625rem`
 }
 
 REQUIREMENTS:
@@ -113,7 +113,10 @@ REQUIREMENTS:
 4. Create harmonious color schemes with proper contrast.
    - Provide 'accentColor', 'accentLabelColor' (for text/icons on accent), 'neutralColor' (for backgrounds).
    - Optionally, provide 'neutralTextColor' for primary text on neutral backgrounds. If not provided, ensure 'accentLabelColor' or a standard dark/light color would be appropriate.
-5. Suggest appropriate spacing (0.5-1.5rem typical for base unit), radius (0-1rem typical), and border values (0.0625-0.1875rem typical).
+5. Use rem units for layout values:
+   - Spacing: 0.225rem-0.275rem range (where 0.25rem = 100% base, default)
+   - Radius: 0rem-0.5rem range (where 0.0625rem = default small radius)
+   - Border: 0rem-0.1875rem range (where 0.0625rem = default thin border)
 6. Ensure themes work well for the application shown in the screenshot.
 7. Make themes distinct from each other and the current theme.
 

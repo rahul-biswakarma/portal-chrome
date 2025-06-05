@@ -5,6 +5,15 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Hide scrollbars utility */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+
 :root {
   --background: oklch(0.98 0.01 95.1);
   --foreground: oklch(0.34 0.03 95.72);
