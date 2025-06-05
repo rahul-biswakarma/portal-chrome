@@ -59,7 +59,7 @@ export const PilotModeView = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [shouldStop, setShouldStop] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+
   const [screenshots, setScreenshots] = useState<string[]>([]);
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [currentPageTitle, setCurrentPageTitle] = useState('Home Page');
@@ -167,9 +167,6 @@ export const PilotModeView = () => {
     };
 
     checkApiKeys();
-
-    // Initialize session ID
-    setSessionId(`pilot_session_${Date.now()}`);
   }, [setApiKey, apiKey]);
 
   // Handle stopping the pilot mode
@@ -459,14 +456,15 @@ Output ONLY CSS class rules with DOT notation:`;
       }
 
       const { model, temperatureCssGeneration } = await getApiParameters();
-      const cssSessionId = sessionId || `css_${Date.now()}`;
+      // Use fresh session ID for initial CSS generation - no chat history
+      const freshCssSessionId = `css_fresh_${Date.now()}_${Math.random()}`;
       const messages: GeminiMessage[] = [{ role: 'user', parts }];
 
       const generatedCSS = await makeGeminiRequest({
         apiKey,
         messages,
         modelName: model,
-        sessionId: cssSessionId,
+        sessionId: freshCssSessionId,
         temperature: temperatureCssGeneration,
       });
 
@@ -491,6 +489,7 @@ Output ONLY CSS class rules with DOT notation:`;
   const getSimpleFeedback = async (
     newScreenshot: string,
     domStructure: string,
+    currentCSS: string,
   ): Promise<{ isDone: boolean; newCSS?: string }> => {
     try {
       setFeedbackStage('getting-feedback');
@@ -499,29 +498,33 @@ Output ONLY CSS class rules with DOT notation:`;
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const feedbackPrompt = `Compare these two images:
+      const feedbackPrompt = `You are analyzing TWO website images to determine if they match.
 
-Image 1 = REFERENCE TARGET (the goal)
-Image 2 = CURRENT RESULT (what we have now)
+CURRENT CSS APPLIED:
+${currentCSS || 'No CSS applied yet'}
 
-TASK: Look at both images and decide:
+IMAGE ANALYSIS:
+- FIRST image attached = REFERENCE TARGET (what the final result should look like)
+- SECOND image attached = CURRENT PAGE (what we have now after applying the CSS above)
 
-1. Do they look virtually identical? (headers, backgrounds, search, cards, overall styling)
+TASK: Compare both images and decide:
+
+1. Do they look virtually identical? (same colors, layout, styling)
 2. If YES → respond with: "DONE"
-3. If NO → generate COMPLETE CSS to make Image 2 match Image 1 exactly
+3. If NO → generate COMPLETE NEW CSS to make the CURRENT PAGE match the REFERENCE TARGET exactly
 
 If generating CSS:
-- Generate COMPLETE CSS for the entire page transformation
-- Include ALL necessary styling: header, background, search, cards, text, etc.
+- Generate COMPLETE CSS for the entire page (not incremental changes)
+- Study the REFERENCE TARGET colors, fonts, spacing, shadows
+- Include ALL styling: header, background, search, cards, text, etc.
 - Use CSS CLASS selectors: .portal-class-name { }
-- Extract exact colors from reference image
 - Apply !important for all properties
 - Target these DOM classes: ${domStructure}
 
-IMPORTANT: Generate COMPLETE CSS, not just incremental changes.
+CRITICAL: Generate COMPLETE CSS that transforms CURRENT PAGE to match REFERENCE TARGET exactly.
 
 Response format:
-- If identical: just say "DONE"
+- If images are identical: just say "DONE"
 - If not identical: provide COMPLETE CSS only`;
 
       const parts: MessagePart[] = [{ text: feedbackPrompt }];
@@ -559,7 +562,8 @@ Response format:
       }
 
       const { model, temperatureFeedbackLoop } = await getApiParameters();
-      const feedbackSessionId = sessionId || `feedback_${Date.now()}`;
+      // Use fresh session ID for each feedback call - no chat history
+      const freshSessionId = `feedback_fresh_${Date.now()}_${Math.random()}`;
 
       const messages: GeminiMessage[] = [{ role: 'user', parts }];
 
@@ -567,7 +571,7 @@ Response format:
         apiKey,
         messages,
         modelName: model,
-        sessionId: feedbackSessionId,
+        sessionId: freshSessionId,
         temperature: temperatureFeedbackLoop,
       });
 
@@ -643,7 +647,8 @@ Response format:
         return false;
       }
 
-      // Apply initial CSS
+      // Apply initial CSS and track it
+      let currentAppliedCSS = initialCSS;
       try {
         await applyCSSToEditor(initialCSS);
         setProgress(60);
@@ -668,8 +673,12 @@ Response format:
           break;
         }
 
-        // Get simple feedback
-        const feedback = await getSimpleFeedback(newScreenshot, domStructure);
+        // Get simple feedback with current CSS context
+        const feedback = await getSimpleFeedback(
+          newScreenshot,
+          domStructure,
+          currentAppliedCSS,
+        );
         if (shouldStop) return false;
 
         if (feedback.isDone) {
@@ -679,10 +688,11 @@ Response format:
           return true;
         }
 
-        // Apply new CSS if provided
+        // Apply new CSS if provided and update tracking
         if (feedback.newCSS) {
           try {
             await applyCSSToEditor(feedback.newCSS);
+            currentAppliedCSS = feedback.newCSS; // Track the current CSS
             await new Promise((resolve) => setTimeout(resolve, 2000));
           } catch (error) {
             if (shouldStop) return false;
@@ -831,7 +841,6 @@ Response format:
     setFeedbackLoopCount(0);
     setReferenceImages([]);
     setScreenshots([]);
-    setSessionId(`pilot_session_${Date.now()}`);
     setCssContent('');
     setProgress(0);
     setShouldStop(false);
