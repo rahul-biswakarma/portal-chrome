@@ -161,7 +161,7 @@ class ChatSessionManager {
 export const chatManager = ChatSessionManager.getInstance();
 
 // Default API parameters
-const DEFAULT_MODEL = 'gemini-2.5-flash-preview-05-20';
+const DEFAULT_MODEL = 'gemini-2.0-flash';
 
 // Get environment variables or use defaults
 const getApiParameters = async () => {

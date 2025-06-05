@@ -234,29 +234,56 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
  * Capture the visible tab as a screenshot
  */
 async function captureVisibleTab(): Promise<string> {
+  const startTime = Date.now();
+  console.log('[BACKGROUND] Starting screenshot capture...');
+
   return new Promise((resolve, reject) => {
     try {
       // Check if the tabs API and captureVisibleTab are available
       if (!chrome.tabs || !chrome.tabs.captureVisibleTab) {
+        console.error(
+          '[BACKGROUND] Screenshot API not available in this browser context',
+        );
         reject(
           new Error('Screenshot API not available in this browser context'),
         );
         return;
       }
 
+      console.log(
+        '[BACKGROUND] Using chrome.tabs.captureVisibleTab with quality: 100',
+      );
       chrome.tabs.captureVisibleTab(
         { format: 'png', quality: 100 },
         (dataUrl) => {
+          const totalTime = Date.now() - startTime;
+
           if (chrome.runtime.lastError) {
+            console.error(
+              `[BACKGROUND] Screenshot capture failed after ${totalTime}ms:`,
+              chrome.runtime.lastError.message,
+            );
             reject(new Error(chrome.runtime.lastError.message));
           } else if (!dataUrl) {
+            console.error(
+              `[BACKGROUND] Screenshot capture failed after ${totalTime}ms: No data returned`,
+            );
             reject(new Error('Failed to capture screenshot'));
           } else {
+            const imageSizeKB = Math.round(dataUrl.length / 1024);
+            console.log(
+              `[BACKGROUND] Screenshot capture completed in ${totalTime}ms, size: ${imageSizeKB}KB`,
+            );
             resolve(dataUrl);
           }
         },
       );
     } catch (error) {
+      const totalTime = Date.now() - startTime;
+      console.error(
+        `[BACKGROUND] Screenshot capture exception after ${totalTime}ms:`,
+        error,
+      );
       reject(error);
     }
   });

@@ -61,9 +61,19 @@ export class ReferenceImageService {
 
     try {
       this.isProcessing = true;
+      console.log('[REFERENCE-SERVICE] Starting prompt generation process...');
 
       // Capture current page screenshot
+      const screenshotStartTime = Date.now();
+      console.log(
+        '[REFERENCE-SERVICE] Capturing current page screenshot for prompt generation...',
+      );
       const currentScreenshot = await captureScreenshot({ fullPage: true });
+      const screenshotTime = Date.now() - screenshotStartTime;
+      const imageSizeKB = Math.round(currentScreenshot.length / 1024);
+      console.log(
+        `[REFERENCE-SERVICE] Current page screenshot captured in ${screenshotTime}ms, size: ${imageSizeKB}KB`,
+      );
 
       // Get active tab
       const tab = await chrome.tabs.query({
@@ -71,8 +81,15 @@ export class ReferenceImageService {
         currentWindow: true,
       });
       if (!tab[0]?.id) {
+        console.error(
+          '[REFERENCE-SERVICE] No active tab found for prompt generation',
+        );
         throw new Error('No active tab found');
       }
+
+      console.log(
+        `[REFERENCE-SERVICE] Working with tab ${tab[0].id}: ${tab[0].url}`,
+      );
 
       // Get DOM structure and tailwind classes
       let portalClassTree: TreeNode | undefined;
@@ -261,6 +278,7 @@ export class ReferenceImageService {
       }
 
       // Generate prompt using OpenAI
+      console.log('[REFERENCE-SERVICE] Generating prompt with AI...');
       const prompt = await generatePromptWithAI(
         this.apiKey!,
         this.referenceImage!,
@@ -271,9 +289,12 @@ export class ReferenceImageService {
         computedStyles,
       );
 
+      console.log(
+        '[REFERENCE-SERVICE] Prompt generation completed successfully',
+      );
       return prompt;
     } catch (error) {
-      console.error('Error generating prompt:', error);
+      console.error('[REFERENCE-SERVICE] Error generating prompt:', error);
       throw error;
     } finally {
       this.isProcessing = false;
@@ -319,9 +340,25 @@ export class ReferenceImageService {
       }
 
       // Start the feedback loop
+      console.log(
+        `[REFERENCE-SERVICE] Starting CSS generation feedback loop (max ${MAX_RETRY_ATTEMPTS} attempts)...`,
+      );
       for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
+        console.log(
+          `[REFERENCE-SERVICE] CSS generation attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS}`,
+        );
+
         // Capture current screenshot for this iteration
+        const screenshotStartTime = Date.now();
+        console.log(
+          `[REFERENCE-SERVICE] Capturing screenshot for iteration ${attempt + 1}...`,
+        );
         const currentScreenshot = await captureScreenshot({ fullPage: true });
+        const screenshotTime = Date.now() - screenshotStartTime;
+        const imageSizeKB = Math.round(currentScreenshot.length / 1024);
+        console.log(
+          `[REFERENCE-SERVICE] Iteration ${attempt + 1} screenshot captured in ${screenshotTime}ms, size: ${imageSizeKB}KB`,
+        );
 
         // Get computed styles before CSS application
         const getComputedStyles = async (): Promise<
@@ -432,7 +469,16 @@ export class ReferenceImageService {
         this.lastGeneratedCSS = css;
 
         // Capture screenshot with applied CSS
+        const resultScreenshotStartTime = Date.now();
+        console.log(
+          `[REFERENCE-SERVICE] Capturing result screenshot after CSS application (iteration ${attempt + 1})...`,
+        );
         const resultScreenshot = await captureScreenshot({ fullPage: true });
+        const resultScreenshotTime = Date.now() - resultScreenshotStartTime;
+        const resultImageSizeKB = Math.round(resultScreenshot.length / 1024);
+        console.log(
+          `[REFERENCE-SERVICE] Result screenshot captured in ${resultScreenshotTime}ms, size: ${resultImageSizeKB}KB`,
+        );
 
         // Get updated computed styles after CSS application
         const updatedComputedStyles = await getComputedStyles();

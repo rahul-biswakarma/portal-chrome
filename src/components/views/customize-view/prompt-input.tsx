@@ -69,15 +69,36 @@ export const PromptInput = () => {
 
   // Function to take current screenshot (using enhanced screenshot utility)
   const takeScreenshot = async (fullPage: boolean = true): Promise<string> => {
+    const startTime = Date.now();
+    const screenshotType = fullPage ? 'full-page' : 'viewport';
+    console.log(
+      `[PROMPT-INPUT] Starting ${screenshotType} screenshot capture...`,
+    );
+
     try {
       const options: ScreenshotOptions = { fullPage };
-      return await captureScreenshot(options);
-    } catch (error) {
-      console.error('Error taking screenshot:', error);
-      addLog(
-        `Screenshot failed: ${error instanceof Error ? error.message : String(error)}`,
-        'error',
+      const screenshot = await captureScreenshot(options);
+
+      const totalTime = Date.now() - startTime;
+      const imageSizeKB = Math.round(screenshot.length / 1024);
+      console.log(
+        `[PROMPT-INPUT] ${screenshotType} screenshot capture successful in ${totalTime}ms, size: ${imageSizeKB}KB`,
       );
+      addLog(
+        `Screenshot captured (${screenshotType}, ${imageSizeKB}KB)`,
+        'success',
+      );
+
+      return screenshot;
+    } catch (error) {
+      const totalTime = Date.now() - startTime;
+      console.error(
+        `[PROMPT-INPUT] ${screenshotType} screenshot capture failed after ${totalTime}ms:`,
+        error,
+      );
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      addLog(`Screenshot failed: ${errorMessage}`, 'error');
       throw error;
     }
   };

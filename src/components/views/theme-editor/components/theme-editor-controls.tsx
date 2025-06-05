@@ -123,9 +123,9 @@ export const ThemeEditorControls = () => {
         /* Theme Color Variables */
         --primary: oklch(${accentHsl.l}% ${accentHsl.s / 100} ${accentHsl.h});
         --primary-foreground: oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h});
-        --background: oklch(${neutralHsl.l}% ${neutralHsl.s / 100} ${neutralHsl.h});
+        --background: hsl(${neutralHsl.h}, ${neutralHsl.s}%, ${neutralHsl.l}%);
         --foreground: oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h});
-        --card: oklch(${neutralHsl.l}% ${neutralHsl.s / 100} ${neutralHsl.h});
+        --card: hsl(${neutralHsl.h}, ${neutralHsl.s}%, ${neutralHsl.l}%);
         --card-foreground: oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h});
         --accent: oklch(${accentHsl.l}% ${accentHsl.s / 100} ${accentHsl.h});
         --accent-foreground: oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h});

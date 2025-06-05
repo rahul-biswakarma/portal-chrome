@@ -42,6 +42,18 @@ export const LogMessages = {
   // Image processing
   SCREENSHOT_TAKING: 'Taking screenshot of current page...',
   SCREENSHOT_COMPLETE: 'Screenshot captured successfully',
+  SCREENSHOT_TAKING_FULLPAGE: 'Taking full page screenshot...',
+  SCREENSHOT_TAKING_VIEWPORT: 'Taking viewport screenshot...',
+  SCREENSHOT_TAKING_ELEMENT: (selector: string) =>
+    `Taking screenshot of element: ${selector}`,
+  SCREENSHOT_SUCCESS: (type: string, timeMs: number, sizeKB: number) =>
+    `${type} screenshot captured in ${timeMs}ms (${sizeKB}KB)`,
+  SCREENSHOT_ERROR: (type: string, timeMs: number, error: string) =>
+    `${type} screenshot failed after ${timeMs}ms: ${error}`,
+  SCREENSHOT_SAVE_START: (filename: string) =>
+    `Saving screenshot as: ${filename}`,
+  SCREENSHOT_SAVE_SUCCESS: (filename: string, timeMs: number) =>
+    `Screenshot saved successfully in ${timeMs}ms: ${filename}`,
 
   // API interactions
   API_GENERATING_PROMPT: 'Generating prompt for CSS...',
@@ -66,4 +78,63 @@ export const LogMessages = {
   ERROR_CSS_GENERATION: 'Error generating CSS',
   ERROR_CSS_APPLICATION: 'Error applying CSS',
   ERROR_GENERAL: 'An error occurred during processing',
+};
+
+// Screenshot logging utilities
+export const ScreenshotLogger = {
+  logStart: (type: 'full-page' | 'viewport' | 'element', context?: string) => {
+    const contextStr = context ? ` (${context})` : '';
+    console.log(`[SCREENSHOT] Starting ${type} capture${contextStr}...`);
+  },
+
+  logSuccess: (
+    type: 'full-page' | 'viewport' | 'element',
+    timeMs: number,
+    sizeKB: number,
+    context?: string,
+  ) => {
+    const contextStr = context ? ` (${context})` : '';
+    console.log(
+      `[SCREENSHOT] ${type} capture completed${contextStr} in ${timeMs}ms, size: ${sizeKB}KB`,
+    );
+  },
+
+  logError: (
+    type: 'full-page' | 'viewport' | 'element',
+    timeMs: number,
+    error: Error | string,
+    context?: string,
+  ) => {
+    const contextStr = context ? ` (${context})` : '';
+    const errorMsg = error instanceof Error ? error.message : error;
+    console.error(
+      `[SCREENSHOT] ${type} capture failed${contextStr} after ${timeMs}ms: ${errorMsg}`,
+    );
+  },
+
+  logSaveStart: (filename: string) => {
+    console.log(`[SCREENSHOT] Starting save process: ${filename}`);
+  },
+
+  logSaveSuccess: (filename: string, timeMs: number) => {
+    console.log(`[SCREENSHOT] Save completed in ${timeMs}ms: ${filename}`);
+  },
+
+  logSaveError: (filename: string, timeMs: number, error: Error | string) => {
+    const errorMsg = error instanceof Error ? error.message : error;
+    console.error(
+      `[SCREENSHOT] Save failed after ${timeMs}ms (${filename}): ${errorMsg}`,
+    );
+  },
+
+  // Summary logging for multiple screenshots
+  logSessionSummary: (
+    totalScreenshots: number,
+    totalTimeMs: number,
+    totalSizeKB: number,
+  ) => {
+    console.log(
+      `[SCREENSHOT-SUMMARY] Session complete: ${totalScreenshots} screenshots, ${totalTimeMs}ms total, ${totalSizeKB}KB total size`,
+    );
+  },
 };

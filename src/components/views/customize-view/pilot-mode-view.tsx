@@ -70,19 +70,44 @@ export const PilotModeView = () => {
     return dataUrl.split(',')[1];
   };
 
+  // Compress image data URL to reduce token usage
+  const compressImageForAPI = (
+    dataUrl: string,
+    maxWidth = 800,
+  ): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Calculate new dimensions
+        const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+
+        // Draw compressed image
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Get compressed data URL
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        resolve(compressedDataUrl);
+      };
+      img.src = dataUrl;
+    });
+  };
+
   const getApiParameters = async () => {
-    const model =
-      (await getEnvVariable('GEMINI_MODEL')) ||
-      'gemini-2.5-flash-preview-05-20';
-    // Define temperatures for different stages
+    const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-2.0-flash';
+    // Define temperatures for different stages - lowered for more consistency
     const temperatureVisualDiff = parseFloat(
-      (await getEnvVariable('GEMINI_TEMP_VISUAL_DIFF')) || '0.4',
+      (await getEnvVariable('GEMINI_TEMP_VISUAL_DIFF')) || '0.2',
     );
     const temperatureCssGeneration = parseFloat(
-      (await getEnvVariable('GEMINI_TEMP_CSS_GENERATION')) || '0.6',
+      (await getEnvVariable('GEMINI_TEMP_CSS_GENERATION')) || '0.3',
     );
     const temperatureFeedbackLoop = parseFloat(
-      (await getEnvVariable('GEMINI_TEMP_FEEDBACK_LOOP')) || '0.3',
+      (await getEnvVariable('GEMINI_TEMP_FEEDBACK_LOOP')) || '0.2',
     );
     return {
       model,
@@ -285,16 +310,49 @@ export const PilotModeView = () => {
 
   // Take a screenshot of the current page
   const takeScreenshot = async (): Promise<string | null> => {
+    const startTime = Date.now();
+    console.log(
+      '[PILOT-MODE] Starting screenshot capture for feedback analysis...',
+    );
+
     try {
       setFeedbackStage('taking-screenshot');
       setProgress(20);
+      addLog('Taking full page screenshot for analysis...', 'info');
 
       const screenshot = await captureScreenshot({ fullPage: true });
-      setScreenshots([...screenshots, screenshot]);
-      setProgress(30);
-      return screenshot;
+
+      if (screenshot) {
+        setScreenshots([...screenshots, screenshot]);
+        setProgress(30);
+
+        const totalTime = Date.now() - startTime;
+        const imageSizeKB = Math.round(screenshot.length / 1024);
+        console.log(
+          `[PILOT-MODE] Screenshot capture successful in ${totalTime}ms, size: ${imageSizeKB}KB`,
+        );
+        addLog(
+          `Screenshot captured successfully (${imageSizeKB}KB)`,
+          'success',
+        );
+
+        return screenshot;
+      } else {
+        console.error(
+          '[PILOT-MODE] Screenshot capture returned null/empty result',
+        );
+        addLog('Screenshot capture failed - no data returned', 'error');
+        return null;
+      }
     } catch (error) {
-      console.error('Error taking screenshot:', error);
+      const totalTime = Date.now() - startTime;
+      console.error(
+        `[PILOT-MODE] Screenshot capture failed after ${totalTime}ms:`,
+        error,
+      );
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      addLog(`Screenshot capture failed: ${errorMessage}`, 'error');
       return null;
     }
   };
@@ -312,109 +370,120 @@ export const PilotModeView = () => {
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const diffPrompt = `TASK: Analyze images and DOM to create a professional visual transformation plan for a HELP CENTER PORTAL.
+      const diffPrompt = `Compare Image 1 (reference) vs Image 2 (current). Extract SPECIFIC styling details.
 
-🎯 IMAGE ANALYSIS:
-- IMAGE 1 (REFERENCE): Target design aesthetic to inspire the transformation.
-- IMAGE 2 (CURRENT): Current portal state that needs professional enhancement.
+DOM: ${domStructure || 'No elements'}
 
-📋 CURRENT PORTAL STRUCTURE:
-${domStructure || 'No portal elements found'}
+From reference image, identify EXACT:
+- Background colors (hex codes)
+- Text colors
+- Card styling (shadows, borders, radius)
+- Search bar design
+- Header appearance
+- Button styles
 
-CRITICAL CONSIDERATIONS FOR A HELP CENTER:
-- **Professionalism:** The final design must look clean, modern, trustworthy, and user-friendly.
-- **Search Bar Excellence:** A prominent, well-styled search bar is THE MOST IMPORTANT element. It must be preserved, highly visible, and easy to use.
-- **Clear Navigation:** Header and navigation elements must be clear and intuitive.
-- **Readability:** Typography and color choices must ensure high readability of content.
-- **Responsive Design:** Layout should adapt well to different screen sizes (conceptual).
-
-IMPORTANT CSS SELECTOR NOTE:
-- All portal-* identifiers in the DOM are CSS CLASSES, not HTML attributes
-- Use class selectors: .portal-class-name (NOT div[portal-classname])
-- Example: .portal-banner__wrapper, .portal-directory-card, .portal-common-header
-
-REQUIRED ANALYSIS - Generate a detailed visual diff and transformation plan:
-
-**1. VISUAL ELEMENTS EXTRACTION (From REFERENCE - Image 1):**
-   - **Color Palette:** Primary, secondary, accent colors. Aim for a professional and accessible scheme.
-   - **Typography:** Font styles, weights, sizes. Prioritize readability.
-   - **Layout & Spacing:** Overall structure, padding, margins, content density.
-   - **Key Style Elements:** Card styles, button styles, shadow usage, border radius, etc.
-
-**2. CURRENT STATE ASSESSMENT (Image 2 & DOM Structure):**
-   - **Identify Key Portal Components:** Locate CSS classes for:
-     - Search Bar / Search Input field(s)
-     - Main Banner / Hero section
-     - Header / Navigation bar
-     - Content Cards / Directory items
-     - Footer
-     - Buttons
-   - **Critique Current Design:** What aspects of the current design (Image 2) look unprofessional or hinder usability?
-
-**3. TRANSFORMATION MAPPING (Professional Help Center Focus):**
-   Based on the DOM structure and inspired by the REFERENCE (Image 1), plan transformations for:
-   - **Search Bar:** How to make it prominent, visually appealing, and highly functional? Specify styling for its container and input fields.
-   - **Overall Layout:** How to achieve a clean, organized, and professional structure?
-   - **Header/Navigation:** How to ensure clarity and ease of use?
-   - **Content Presentation (Cards/Lists):** How to display information in an accessible and engaging way?
-   - **Color & Typography:** How to apply a professional and readable color scheme and typography?
-   - **Buttons & Interactive Elements:** How to style them for clear affordance and consistency?
-
-**OUTPUT REQUIREMENTS:**
-Create a specific transformation plan that:
-- Prioritizes a professional, user-friendly help center aesthetic.
-- Ensures the search bar is a central, well-styled element.
-- Maps reference design elements to actual portal CSS classes found in DOM.
-- Provides exact color values and measurements where applicable.
-- Gives specific CSS property recommendations using CLASS SELECTORS (.portal-class).
-
-CRITICAL: Remember all portal-* are CSS classes - use .portal-class-name syntax for CSS selectors.
-Do not assume any specific portal class names - work with what's actually present in the DOM. The goal is a professional transformation, not just a copy of the reference if the reference is not suitable for a help center.`;
+Create detailed transformation plan with specific CSS values for .portal-banner__search__*, .portal-directory-card, .portal-common-header to match reference design.`;
 
       const parts: MessagePart[] = [{ text: diffPrompt }];
+
+      // Compress and add images to reduce token usage
       if (isValidImageData(referenceImage)) {
-        const imgData = dataUrlToBase64(referenceImage);
-        const mimeType = referenceImage.split(';')[0].split(':')[1];
-        parts.push({
-          inline_data: {
-            data: imgData,
-            mime_type: mimeType,
-          },
-        });
+        try {
+          const compressedRef = await compressImageForAPI(referenceImage, 600);
+          const imgData = dataUrlToBase64(compressedRef);
+          const mimeType = compressedRef.split(';')[0].split(':')[1];
+          parts.push({
+            inline_data: {
+              data: imgData,
+              mime_type: mimeType,
+            },
+          });
+        } catch (error) {
+          console.warn('Failed to compress reference image, skipping:', error);
+        }
       }
 
       if (isValidImageData(currentScreenshot)) {
-        const imgData = dataUrlToBase64(currentScreenshot);
-        const mimeType = currentScreenshot.split(';')[0].split(':')[1];
-        parts.push({
-          inline_data: {
-            data: imgData,
-            mime_type: mimeType,
-          },
-        });
+        try {
+          const compressedCurrent = await compressImageForAPI(
+            currentScreenshot,
+            600,
+          );
+          const imgData = dataUrlToBase64(compressedCurrent);
+          const mimeType = compressedCurrent.split(';')[0].split(':')[1];
+          parts.push({
+            inline_data: {
+              data: imgData,
+              mime_type: mimeType,
+            },
+          });
+        } catch (error) {
+          console.warn(
+            'Failed to compress current screenshot, skipping:',
+            error,
+          );
+        }
       }
       const { model, temperatureVisualDiff } = await getApiParameters();
       const messages: GeminiMessage[] = [{ role: 'user', parts }];
       const diffSessionId = sessionId || `diff_${Date.now()}`;
 
-      const visualDiffAnalysis = await makeGeminiRequest({
-        apiKey,
-        messages,
-        modelName: model,
-        sessionId: diffSessionId,
-        temperature: temperatureVisualDiff,
-      });
+      // Retry logic for API calls
+      let retryCount = 0;
+      const maxRetries = 3;
 
-      if (!visualDiffAnalysis) {
-        throw new Error('No visual diff analysis returned from API');
+      while (retryCount < maxRetries) {
+        try {
+          const visualDiffAnalysis = await makeGeminiRequest({
+            apiKey,
+            messages,
+            modelName: model,
+            sessionId: diffSessionId,
+            temperature: temperatureVisualDiff,
+          });
+
+          if (!visualDiffAnalysis) {
+            throw new Error('No visual diff analysis returned from API');
+          }
+          console.log('Generated visual diff analysis:', visualDiffAnalysis);
+          addLog('Visual diff analysis completed', 'info');
+          return visualDiffAnalysis.trim();
+        } catch (error) {
+          retryCount++;
+          console.warn(`Visual diff attempt ${retryCount} failed:`, error);
+
+          if (retryCount >= maxRetries) {
+            throw error;
+          }
+
+          // Wait before retry (exponential backoff)
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * retryCount),
+          );
+          addLog(
+            `Retrying visual diff analysis (${retryCount}/${maxRetries})`,
+            'warning',
+          );
+        }
       }
-      console.log('Generated visual diff analysis:', visualDiffAnalysis);
-      addLog('Visual diff analysis completed', 'info');
-      return visualDiffAnalysis.trim();
+
+      // This should never be reached due to the throw in the while loop
+      throw new Error('Unexpected end of retry loop');
     } catch (error) {
       console.error('Error generating visual diff analysis:', error);
-      addLog('Failed to generate visual diff analysis', 'error');
-      return 'Unable to generate detailed visual analysis. Proceeding with basic comparison.';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      addLog(
+        `Failed to generate visual diff analysis: ${errorMessage}`,
+        'error',
+      );
+
+      // Return a basic fallback analysis
+      return `Basic transformation plan:
+- Make search bar prominent with white background and shadow
+- Style cards with modern design and hover effects
+- Clean header with professional colors
+- Use .portal-class-name selectors with !important for overrides`;
     }
   };
 
@@ -430,50 +499,20 @@ Do not assume any specific portal class names - work with what's actually presen
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const cssPrompt = `TASK: Generate COMPLETE CSS for a HELP CENTER PORTAL based on the visual analysis and DOM structure.
+      const cssPrompt = `Generate CSS implementing: ${visualDiffAnalysis}
 
-📋 VISUAL TRANSFORMATION PLAN:
-${visualDiffAnalysis}
+DOM: ${domStructure || 'None'}
+Current: ${cssContent || 'None'}
 
-📋 CURRENT DOM STRUCTURE:
-${domStructure || 'No portal elements found'}
+Requirements:
+- Use .portal-class-name selectors with !important
+- NO COMMENTS in CSS output
+- Transform search bar: prominent white bg, shadows, rounded corners
+- Transform cards: modern shadows, hover effects, white bg
+- Transform header: clean professional styling
+- Apply reference design colors/typography
 
-📋 PREVIOUS CSS (for context, if any):
-${cssContent || 'No existing CSS'}
-
-CRITICAL GOALS FOR HELP CENTER CSS:
-- **Professional Aesthetic:** CSS must result in a clean, modern, trustworthy, and user-friendly interface.
-- **Search Bar Functionality & Style:** Ensure the search bar (identified in the plan) is highly visible, functional, and well-styled. DO NOT REMOVE IT.
-- **Maintain Essential Elements:** All critical portal functions (navigation, content display, search) must remain fully usable.
-- **Readability & Accessibility:** Prioritize readable fonts, good contrast, and accessible design patterns.
-
-CRITICAL CSS SELECTOR REQUIREMENTS:
-- All portal-* identifiers are CSS CLASSES, not HTML attributes
-- ALWAYS use class selectors: .portal-class-name
-- NEVER use attribute selectors: div[portal-class-name] ❌
-- For high specificity use: .portal-class.portal-class
-
-CORRECT EXAMPLES:
-✅ .portal-banner__wrapper { background: blue; }
-✅ .portal-directory-card.portal-directory-card { padding: 20px; }
-✅ .portal-common-header__actions-container { display: flex; }
-
-INCORRECT EXAMPLES:
-❌ div[portal-banner__wrapper] { background: blue; }
-❌ button[portal-common-header__actions-container__login-button] { color: white; }
-
-CSS GENERATION REQUIREMENTS:
-
-1. **Implement Transformation Plan:** Faithfully execute the visual transformation plan, especially regarding the search bar and overall professional look.
-2. **Use Correct CSS Class Selectors:** Target portal CSS classes with: .portal-class-name. Use .portal-class.portal-class for high specificity.
-3. **Complete & Cohesive Styling:** Generate a FULL stylesheet. Do not assume any base styles exist. Create a consistent look and feel.
-4. **Preserve Functionality:** Ensure all interactive elements remain functional. Do not hide or break essential components.
-5. **High-Quality CSS:** Write clean, well-organized CSS. Include comments for major sections (e.g., /* Header Styles */, /* Search Bar Styles */, /* Card Styles */).
-6. **Override Existing Styles:** If transforming an existing page, ensure new styles are specific enough (using .class.class and !important where necessary) to override previous/browser default styles and achieve the desired professional look.
-
-REMEMBER: The goal is a PROFESSIONAL, MODERN, and FUNCTIONAL help center. The search bar is paramount.
-
-Generate production-ready CSS that transforms the portal to match the professional help center design outlined in the plan.`;
+Output ONLY CSS code, no explanations:`;
 
       const cssSessionId = sessionId || `css_${Date.now()}`;
       const messages: GeminiMessage[] = [
@@ -481,31 +520,68 @@ Generate production-ready CSS that transforms the portal to match the profession
       ];
       const { model, temperatureCssGeneration } = await getApiParameters();
 
-      const generatedCSS = await makeGeminiRequest({
-        apiKey,
-        messages,
-        modelName: model,
-        sessionId: cssSessionId,
-        temperature: temperatureCssGeneration,
-      });
+      // Retry logic for CSS generation
+      let retryCount = 0;
+      const maxRetries = 3;
 
-      if (!generatedCSS) {
-        throw new Error('No CSS generated from visual diff analysis');
+      while (retryCount < maxRetries) {
+        try {
+          const generatedCSS = await makeGeminiRequest({
+            apiKey,
+            messages,
+            modelName: model,
+            sessionId: cssSessionId,
+            temperature: temperatureCssGeneration,
+          });
+
+          if (!generatedCSS) {
+            throw new Error('No CSS generated from visual diff analysis');
+          }
+          console.log('Generated CSS from diff analysis:', generatedCSS);
+          addLog('CSS generation completed', 'info');
+          return generatedCSS.trim();
+        } catch (error) {
+          retryCount++;
+          console.warn(`CSS generation attempt ${retryCount} failed:`, error);
+
+          if (retryCount >= maxRetries) {
+            throw error;
+          }
+
+          // Wait before retry
+          await new Promise((resolve) =>
+            setTimeout(resolve, 2000 * retryCount),
+          );
+          addLog(
+            `Retrying CSS generation (${retryCount}/${maxRetries})`,
+            'warning',
+          );
+        }
       }
-      console.log('Generated CSS from diff analysis:', generatedCSS);
-      addLog('CSS generation completed', 'info');
-      return generatedCSS.trim();
+
+      // This should never be reached due to the throw in the while loop
+      throw new Error('Unexpected end of retry loop');
     } catch (error) {
       console.error('Error generating CSS from diff:', error);
-      addLog('Failed to generate CSS from visual analysis', 'error');
-      return null;
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      addLog(`Failed to generate CSS: ${errorMessage}`, 'error');
+
+      // Return more comprehensive fallback CSS if all retries failed
+      return `.portal-banner__search__container { background: white !important; border-radius: 12px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; padding: 12px !important; border: none !important; }
+.portal-banner__search__input { border: none !important; outline: none !important; font-size: 16px !important; padding: 8px !important; }
+.portal-directory-card { background: white !important; border-radius: 16px !important; box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important; padding: 24px !important; border: none !important; transition: all 0.3s ease !important; margin: 16px !important; }
+.portal-directory-card:hover { transform: translateY(-4px) !important; box-shadow: 0 8px 24px rgba(0,0,0,0.2) !important; }
+.portal-common-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; border: none !important; color: white !important; }
+.portal-banner__wrapper { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+.portal-banner__title { color: white !important; font-weight: 600 !important; font-size: 2.5rem !important; }`;
     }
   };
 
   // Stage 3: Get feedback from Gemini about the current result (updated)
   const getFeedback = async (
     newScreenshot: string,
-    domStructure: string,
+    _domStructure: string,
   ): Promise<boolean> => {
     try {
       setFeedbackStage('getting-feedback');
@@ -514,100 +590,57 @@ Generate production-ready CSS that transforms the portal to match the profession
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const feedbackPrompt = `TASK: Evaluate HELP CENTER PORTAL transformation and generate improved CSS.
+      const feedbackPrompt = `Compare Image 1 (ref) vs Image 2 (current). Loop ${feedbackLoopCount}/${maxFeedbackLoops}
 
-CRITICAL GOALS FOR HELP CENTER CSS:
-- **Professionalism:** Final CSS must result in a clean, modern, trustworthy, and user-friendly interface.
-- **Search Bar Functionality & Style:** The search bar MUST be highly visible, functional, and well-styled. It is the most important interactive element.
-- **Maintain Essential Elements:** All critical portal functions (navigation, content display, search) must remain fully usable.
-- **Readability & Accessibility:** Prioritize readable fonts, good contrast, and accessible design patterns.
+Current CSS: ${cssContent || 'None'}
 
-📋 CONTEXT:
-This is feedback loop ${feedbackLoopCount} of ${maxFeedbackLoops} for the current page transformation.
+If 85%+ match: "COMPLETE"
+If needs work: "NEEDS_IMPROVEMENT" + new CSS
 
-📋 IMAGES:
-- IMAGE 1 (REFERENCE): Target design aesthetic to inspire the transformation.
-- IMAGE 2 (CURRENT RESULT): Current transformation result after previous CSS.
-
-📋 CURRENT DOM STRUCTURE:
-${domStructure || 'No portal elements found'}
-
-📋 PREVIOUS CSS (that produced Image 2):
-${cssContent || 'No CSS applied'}
-
-CRITICAL CSS SELECTOR REQUIREMENTS:
-- All portal-* identifiers are CSS CLASSES, not HTML attributes
-- ALWAYS use class selectors: .portal-class-name
-- NEVER use attribute selectors: div[portal-class-name] ❌
-- For high specificity use: .portal-class.portal-class
-
-CORRECT EXAMPLES:
-✅ .portal-banner__wrapper { background: blue; }
-✅ .portal-directory-card.portal-directory-card { padding: 20px; }
-
-INCORRECT EXAMPLES:
-❌ div[portal-banner__wrapper] { background: blue; }
-
-EVALUATION & REGENERATION:
-
-1. **Visual Assessment (Critique Image 2 against Image 1 and Professional Help Center Standards):**
-   - **Search Bar:** Is it prominent, well-styled, and fully functional? If not, this is the #1 priority to fix.
-   - **Professionalism:** Does it look clean, modern, and trustworthy? Identify any unprofessional elements.
-   - **Readability & Clarity:** Is text easy to read? Is navigation clear?
-   - **Visual Gaps:** What are the biggest differences between the current result (Image 2) and the desired professional look (inspired by Image 1)?
-   - **Functionality:** Are all essential elements (buttons, links, navigation) visible and usable?
-
-2. **Decision Criteria:**
-   - If visual match to a professional help center aesthetic is 85%+ satisfactory (AND search bar is excellent): Return "COMPLETE"
-   - If improvements needed (especially to search bar or professionalism): Generate completely NEW CSS from scratch.
-
-**OUTPUT FORMAT:**
-
-If transformation is complete (85%+ match AND excellent search bar):
-MATCH_STATUS: COMPLETE
-
-If improvements needed:
-MATCH_STATUS: NEEDS_IMPROVEMENT
-
-/* Complete NEW CSS for Feedback Loop ${feedbackLoopCount} - Aiming for Professional Help Center */
-[Generate COMPLETE CSS from scratch - NOT incremental changes]
-
-REQUIREMENTS for CSS regeneration:
-- **Prioritize Search Bar:** Ensure it is perfectly styled and functional.
-- **Professionalism First:** Focus on creating a clean, modern, and trustworthy design suitable for a help center.
-- **Use Correct Class Selectors:** .portal-class-name (NOT div[portal-class]).
-- **High Specificity:** Use .portal-class.portal-class and !important where necessary to override previous styles.
-- **Complete Stylesheet:** Generate all CSS rules needed. Do not assume base styles.
-- **Preserve Functionality:** Do not hide or break critical elements.
-- **Organized CSS:** Include comments for major sections.
-
-REMEMBER: All portal-* are CSS classes - use .portal-class-name syntax! The goal is a professional help center with an excellent search experience.
-
-Generate a complete, production-ready CSS solution.`;
+Focus: search bar, professional look, cards`;
 
       const parts: MessagePart[] = [{ text: feedbackPrompt }];
 
-      // Add images for comparison
+      // Add compressed images for comparison
       if (referenceImages.length > 0 && isValidImageData(referenceImages[0])) {
-        const imgData = dataUrlToBase64(referenceImages[0]);
-        const mimeType = referenceImages[0].split(';')[0].split(':')[1];
-        parts.push({
-          inline_data: {
-            data: imgData,
-            mime_type: mimeType,
-          },
-        });
+        try {
+          const compressedRef = await compressImageForAPI(
+            referenceImages[0],
+            500,
+          );
+          const imgData = dataUrlToBase64(compressedRef);
+          const mimeType = compressedRef.split(';')[0].split(':')[1];
+          parts.push({
+            inline_data: {
+              data: imgData,
+              mime_type: mimeType,
+            },
+          });
+        } catch (error) {
+          console.warn(
+            'Failed to compress reference image for feedback:',
+            error,
+          );
+        }
       }
 
       if (isValidImageData(newScreenshot)) {
-        const imgData = dataUrlToBase64(newScreenshot);
-        const mimeType = newScreenshot.split(';')[0].split(':')[1];
-        parts.push({
-          inline_data: {
-            data: imgData,
-            mime_type: mimeType,
-          },
-        });
+        try {
+          const compressedNew = await compressImageForAPI(newScreenshot, 500);
+          const imgData = dataUrlToBase64(compressedNew);
+          const mimeType = compressedNew.split(';')[0].split(':')[1];
+          parts.push({
+            inline_data: {
+              data: imgData,
+              mime_type: mimeType,
+            },
+          });
+        } catch (error) {
+          console.warn(
+            'Failed to compress new screenshot for feedback:',
+            error,
+          );
+        }
       }
 
       // Use same session ID to maintain context
@@ -730,9 +763,16 @@ Generate a complete, production-ready CSS solution.`;
         return false;
       }
 
-      // Get DOM structure for analysis
-      const domStructure = await getPortalDOMStructure();
-      console.log('Extracted DOM structure for analysis:', domStructure);
+      // Get DOM structure for analysis (limit size for token efficiency)
+      const fullDomStructure = await getPortalDOMStructure();
+      const domStructure =
+        fullDomStructure.length > 1000
+          ? fullDomStructure.substring(0, 1000) + '...'
+          : fullDomStructure;
+      console.log(
+        'Extracted DOM structure for analysis (limited):',
+        domStructure,
+      );
 
       // Stage 1: Generate visual diff analysis
       if (referenceImages.length === 0) {
@@ -970,8 +1010,15 @@ Generate a complete, production-ready CSS solution.`;
         throw new Error('Stopped by user');
       }
 
-      // Log the CSS for debugging
-      console.log('Applying CSS from structured output:', css);
+      // Log the CSS for debugging - first 500 chars
+      const cssPreview = css.length > 500 ? css.substring(0, 500) + '...' : css;
+      console.log('Applying CSS to editor:', cssPreview);
+      addLog(`Applying CSS (${css.length} characters)`, 'info');
+
+      // Validate CSS is not empty
+      if (!css || css.trim().length < 10) {
+        throw new Error('Generated CSS is empty or too short');
+      }
 
       // Set CSS content - the CSS editor will handle auto-applying to the page
       setCssContent(css);
@@ -983,8 +1030,13 @@ Generate a complete, production-ready CSS solution.`;
       if (shouldStop) {
         throw new Error('Stopped by user');
       }
+
+      addLog('CSS applied successfully', 'success');
     } catch (error) {
       console.error('Error applying CSS:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      addLog(`Error applying CSS: ${errorMessage}`, 'error');
       throw error; // Re-throw to stop the feedback loop
     }
   };

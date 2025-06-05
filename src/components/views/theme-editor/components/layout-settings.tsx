@@ -123,7 +123,7 @@ export const LayoutSettings = ({
                   }}
                 />
                 <span
-                  className={`text-xs font-medium ${isSelected ? 'text-primary-foreground' : 'text-foreground'}`}
+                  className={`text-xs font-medium ${isSelected ? 'text-primary' : 'text-foreground'}`}
                 >
                   {preset.label}
                 </span>
@@ -150,7 +150,7 @@ export const LayoutSettings = ({
                 }`}
               >
                 <span
-                  className={`text-sm font-medium ${isSelected ? 'text-primary-foreground' : 'text-foreground'}`}
+                  className={`text-sm font-medium ${isSelected ? 'text-primary' : 'text-foreground'}`}
                 >
                   {preset.label}
                 </span>
@@ -186,7 +186,7 @@ export const LayoutSettings = ({
                   }}
                 />
                 <span
-                  className={`text-xs font-medium ${isSelected ? 'text-primary-foreground' : 'text-foreground'}`}
+                  className={`text-xs font-medium ${isSelected ? 'text-primary' : 'text-foreground'}`}
                 >
                   {preset.label}
                 </span>

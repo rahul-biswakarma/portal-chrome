@@ -155,8 +155,7 @@ IMPORTANT: Return ONLY the JSON array, no other text or explanations.`;
     }
 
     const messages: GeminiMessage[] = [{ role: 'user', parts }];
-    const model =
-      (await getEnvVariable('GEMINI_MODEL')) || 'gemini-1.5-flash-latest'; // Updated to general latest flash
+    const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-2.0-flash'; // Updated to general latest flash
 
     const responseText = await makeGeminiRequest({
       // Assuming makeGeminiRequest returns the text directly

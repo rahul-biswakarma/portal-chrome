@@ -80,9 +80,19 @@ export const processReferenceImage = async (
     // Initial screenshot
     let initialScreenshot;
     try {
+      console.log('[IMAGE-TO-CSS] Capturing initial page screenshot...');
+      const screenshotStartTime = Date.now();
       initialScreenshot = await captureScreenshot({ fullPage: true });
+      const screenshotTime = Date.now() - screenshotStartTime;
+      const imageSizeKB = Math.round(initialScreenshot.length / 1024);
+      console.log(
+        `[IMAGE-TO-CSS] Initial screenshot captured in ${screenshotTime}ms, size: ${imageSizeKB}KB`,
+      );
     } catch (error) {
-      console.error('Error in image-to-CSS workflow:', error);
+      console.error(
+        '[IMAGE-TO-CSS] Error capturing initial screenshot:',
+        error,
+      );
       return {
         success: false,
         message: `Error capturing screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -154,7 +164,19 @@ export const processReferenceImage = async (
         }
 
         // Take new screenshot after CSS applied
+        console.log(
+          `[IMAGE-TO-CSS] Capturing screenshot after CSS iteration ${iterations}...`,
+        );
+        const iterationScreenshotStartTime = Date.now();
         currentScreenshot = await captureScreenshot({ fullPage: true });
+        const iterationScreenshotTime =
+          Date.now() - iterationScreenshotStartTime;
+        const iterationImageSizeKB = Math.round(
+          currentScreenshot.length / 1024,
+        );
+        console.log(
+          `[IMAGE-TO-CSS] Iteration ${iterations} screenshot captured in ${iterationScreenshotTime}ms, size: ${iterationImageSizeKB}KB`,
+        );
 
         // Evaluate result
         const evaluation = await evaluateCSSResult(
