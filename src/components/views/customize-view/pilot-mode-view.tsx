@@ -435,19 +435,19 @@ export const PilotModeView = () => {
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const diffPrompt = `Compare Image 1 (reference) vs Image 2 (current). Extract SPECIFIC styling details.
+      const diffPrompt = `Compare Image 1 (reference) vs Image 2 (current). COPY the reference design EXACTLY.
 
 DOM: ${domStructure || 'No elements'}
 
-From reference image, identify EXACT:
-- Background colors (hex codes)
-- Text colors
-- Card styling (shadows, borders, radius)
-- Search bar design
-- Header appearance
-- Button styles
+From reference image, identify EXACT colors and styling:
+- Header background color (extract exact hex/rgb)
+- Header text color
+- Main background color (usually white/light)
+- Search section background and text colors
+- Card backgrounds and borders
+- Button colors and styles
 
-Create detailed transformation plan with specific CSS values for portal-* classes shown in DOM to match reference design.`;
+CRITICAL: Make current page look IDENTICAL to reference. Use CONSERVATIVE colors only. NO gradients, NO decorative elements, NO fantasy themes. Keep it professional and minimal like the reference.`;
 
       const parts: MessagePart[] = [{ text: diffPrompt }];
 
@@ -570,13 +570,15 @@ DOM: ${domStructure || 'None'}
 Current: ${cssContent || 'None'}
 
 Requirements:
-- Generate COMPLETE CSS with DRAMATIC visual impact
+- Generate COMPLETE CSS that EXACTLY matches the reference image
 - Use .portal-class-name selectors with !important
 - NO CSS variables, NO @import, NO :root definitions, NO comments
-- Make search elements visually striking and prominent
-- Transform cards with bold shadows, unique hover effects, vibrant colors
-- Style header with eye-catching design matching reference
-- Apply bold color schemes and dramatic spacing changes
+- Use ONLY colors from the reference image
+- NO gradients, NO decorative elements, NO creative interpretations
+- Keep design MINIMAL and PROFESSIONAL like reference
+- Use simple, clean styling - no fancy effects
+
+CRITICAL: Copy reference design EXACTLY. Be conservative, not creative.
 
 Output ONLY direct CSS rules:`;
 
@@ -659,19 +661,20 @@ Output ONLY direct CSS rules:`;
 
       const feedbackPrompt = `Image 1 = REFERENCE target design. Image 2 = CURRENT result. Loop ${feedbackLoopCount}/${maxFeedbackLoops}
 
-CRITICAL: If current looks almost identical to previous iteration, make DRAMATIC changes!
+CRITICAL: Make current page look EXACTLY like reference image. Be CONSERVATIVE, not creative.
 
 Current CSS: ${cssContent || 'None'}
 
 If visually matches reference 90%+: "MATCH_STATUS: COMPLETE"
-If needs major changes: "MATCH_STATUS: NEEDS_IMPROVEMENT" + COMPLETELY DIFFERENT CSS approach
+If needs changes: "MATCH_STATUS: NEEDS_IMPROVEMENT" + CSS to match reference EXACTLY
 
 NEW CSS MUST:
-- Make DRAMATIC visual changes from current state
-- Change colors, shadows, spacing, typography significantly
+- Copy EXACT colors from reference image
+- Use MINIMAL, professional styling like reference
+- NO gradients, NO decorative elements, NO creative additions
 - NO CSS variables, NO @import statements, NO complex root definitions
 - ONLY direct styling: .class { property: value !important; }
-- Target portal-* classes with bold, dramatic styling differences`;
+- Target portal-* classes to match reference appearance EXACTLY`;
 
       const parts: MessagePart[] = [{ text: feedbackPrompt }];
 
