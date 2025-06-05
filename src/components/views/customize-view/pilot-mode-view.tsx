@@ -97,6 +97,71 @@ export const PilotModeView = () => {
     });
   };
 
+  // Clean CSS response from AI (remove markdown, extra text, etc.)
+  const cleanCSSResponse = (response: string): string => {
+    let cleaned = response;
+
+    console.log(
+      '[PILOT-DEBUG] Raw AI response:',
+      response.substring(0, 300) + '...',
+    );
+
+    // Remove markdown code blocks
+    cleaned = cleaned.replace(/```css\s*/gi, '');
+    cleaned = cleaned.replace(/```\s*$/gi, '');
+    cleaned = cleaned.replace(/```/g, '');
+
+    // Remove status messages and explanatory text at the beginning
+    cleaned = cleaned.replace(/^.*?MATCH_STATUS[^\n]*\n/gi, '');
+    cleaned = cleaned.replace(/^.*?NEEDS_IMPROVEMENT[^\n]*\n/gi, '');
+    cleaned = cleaned.replace(/^.*?COMPLETE[^\n]*\n/gi, '');
+
+    // Remove CSS variables, imports, and complex definitions (we want only direct styling)
+    cleaned = cleaned.replace(/@import[^;]+;/g, '');
+    cleaned = cleaned.replace(/:root\s*{[^}]*}/gs, '');
+    cleaned = cleaned.replace(/--[^:]+:[^;]+;/g, '');
+
+    // Remove any leading/trailing whitespace
+    cleaned = cleaned.trim();
+
+    // Look for CSS patterns (class selectors, attribute selectors, etc.)
+    const cssPatterns = [
+      /\.[a-zA-Z0-9_-]+[^{]*\s*{/, // .class-name {
+      /\[[^}]*\]\s*{/, // [attribute] {
+      /[a-zA-Z0-9_-]+\s*{/, // element {
+    ];
+
+    let cssStartIndex = -1;
+    for (const pattern of cssPatterns) {
+      const match = cleaned.match(pattern);
+      if (match) {
+        const matchIndex = cleaned.indexOf(match[0]);
+        if (cssStartIndex === -1 || matchIndex < cssStartIndex) {
+          cssStartIndex = matchIndex;
+        }
+      }
+    }
+
+    // If we found CSS, extract from that point
+    if (cssStartIndex >= 0) {
+      cleaned = cleaned.substring(cssStartIndex);
+    }
+
+    // Remove any trailing explanatory text after the last CSS rule
+    const lastBraceIndex = cleaned.lastIndexOf('}');
+    if (lastBraceIndex > 0) {
+      cleaned = cleaned.substring(0, lastBraceIndex + 1);
+    }
+
+    console.log(
+      '[PILOT-DEBUG] Cleaned CSS:',
+      cleaned.substring(0, 500) + '...',
+    );
+    console.log('[PILOT-DEBUG] CSS length:', cleaned.length);
+
+    return cleaned.trim();
+  };
+
   const getApiParameters = async () => {
     const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-2.0-flash';
     // Define temperatures for different stages - lowered for more consistency
@@ -107,7 +172,7 @@ export const PilotModeView = () => {
       (await getEnvVariable('GEMINI_TEMP_CSS_GENERATION')) || '0.3',
     );
     const temperatureFeedbackLoop = parseFloat(
-      (await getEnvVariable('GEMINI_TEMP_FEEDBACK_LOOP')) || '0.2',
+      (await getEnvVariable('GEMINI_TEMP_FEEDBACK_LOOP')) || '0.7',
     );
     return {
       model,
@@ -382,7 +447,7 @@ From reference image, identify EXACT:
 - Header appearance
 - Button styles
 
-Create detailed transformation plan with specific CSS values for .portal-banner__search__*, .portal-directory-card, .portal-common-header to match reference design.`;
+Create detailed transformation plan with specific CSS values for portal-* classes shown in DOM to match reference design.`;
 
       const parts: MessagePart[] = [{ text: diffPrompt }];
 
@@ -505,14 +570,15 @@ DOM: ${domStructure || 'None'}
 Current: ${cssContent || 'None'}
 
 Requirements:
+- Generate COMPLETE CSS with DRAMATIC visual impact
 - Use .portal-class-name selectors with !important
-- NO COMMENTS in CSS output
-- Transform search bar: prominent white bg, shadows, rounded corners
-- Transform cards: modern shadows, hover effects, white bg
-- Transform header: clean professional styling
-- Apply reference design colors/typography
+- NO CSS variables, NO @import, NO :root definitions, NO comments
+- Make search elements visually striking and prominent
+- Transform cards with bold shadows, unique hover effects, vibrant colors
+- Style header with eye-catching design matching reference
+- Apply bold color schemes and dramatic spacing changes
 
-Output ONLY CSS code, no explanations:`;
+Output ONLY direct CSS rules:`;
 
       const cssSessionId = sessionId || `css_${Date.now()}`;
       const messages: GeminiMessage[] = [
@@ -537,9 +603,12 @@ Output ONLY CSS code, no explanations:`;
           if (!generatedCSS) {
             throw new Error('No CSS generated from visual diff analysis');
           }
-          console.log('Generated CSS from diff analysis:', generatedCSS);
+
+          // Clean the generated CSS
+          const cleanedCSS = cleanCSSResponse(generatedCSS);
+          console.log('Generated CSS from diff analysis:', cleanedCSS);
           addLog('CSS generation completed', 'info');
-          return generatedCSS.trim();
+          return cleanedCSS;
         } catch (error) {
           retryCount++;
           console.warn(`CSS generation attempt ${retryCount} failed:`, error);
@@ -567,14 +636,12 @@ Output ONLY CSS code, no explanations:`;
         error instanceof Error ? error.message : 'Unknown error';
       addLog(`Failed to generate CSS: ${errorMessage}`, 'error');
 
-      // Return more comprehensive fallback CSS if all retries failed
-      return `.portal-banner__search__container { background: white !important; border-radius: 12px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; padding: 12px !important; border: none !important; }
-.portal-banner__search__input { border: none !important; outline: none !important; font-size: 16px !important; padding: 8px !important; }
-.portal-directory-card { background: white !important; border-radius: 16px !important; box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important; padding: 24px !important; border: none !important; transition: all 0.3s ease !important; margin: 16px !important; }
-.portal-directory-card:hover { transform: translateY(-4px) !important; box-shadow: 0 8px 24px rgba(0,0,0,0.2) !important; }
-.portal-common-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; border: none !important; color: white !important; }
-.portal-banner__wrapper { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
-.portal-banner__title { color: white !important; font-weight: 600 !important; font-size: 2.5rem !important; }`;
+      // Return basic fallback CSS with common portal patterns if all retries failed
+      return `[class*="portal-banner"] { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+[class*="portal-search"] { background: white !important; border-radius: 12px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; padding: 12px !important; border: none !important; }
+[class*="portal-card"], [class*="portal-directory"] { background: white !important; border-radius: 16px !important; box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important; padding: 24px !important; border: none !important; transition: all 0.3s ease !important; margin: 16px !important; }
+[class*="portal-card"]:hover, [class*="portal-directory"]:hover { transform: translateY(-4px) !important; box-shadow: 0 8px 24px rgba(0,0,0,0.2) !important; }
+[class*="portal-header"] { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; border: none !important; color: white !important; }`;
     }
   };
 
@@ -590,14 +657,21 @@ Output ONLY CSS code, no explanations:`;
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const feedbackPrompt = `Compare Image 1 (ref) vs Image 2 (current). Loop ${feedbackLoopCount}/${maxFeedbackLoops}
+      const feedbackPrompt = `Image 1 = REFERENCE target design. Image 2 = CURRENT result. Loop ${feedbackLoopCount}/${maxFeedbackLoops}
+
+CRITICAL: If current looks almost identical to previous iteration, make DRAMATIC changes!
 
 Current CSS: ${cssContent || 'None'}
 
-If 85%+ match: "COMPLETE"
-If needs work: "NEEDS_IMPROVEMENT" + new CSS
+If visually matches reference 90%+: "MATCH_STATUS: COMPLETE"
+If needs major changes: "MATCH_STATUS: NEEDS_IMPROVEMENT" + COMPLETELY DIFFERENT CSS approach
 
-Focus: search bar, professional look, cards`;
+NEW CSS MUST:
+- Make DRAMATIC visual changes from current state
+- Change colors, shadows, spacing, typography significantly
+- NO CSS variables, NO @import statements, NO complex root definitions
+- ONLY direct styling: .class { property: value !important; }
+- Target portal-* classes with bold, dramatic styling differences`;
 
       const parts: MessagePart[] = [{ text: feedbackPrompt }];
 
@@ -671,10 +745,17 @@ Focus: search bar, professional look, cards`;
         return false;
       }
 
+      console.log('Full feedback result from AI:', feedbackResult);
+      addLog(
+        `AI feedback response: ${feedbackResult.substring(0, 200)}...`,
+        'info',
+      );
+
       // Parse the feedback result
       const isComplete =
         feedbackResult.includes('MATCH_STATUS: COMPLETE') ||
-        feedbackResult.includes('MATCH_STATUS:COMPLETE');
+        feedbackResult.includes('MATCH_STATUS:COMPLETE') ||
+        feedbackResult.toUpperCase().includes('COMPLETE');
 
       if (isComplete) {
         addLog(
@@ -684,50 +765,62 @@ Focus: search bar, professional look, cards`;
         return true;
       } else if (
         feedbackResult.includes('MATCH_STATUS: NEEDS_IMPROVEMENT') ||
-        feedbackResult.includes('MATCH_STATUS:NEEDS_IMPROVEMENT')
+        feedbackResult.includes('MATCH_STATUS:NEEDS_IMPROVEMENT') ||
+        feedbackResult.toUpperCase().includes('NEEDS_IMPROVEMENT')
       ) {
-        // Extract complete new CSS - look for CSS after the status line
+        // Extract complete new CSS - try multiple approaches
+        let cssContent = '';
+
+        // First try: Look for CSS after the status line
         const lines = feedbackResult.split('\n');
         const statusIndex = lines.findIndex(
           (line) =>
             line.includes('MATCH_STATUS: NEEDS_IMPROVEMENT') ||
-            line.includes('MATCH_STATUS:NEEDS_IMPROVEMENT'),
+            line.includes('MATCH_STATUS:NEEDS_IMPROVEMENT') ||
+            line.toUpperCase().includes('NEEDS_IMPROVEMENT'),
         );
 
         if (statusIndex >= 0) {
           // Get everything after the status line
-          const cssLines = lines.slice(statusIndex + 1);
+          cssContent = lines
+            .slice(statusIndex + 1)
+            .join('\n')
+            .trim();
+        } else {
+          // Second try: Look for CSS patterns in the entire response
+          cssContent = feedbackResult;
+        }
 
-          // Find the start of CSS (look for CSS comment or selector)
-          const cssStartIndex = cssLines.findIndex(
-            (line) =>
-              line.trim().startsWith('/*') ||
-              line.trim().startsWith('.') ||
-              line.trim().startsWith('#') ||
-              line.includes('{'),
+        console.log('Raw CSS content before cleaning:', cssContent);
+
+        // Clean up markdown formatting and extract CSS
+        cssContent = cleanCSSResponse(cssContent);
+
+        console.log('Cleaned CSS content:', cssContent);
+
+        if (cssContent && cssContent.length > 10) {
+          // Replace entire CSS content with new version
+          await applyCSSToEditor(cssContent);
+          addLog(
+            `Generated new complete CSS for feedback loop ${feedbackLoopCount}`,
+            'info',
+          );
+          console.log('Generated new complete CSS:', cssContent);
+          console.log(
+            '[PILOT-DEBUG] About to apply new CSS from feedback:',
+            cssContent.substring(0, 500) + '...',
           );
 
-          if (cssStartIndex >= 0) {
-            const newCompleteCSS = cssLines
-              .slice(cssStartIndex)
-              .join('\n')
-              .trim();
-
-            if (newCompleteCSS && newCompleteCSS.length > 10) {
-              // Replace entire CSS content with new version
-              await applyCSSToEditor(newCompleteCSS);
-              addLog(
-                `Generated new complete CSS for feedback loop ${feedbackLoopCount}`,
-                'info',
-              );
-              console.log('Generated new complete CSS:', newCompleteCSS);
-            } else {
-              addLog('No valid CSS found in feedback response', 'warning');
-            }
-          } else {
-            addLog('No CSS code found in feedback response', 'warning');
-            console.log('Feedback response:', feedbackResult);
-          }
+          // Wait for CSS to be applied to the page
+          addLog('Allowing CSS to take effect...', 'info');
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        } else {
+          addLog('No valid CSS found in feedback response', 'warning');
+          console.log('Raw feedback response:', feedbackResult);
+          console.log(
+            '[PILOT-DEBUG] No valid CSS found, cssContent:',
+            cssContent,
+          );
         }
 
         return false;
@@ -845,8 +938,9 @@ Focus: search bar, professional look, cards`;
           return true;
         }
 
-        // Wait before next iteration to allow CSS to settle
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // Wait longer for new CSS to be applied and settle before next iteration
+        addLog('Waiting for CSS changes to take effect...', 'info');
+        await new Promise((resolve) => setTimeout(resolve, 4000));
       }
 
       // If we've reached max loops without completion
@@ -1020,10 +1114,130 @@ Focus: search bar, professional look, cards`;
         throw new Error('Generated CSS is empty or too short');
       }
 
-      // Set CSS content - the CSS editor will handle auto-applying to the page
+      // Set CSS content in the editor context
       setCssContent(css);
 
-      // Wait a moment for the CSS to be applied
+      // Also apply CSS directly to the page to ensure it takes effect immediately
+      const tab = await getActiveTab();
+      if (tab.id) {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: (cssContent) => {
+            // Remove existing style if it exists
+            const existingStyle = document.getElementById(
+              'portal-generated-css',
+            );
+            if (existingStyle) {
+              existingStyle.remove();
+            }
+
+            // Create and add new style element
+            const styleEl = document.createElement('style');
+            styleEl.id = 'portal-generated-css';
+            styleEl.textContent = cssContent;
+            document.head.appendChild(styleEl);
+          },
+          args: [css],
+        });
+        addLog('CSS applied directly to page', 'info');
+
+        // Verify CSS was applied by checking the DOM
+        const verificationResult = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const styleEl = document.getElementById('portal-generated-css');
+            return {
+              exists: !!styleEl,
+              contentLength: styleEl ? styleEl.textContent?.length || 0 : 0,
+            };
+          },
+        });
+
+        if (verificationResult[0]?.result) {
+          const { exists, contentLength } = verificationResult[0].result;
+          console.log(
+            '[PILOT-DEBUG] CSS verification - exists:',
+            exists,
+            'length:',
+            contentLength,
+          );
+          if (!exists) {
+            addLog(
+              'Warning: CSS style element not found in DOM after application',
+              'warning',
+            );
+          } else {
+            addLog(`CSS verified in DOM (${contentLength} characters)`, 'info');
+          }
+        }
+
+        // Check if CSS selectors match any elements on the page
+        const selectorCheckResult = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: (cssContent) => {
+            // Extract CSS selectors from the CSS content
+            const selectorMatches =
+              cssContent.match(/\.[a-zA-Z0-9_-]+[^{]*(?=\s*{)/g) || [];
+            const uniqueSelectors = [
+              ...new Set(selectorMatches.map((sel) => sel.trim())),
+            ];
+
+            const selectorResults = [];
+            for (const selector of uniqueSelectors.slice(0, 10)) {
+              // Check first 10 selectors
+              try {
+                const elements = document.querySelectorAll(selector);
+                selectorResults.push({
+                  selector,
+                  matchCount: elements.length,
+                  exists: elements.length > 0,
+                });
+              } catch (e) {
+                selectorResults.push({
+                  selector,
+                  matchCount: 0,
+                  exists: false,
+                  error: e instanceof Error ? e.message : String(e),
+                });
+              }
+            }
+
+            return selectorResults;
+          },
+          args: [css],
+        });
+
+        if (selectorCheckResult[0]?.result) {
+          const selectorResults = selectorCheckResult[0].result;
+          console.log(
+            '[PILOT-DEBUG] CSS selector check results:',
+            selectorResults,
+          );
+
+          const workingSelectors = selectorResults.filter((r) => r.exists);
+          const failingSelectors = selectorResults.filter((r) => !r.exists);
+
+          if (failingSelectors.length > 0) {
+            console.log(
+              '[PILOT-DEBUG] Selectors with no matches:',
+              failingSelectors.map((r) => r.selector),
+            );
+            addLog(
+              `Warning: ${failingSelectors.length} CSS selectors don't match any elements`,
+              'warning',
+            );
+          }
+
+          if (workingSelectors.length > 0) {
+            addLog(
+              `${workingSelectors.length} CSS selectors found matching elements`,
+              'info',
+            );
+          }
+        }
+      }
+
+      // Wait a moment for the CSS to be applied and take effect
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Check again after waiting
