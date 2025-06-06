@@ -125,26 +125,158 @@ export const PilotModeView = () => {
       cleaned = cleaned.substring(0, lastBraceIndex + 1);
     }
 
+    // Check for non-portal classes and provide warnings
+    const cssLines = cleaned.split('\n');
+    let hasNonPortalClasses = false;
+    const nonPortalClasses: string[] = [];
+
+    cssLines.forEach((line) => {
+      const trimmedLine = line.trim();
+      if (trimmedLine.includes('{') && trimmedLine.includes('.')) {
+        // Extract selector part before {
+        const selectorPart = trimmedLine.split('{')[0].trim();
+        // Check if it contains non-portal classes
+        const classMatches = selectorPart.match(/\.[a-zA-Z0-9_-]+/g);
+        if (classMatches) {
+          classMatches.forEach((cls) => {
+            if (!cls.startsWith('.portal-')) {
+              hasNonPortalClasses = true;
+              if (!nonPortalClasses.includes(cls)) {
+                nonPortalClasses.push(cls);
+              }
+            }
+          });
+        }
+      }
+    });
+
+    if (hasNonPortalClasses) {
+      console.warn(
+        '[PILOT-DEBUG] Non-portal classes detected:',
+        nonPortalClasses,
+      );
+      addLog(
+        `Warning: CSS contains non-portal classes: ${nonPortalClasses.join(', ')}`,
+        'warning',
+      );
+
+      // Attempt to filter out obvious non-portal classes but keep the CSS structure
+      // This is a cautious approach - we log warnings but don't break the CSS
+      const problematicPrefixes = [
+        '.humand-',
+        '.site-',
+        '.main-content-',
+        '.top-header',
+        '.frequent-searches-',
+        '.contact-',
+        '.footer-',
+        '.header-',
+        '.search-',
+        '.card-',
+        '.navigation-',
+      ];
+      let filteredCss = cleaned;
+
+      problematicPrefixes.forEach((prefix) => {
+        // Remove CSS blocks that start with these non-portal prefixes
+        const regex = new RegExp(`\\${prefix}[^{]*\\{[^}]*\\}`, 'g');
+        const matches = filteredCss.match(regex);
+        if (matches) {
+          addLog(
+            `Filtering out ${matches.length} non-portal CSS rules with prefix '${prefix}'`,
+            'info',
+          );
+          filteredCss = filteredCss.replace(regex, '');
+        }
+      });
+
+      // Also remove body and html selectors if they're not using portal classes
+      filteredCss = filteredCss.replace(/^body\s*\{[^}]*\}/gm, '');
+      filteredCss = filteredCss.replace(/^html\s*\{[^}]*\}/gm, '');
+      filteredCss = filteredCss.replace(/^main\s*\{[^}]*\}/gm, '');
+
+      // Only use filtered CSS if it still has meaningful content
+      if (filteredCss.trim().length > 50 && filteredCss.includes('.portal-')) {
+        cleaned = filteredCss;
+        addLog('Applied CSS filtering to remove non-portal classes', 'info');
+      } else {
+        addLog(
+          'CSS filtering would remove too much content, keeping original CSS',
+          'warning',
+        );
+      }
+    }
+
+    // Additional quality checks and filtering for Humand design matching
+    const portalClassCount = (cleaned.match(/\.portal-[a-zA-Z0-9_-]+/g) || [])
+      .length;
+    const hasGradients = cleaned.includes('gradient');
+    const hasBrightColors = /(?:orange|coral|#FF|#F0F|violet|purple)/i.test(
+      cleaned,
+    );
+    const hasHumandBlue =
+      /#3B4B8C|#4A5498/i.test(cleaned) ||
+      cleaned.toLowerCase().includes('blue');
+
+    if (portalClassCount === 0) {
+      addLog(
+        'Critical: No portal classes found in CSS after cleaning',
+        'error',
+      );
+    }
+
+    if (hasGradients) {
+      console.warn(
+        '[PILOT-DEBUG] CSS contains gradients, Humand uses solid blue colors',
+      );
+      // Replace gradients with solid Humand blue for header/hero sections
+      cleaned = cleaned.replace(
+        /background[^:]*:\s*[^;]*gradient[^;]*;/gi,
+        'background: #3B4B8C !important;',
+      );
+      addLog(
+        'Auto-replaced gradients with Humand blue for proper styling',
+        'info',
+      );
+    }
+
+    if (!hasHumandBlue) {
+      console.warn(
+        '[PILOT-DEBUG] CSS missing Humand blue colors, adding guidance',
+      );
+      addLog(
+        'CSS should include Humand blue (#3B4B8C) for header and hero sections',
+        'info',
+      );
+    }
+
+    if (hasBrightColors) {
+      console.warn(
+        '[PILOT-DEBUG] CSS contains bright colors, Humand uses professional blue/white scheme',
+      );
+    }
+
     console.log(
       '[PILOT-DEBUG] Cleaned CSS:',
       cleaned.substring(0, 500) + '...',
     );
     console.log('[PILOT-DEBUG] CSS length:', cleaned.length);
+    console.log('[PILOT-DEBUG] Portal classes found:', portalClassCount);
 
     return cleaned.trim();
   };
 
   const getApiParameters = async () => {
     const model = (await getEnvVariable('GEMINI_MODEL')) || 'gemini-2.0-flash';
-    // Define temperatures for different stages - lowered for more consistency
+    // Define temperatures for different stages - lowered significantly for more consistency
     const temperatureVisualDiff = parseFloat(
-      (await getEnvVariable('GEMINI_TEMP_VISUAL_DIFF')) || '0.2',
+      (await getEnvVariable('GEMINI_TEMP_VISUAL_DIFF')) || '0.1',
     );
     const temperatureCssGeneration = parseFloat(
-      (await getEnvVariable('GEMINI_TEMP_CSS_GENERATION')) || '0.3',
+      (await getEnvVariable('GEMINI_TEMP_CSS_GENERATION')) || '0.1',
     );
     const temperatureFeedbackLoop = parseFloat(
-      (await getEnvVariable('GEMINI_TEMP_FEEDBACK_LOOP')) || '0.7',
+      (await getEnvVariable('GEMINI_TEMP_FEEDBACK_LOOP')) || '0.2',
     );
     return {
       model,
@@ -391,6 +523,91 @@ export const PilotModeView = () => {
     }
   };
 
+  // Helper function to analyze visual differences and provide specific guidance
+  const analyzeVisualDifferences = (
+    availableClasses: string[],
+    currentCSS: string,
+  ): string => {
+    const guidance = [];
+
+    // CRITICAL: Check for banner background image removal
+    const hasBannerImageRemoval =
+      currentCSS.includes('.portal-banner__wrapper') &&
+      (currentCSS.includes('background-image: none') ||
+        currentCSS.includes('background-image:none'));
+    if (!hasBannerImageRemoval) {
+      guidance.push(
+        'CRITICAL: REMOVE banner background image - Target .portal-banner__wrapper with background-image: none !important',
+      );
+      guidance.push(
+        'CRITICAL: SET solid blue background for banner - .portal-banner__wrapper { background: #3B4B8C !important; }',
+      );
+    }
+
+    // Check for proper Humand blue backgrounds
+    const hasProperBlueHeader =
+      currentCSS.includes('#3B4B8C') ||
+      currentCSS.includes('#4A5498') ||
+      currentCSS.includes('blue');
+    if (!hasProperBlueHeader) {
+      guidance.push(
+        'CRITICAL: ADD blue header background (#3B4B8C) - Humand has blue header',
+      );
+    }
+
+    // Check for gradients (Humand uses solid colors)
+    if (
+      currentCSS.includes('gradient') ||
+      currentCSS.includes('linear-gradient')
+    ) {
+      guidance.push(
+        'REMOVE gradients - Humand uses solid blue colors (#3B4B8C)',
+      );
+    }
+
+    // Check for missing essential Humand elements
+    const essentialClasses = [
+      'portal-public',
+      'portal-header',
+      'portal-common-header',
+      'portal-banner__wrapper',
+    ];
+    const missingEssential = essentialClasses.filter(
+      (cls) => availableClasses.includes(cls) && !currentCSS.includes(cls),
+    );
+    if (missingEssential.length > 0) {
+      guidance.push(
+        `STYLE missing essential classes: ${missingEssential.join(', ')}`,
+      );
+    }
+
+    // Specific Humand design guidance with banner focus
+    guidance.push(
+      'HUMAND BANNER: REMOVE background image completely - use solid blue (#3B4B8C)',
+    );
+    guidance.push(
+      'HUMAND HEADER: Blue background (#3B4B8C) with white navigation text',
+    );
+    guidance.push(
+      'HUMAND HERO: Blue section with white title "How can we help?"',
+    );
+    guidance.push(
+      'HUMAND SEARCH: White rounded search bar in blue hero section',
+    );
+    guidance.push(
+      'HUMAND CONTENT: White background with clean card grid layout',
+    );
+    guidance.push(
+      'HUMAND CARDS: White background, simple icons, clean typography',
+    );
+    guidance.push('HUMAND FOOTER: Blue background matching header (#3B4B8C)');
+    guidance.push('HUMAND STYLE: Professional knowledge base aesthetic');
+
+    return guidance.length > 0
+      ? `\nHUMAND DESIGN REQUIREMENTS:\n${guidance.map((g) => `- ${g}`).join('\n')}`
+      : '';
+  };
+
   // Stage 1: Generate initial CSS from reference and current images
   const generateInitialCSS = async (
     referenceImage: string,
@@ -404,22 +621,192 @@ export const PilotModeView = () => {
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const cssPrompt = `Generate CSS to make Image 2 (current) look exactly like Image 1 (reference).
+      // Get all available portal classes for comprehensive context
+      const tab = await getActiveTab();
+      let availablePortalClasses: string[] = [];
+      let computedStyles: Record<string, Record<string, string>> = {};
 
-Image 1 = REFERENCE TARGET (what the final result should look like)
-Image 2 = CURRENT STATE (what needs to be changed)
+      if (tab.id) {
+        try {
+          // Extract all portal classes from the page
+          const portalClassResult = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              const portalElements =
+                document.querySelectorAll('[class*="portal-"]');
+              const portalClasses = new Set<string>();
 
-DOM STRUCTURE: ${domStructure || 'No elements'}
+              portalElements.forEach((element) => {
+                Array.from(element.classList).forEach((cls) => {
+                  if (cls.startsWith('portal-')) {
+                    portalClasses.add(cls);
+                  }
+                });
+              });
 
-REQUIREMENTS:
-- Analyze Image 1 reference colors, styling, layout
-- Generate CSS to transform Image 2 to match Image 1 exactly
-- Use CSS CLASS selectors with DOT notation: .portal-class-name { }
-- NO attribute selectors [portal-class-name] - ONLY class selectors .portal-class-name
-- Apply !important to ensure styles override existing ones
-- Target portal-* classes shown in DOM structure
+              return Array.from(portalClasses).sort();
+            },
+          });
 
-Output ONLY CSS class rules with DOT notation:`;
+          availablePortalClasses = portalClassResult[0]?.result || [];
+
+          // Get computed styles for better context
+          const computedStylesResult = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              const portalElements =
+                document.querySelectorAll('[class*="portal-"]');
+              const result: Record<string, Record<string, string>> = {};
+
+              portalElements.forEach((element) => {
+                const classes = Array.from(element.classList);
+                const portalClasses = classes.filter((cls) =>
+                  cls.startsWith('portal-'),
+                );
+                const computedStyle = window.getComputedStyle(element);
+
+                portalClasses.forEach((portalClass) => {
+                  if (!result[portalClass]) {
+                    const styles: Record<string, string> = {};
+                    // Key style properties to capture
+                    const props = [
+                      'color',
+                      'background-color',
+                      'font-size',
+                      'font-weight',
+                      'font-family',
+                      'padding',
+                      'margin',
+                      'border',
+                      'border-radius',
+                      'display',
+                      'width',
+                      'height',
+                      'text-align',
+                      'line-height',
+                      'box-shadow',
+                      'border-color',
+                      'border-width',
+                    ];
+
+                    props.forEach((prop) => {
+                      const value = computedStyle.getPropertyValue(prop);
+                      if (
+                        value &&
+                        value !== '' &&
+                        value !== 'initial' &&
+                        value !== 'auto'
+                      ) {
+                        styles[prop] = value;
+                      }
+                    });
+
+                    result[portalClass] = styles;
+                  }
+                });
+              });
+
+              return result;
+            },
+          });
+
+          computedStyles = computedStylesResult[0]?.result || {};
+        } catch (error) {
+          console.warn(
+            'Failed to extract portal classes or computed styles:',
+            error,
+          );
+        }
+      }
+
+      // Create comprehensive context for better CSS generation
+      const availableClassesList =
+        availablePortalClasses.length > 0
+          ? availablePortalClasses.map((cls) => `.${cls}`).join('\n')
+          : 'No portal classes found';
+
+      const computedStylesText =
+        Object.keys(computedStyles).length > 0
+          ? Object.entries(computedStyles)
+              .map(([cls, styles]) => {
+                const styleProps = Object.entries(styles)
+                  .map(([prop, value]) => `  ${prop}: ${value}`)
+                  .join('\n');
+                return `.${cls} {\n${styleProps}\n}`;
+              })
+              .join('\n\n')
+          : 'No computed styles available';
+
+      const cssPrompt = `Generate CSS to transform the current page to match the HUMAND design exactly.
+
+HUMAND DESIGN SPECIFICATIONS (EXACT TARGET):
+- Blue header background (#3B4B8C or similar dark blue)
+- White navigation text in header
+- Blue hero section with centered white text "How can we help?"
+- White rounded search bar in hero section
+- Small blue pill-shaped buttons below search (Frequent searches)
+- White main content area with clean card layout
+- Cards have simple icons and clean typography
+- Blue footer background matching header
+- Professional, clean knowledge base aesthetic
+
+CRITICAL: REMOVE BANNER BACKGROUND IMAGE
+- Target .portal-banner__wrapper class
+- Remove background-image completely
+- Use solid blue background (#3B4B8C) instead
+- Override any inline background-image styles
+
+AVAILABLE PORTAL CLASSES (ONLY USE THESE):
+${availableClassesList}
+
+COMPUTED STYLES FOR CONTEXT:
+${computedStylesText}
+
+DOM STRUCTURE:
+${domStructure || 'No DOM elements available'}
+
+EXACT HUMAND DESIGN REQUIREMENTS:
+1. HEADER: Dark blue background (#3B4B8C), white text, clean navigation
+2. HERO/BANNER SECTION:
+   - REMOVE background-image completely
+   - Use solid blue background (#3B4B8C)
+   - Target .portal-banner__wrapper specifically
+   - Override: background-image: none !important;
+   - Set: background: #3B4B8C !important;
+3. HERO TEXT: Centered white title, white search bar
+4. SEARCH BAR: White background, rounded corners, subtle border
+5. FREQUENT SEARCHES: Small blue pill buttons below search
+6. MAIN CONTENT: White background, clean card grid layout
+7. CARDS: White background, simple icons, clean typography, subtle shadows
+8. FOOTER: Blue background matching header
+9. TYPOGRAPHY: Clean, professional fonts, good contrast
+
+CSS GENERATION RULES:
+- ONLY use class selectors from the AVAILABLE PORTAL CLASSES list above
+- Use dot notation: .portal-class-name { }
+- Apply !important to ensure styles override existing ones and inline styles
+- CRITICAL: Target .portal-banner__wrapper to remove background image
+- Use BLUE backgrounds for header/hero/footer (#3B4B8C or #4A5498)
+- Use WHITE backgrounds for search bar and main content (#FFFFFF)
+- Create clean card layouts with proper spacing
+- Match Humand's professional knowledge base aesthetic exactly
+
+SPECIFIC BANNER IMAGE OVERRIDE:
+.portal-banner__wrapper {
+  background-image: none !important;
+  background: #3B4B8C !important;
+}
+
+CRITICAL REQUIREMENTS:
+- Transform current page to look exactly like Humand reference
+- REMOVE the banner background image completely
+- Use solid blue (#3B4B8C) for banner/hero section
+- Create white search bar with rounded corners
+- Build clean white card layout for main content
+- Use blue footer matching header
+- Generate comprehensive CSS covering all visible elements
+
+Output ONLY CSS with dot notation selectors:`;
 
       const parts: MessagePart[] = [{ text: cssPrompt }];
 
@@ -473,8 +860,72 @@ Output ONLY CSS class rules with DOT notation:`;
       }
 
       const cleanedCSS = cleanCSSResponse(generatedCSS);
+
+      // Validate that the initial CSS only uses portal classes
+      const cssLines = cleanedCSS.split('\n');
+      const hasOnlyPortalClasses = cssLines.every((line) => {
+        const trimmedLine = line.trim();
+        if (
+          !trimmedLine ||
+          trimmedLine.startsWith('/*') ||
+          trimmedLine.endsWith('*/')
+        )
+          return true;
+        if (trimmedLine.includes('{') && trimmedLine.includes('.')) {
+          // Extract selector part before {
+          const selectorPart = trimmedLine.split('{')[0].trim();
+          // Check if it contains non-portal classes
+          const classMatches = selectorPart.match(/\.[a-zA-Z0-9_-]+/g);
+          if (classMatches) {
+            return classMatches.every((cls) => cls.startsWith('.portal-'));
+          }
+        }
+        return true;
+      });
+
+      // Log detailed CSS analysis
+      const portalClassCount = (
+        cleanedCSS.match(/\.portal-[a-zA-Z0-9_-]+/g) || []
+      ).length;
+      const backgroundColorRules = (
+        cleanedCSS.match(/background-color:[^;]+/g) || []
+      ).length;
+      const colorRules = (cleanedCSS.match(/color:[^;]+/g) || []).length;
+
+      console.log('[PILOT-DEBUG] Initial CSS Analysis:', {
+        totalLength: cleanedCSS.length,
+        portalClassCount,
+        backgroundColorRules,
+        colorRules,
+        hasOnlyPortalClasses,
+      });
+
+      if (!hasOnlyPortalClasses) {
+        addLog(
+          'Warning: Initial CSS contains non-portal classes, but applying anyway',
+          'warning',
+        );
+      } else {
+        addLog(
+          `Generated high-quality CSS with ${portalClassCount} portal class rules`,
+          'success',
+        );
+      }
+
+      // Additional validation for CSS quality
+      if (cleanedCSS.length < 100) {
+        addLog(
+          'Warning: Generated CSS seems very short, may be incomplete',
+          'warning',
+        );
+      }
+
+      if (portalClassCount === 0) {
+        addLog('Error: No portal classes found in generated CSS', 'error');
+      }
+
       console.log('Generated initial CSS:', cleanedCSS);
-      addLog('Initial CSS generation completed', 'info');
+      addLog('Initial CSS generation completed successfully', 'info');
       return cleanedCSS;
     } catch (error) {
       console.error('Error generating initial CSS:', error);
@@ -498,34 +949,167 @@ Output ONLY CSS class rules with DOT notation:`;
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) throw new Error('Gemini API key not found');
 
-      const feedbackPrompt = `You are analyzing TWO website images to determine if they match.
+      // Get all available portal classes and computed styles
+      const tab = await getActiveTab();
+      let availablePortalClasses: string[] = [];
+      let computedStyles: Record<string, Record<string, string>> = {};
 
-CURRENT CSS APPLIED:
-${currentCSS || 'No CSS applied yet'}
+      if (tab.id) {
+        try {
+          // Extract all portal classes from the page
+          const portalClassResult = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              const portalElements =
+                document.querySelectorAll('[class*="portal-"]');
+              const portalClasses = new Set<string>();
 
-IMAGE ANALYSIS:
-- FIRST image attached = REFERENCE TARGET (what the final result should look like)
-- SECOND image attached = CURRENT PAGE (what we have now after applying the CSS above)
+              portalElements.forEach((element) => {
+                Array.from(element.classList).forEach((cls) => {
+                  if (cls.startsWith('portal-')) {
+                    portalClasses.add(cls);
+                  }
+                });
+              });
 
-TASK: Compare both images and decide:
+              return Array.from(portalClasses).sort();
+            },
+          });
 
-1. Do they look virtually identical? (same colors, layout, styling)
-2. If YES → respond with: "DONE"
-3. If NO → generate COMPLETE NEW CSS to make the CURRENT PAGE match the REFERENCE TARGET exactly
+          availablePortalClasses = portalClassResult[0]?.result || [];
 
-If generating CSS:
-- Generate COMPLETE CSS for the entire page (not incremental changes)
-- Study the REFERENCE TARGET colors, fonts, spacing, shadows
-- Include ALL styling: header, background, search, cards, text, etc.
-- Use CSS CLASS selectors: .portal-class-name { }
-- Apply !important for all properties
-- Target these DOM classes: ${domStructure}
+          // Get computed styles for better context
+          const computedStylesResult = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              const portalElements =
+                document.querySelectorAll('[class*="portal-"]');
+              const result: Record<string, Record<string, string>> = {};
 
-CRITICAL: Generate COMPLETE CSS that transforms CURRENT PAGE to match REFERENCE TARGET exactly.
+              portalElements.forEach((element) => {
+                const classes = Array.from(element.classList);
+                const portalClasses = classes.filter((cls) =>
+                  cls.startsWith('portal-'),
+                );
+                const computedStyle = window.getComputedStyle(element);
 
-Response format:
-- If images are identical: just say "DONE"
-- If not identical: provide COMPLETE CSS only`;
+                portalClasses.forEach((portalClass) => {
+                  if (!result[portalClass]) {
+                    const styles: Record<string, string> = {};
+                    // Key style properties to capture
+                    const props = [
+                      'color',
+                      'background-color',
+                      'font-size',
+                      'font-weight',
+                      'font-family',
+                      'padding',
+                      'margin',
+                      'border',
+                      'border-radius',
+                      'display',
+                      'width',
+                      'height',
+                      'text-align',
+                      'line-height',
+                      'box-shadow',
+                      'border-color',
+                      'border-width',
+                    ];
+
+                    props.forEach((prop) => {
+                      const value = computedStyle.getPropertyValue(prop);
+                      if (
+                        value &&
+                        value !== '' &&
+                        value !== 'initial' &&
+                        value !== 'auto'
+                      ) {
+                        styles[prop] = value;
+                      }
+                    });
+
+                    result[portalClass] = styles;
+                  }
+                });
+              });
+
+              return result;
+            },
+          });
+
+          computedStyles = computedStylesResult[0]?.result || {};
+        } catch (error) {
+          console.warn(
+            'Failed to extract portal classes or computed styles:',
+            error,
+          );
+        }
+      }
+
+      // Create comprehensive context for better feedback
+      const availableClassesList =
+        availablePortalClasses.length > 0
+          ? availablePortalClasses.map((cls) => `.${cls}`).join('\n')
+          : 'No portal classes found';
+
+      const computedStylesText =
+        Object.keys(computedStyles).length > 0
+          ? Object.entries(computedStyles)
+              .map(([cls, styles]) => {
+                const styleProps = Object.entries(styles)
+                  .map(([prop, value]) => `  ${prop}: ${value}`)
+                  .join('\n');
+                return `.${cls} {\n${styleProps}\n}`;
+              })
+              .join('\n\n')
+          : 'No computed styles available';
+
+      // Get specific visual guidance based on current state
+      const visualGuidance = analyzeVisualDifferences(
+        availablePortalClasses,
+        currentCSS || '',
+      );
+
+      const feedbackPrompt = `Analyze the current design and provide CSS improvements to better match HUMAND reference design.
+
+HUMAND TARGET SPECIFICATIONS:
+- Dark blue header background (#3B4B8C)
+- Blue hero section with white text "How can we help?"
+- WHITE search bar (not blue) in hero section - very important
+- White main content area with clean cards
+- Blue footer matching header
+- BANNER IMAGE MUST BE REMOVED - check .portal-banner__wrapper has no background-image
+
+CRITICAL BANNER CHECK:
+- Verify .portal-banner__wrapper has background-image: none !important
+- Should use solid blue background (#3B4B8C) instead of image
+- Override any inline background-image styles completely
+
+VISUAL ASSESSMENT REQUIRED:
+1. BANNER/HERO: Is background image removed? Is it solid blue?
+2. SEARCH BAR: Is it white (not blue)? Does it stand out in blue hero?
+3. HEADER: Is it dark blue with white text?
+4. MAIN CONTENT: Are cards clean with white backgrounds?
+5. FOOTER: Does it match header blue color?
+6. OVERALL: Does it look like professional Humand knowledge base?
+
+AVAILABLE PORTAL CLASSES (ONLY USE THESE):
+${availableClassesList}
+
+COMPUTED STYLES FOR CONTEXT:
+${computedStylesText}
+
+DOM STRUCTURE:
+${domStructure || 'No DOM structure available'}${visualGuidance}
+
+Provide specific CSS improvements focusing on:
+- Removing banner background image completely
+- Making search bar white and prominent
+- Matching Humand's clean professional aesthetic
+- Using proper blue (#3B4B8C) and white colors
+
+ONLY use portal classes. Include !important for overrides.`;
 
       const parts: MessagePart[] = [{ text: feedbackPrompt }];
 
@@ -591,6 +1175,81 @@ Response format:
       // Otherwise, extract CSS
       const cleanedCSS = cleanCSSResponse(feedbackResult);
       if (cleanedCSS && cleanedCSS.length > 10) {
+        // Validate that the CSS only uses portal classes
+        const cssLines = cleanedCSS.split('\n');
+        const hasOnlyPortalClasses = cssLines.every((line) => {
+          const trimmedLine = line.trim();
+          if (
+            !trimmedLine ||
+            trimmedLine.startsWith('/*') ||
+            trimmedLine.endsWith('*/')
+          )
+            return true;
+          if (trimmedLine.includes('{') && trimmedLine.includes('.')) {
+            // Extract selector part before {
+            const selectorPart = trimmedLine.split('{')[0].trim();
+            // Check if it contains non-portal classes
+            const classMatches = selectorPart.match(/\.[a-zA-Z0-9_-]+/g);
+            if (classMatches) {
+              return classMatches.every((cls) => cls.startsWith('.portal-'));
+            }
+          }
+          return true;
+        });
+
+        // Log detailed CSS analysis for feedback iteration
+        const portalClassCount = (
+          cleanedCSS.match(/\.portal-[a-zA-Z0-9_-]+/g) || []
+        ).length;
+        const backgroundColorRules = (
+          cleanedCSS.match(/background-color:[^;]+/g) || []
+        ).length;
+        const colorRules = (cleanedCSS.match(/color:[^;]+/g) || []).length;
+        const hasBackgroundChanges = cleanedCSS
+          .toLowerCase()
+          .includes('background');
+        const hasColorChanges = cleanedCSS.toLowerCase().includes('color:');
+
+        console.log(
+          `[PILOT-DEBUG] Feedback Loop ${feedbackLoopCount} CSS Analysis:`,
+          {
+            totalLength: cleanedCSS.length,
+            portalClassCount,
+            backgroundColorRules,
+            colorRules,
+            hasOnlyPortalClasses,
+            hasBackgroundChanges,
+            hasColorChanges,
+          },
+        );
+
+        if (!hasOnlyPortalClasses) {
+          addLog(
+            'Warning: Generated CSS contains non-portal classes, but applying anyway',
+            'warning',
+          );
+        } else {
+          addLog(
+            `Feedback loop ${feedbackLoopCount}: Generated CSS with ${portalClassCount} portal class rules`,
+            'success',
+          );
+        }
+
+        // Additional quality checks
+        if (portalClassCount === 0) {
+          addLog(
+            `Feedback loop ${feedbackLoopCount}: Warning - No portal classes found in generated CSS`,
+            'warning',
+          );
+        }
+
+        if (!hasBackgroundChanges && !hasColorChanges) {
+          addLog(
+            `Feedback loop ${feedbackLoopCount}: Warning - CSS doesn't seem to address color/background changes`,
+            'warning',
+          );
+        }
+
         addLog(
           `Generated new CSS for feedback loop ${feedbackLoopCount}`,
           'info',

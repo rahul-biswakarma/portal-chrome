@@ -113,6 +113,7 @@ REQUIREMENTS:
 4. Create harmonious color schemes with proper contrast.
    - Provide 'accentColor', 'accentLabelColor' (for text/icons on accent), 'neutralColor' (for backgrounds).
    - Optionally, provide 'neutralTextColor' for primary text on neutral backgrounds. If not provided, ensure 'accentLabelColor' or a standard dark/light color would be appropriate.
+   - The neutralColor will be automatically applied to portal header, footer, and container elements.
 5. Use rem units for layout values:
    - Spacing: 0.225rem-0.275rem range (where 0.25rem = 100% base, default)
    - Radius: 0rem-0.5rem range (where 0.0625rem = default small radius)

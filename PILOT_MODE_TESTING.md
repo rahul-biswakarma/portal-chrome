@@ -202,3 +202,218 @@ div [portal-home-page] [tailwind: mx-4 py-6 bg-blue-100]
       |_ h2 [portal-card-title] [tailwind: text-lg font-semibold]
       |_ p [portal-card-description] [tailwind: text-gray-600]
 ```
+
+# Portal Chrome Extension - Pilot Mode Testing
+
+## Overview
+
+This document outlines the testing procedures and capabilities for the Pilot Mode feature of the Portal Chrome Extension.
+
+## Pilot Mode Capabilities
+
+### 1. Reference Image Collection
+
+- Upload 1-3 reference images showing the desired design
+- Images are used as visual targets for CSS generation
+- Supports common image formats (PNG, JPG, etc.)
+
+### 2. Two-Stage Customization Process
+
+#### Stage 1: Home Page Customization
+
+- Automatically detects portal-\* classes in the DOM
+- Generates initial CSS based on reference images
+- Runs feedback loops to iteratively improve the styling
+- Takes screenshots to compare against reference images
+
+#### Stage 2: Inner Page Navigation & Customization
+
+- Automatically navigates to inner pages by clicking portal-directory-card elements
+- Applies the same customization process to inner pages
+- Maintains consistency across the portal
+
+### 3. Feedback Loop System (IMPROVED)
+
+The feedback loop system has been significantly enhanced to address quality degradation issues:
+
+#### Previous Issues:
+
+- Generated wrong CSS using custom classes like `.humand-`, `.site-`, etc.
+- Did not provide available portal classes to the AI
+- Lacked current CSS context and computed styles
+- Quality degraded after first iteration
+
+#### New Improvements:
+
+**1. Comprehensive Context Provision:**
+
+- Extracts all available `.portal-` classes from the DOM
+- Provides current computed styles for each portal class
+- Sends complete current CSS along with new requests
+- Includes DOM structure for better understanding
+
+**2. Enhanced Prompts:**
+
+- Clear instructions to ONLY use `.portal-` class selectors
+- Explicit warnings against creating custom class names
+- Better guidance for maintaining quality from first generation
+- Emphasis on preserving good existing styles while improving mismatches
+
+**3. CSS Validation:**
+
+- Validates generated CSS to ensure only portal classes are used
+- Provides warnings when non-portal classes are detected
+- Filters out problematic non-portal CSS rules automatically
+- Maintains CSS quality through iterations
+
+**4. Improved Initial Generation:**
+
+- Uses same comprehensive context as feedback loops
+- Better instructions for creating robust, maintainable CSS
+- Validates initial CSS for portal-only classes
+- Creates strong foundation for iterative improvements
+
+#### Technical Implementation:
+
+```typescript
+// Enhanced feedback loop with comprehensive context
+const getSimpleFeedback = async (newScreenshot, domStructure, currentCSS) => {
+  // Extract all portal classes from DOM
+  const availablePortalClasses = await extractPortalClasses();
+
+  // Get computed styles for context
+  const computedStyles = await extractComputedStyles();
+
+  // Provide comprehensive prompt with:
+  // - Current CSS
+  // - Available portal classes
+  // - Computed styles
+  // - Clear instructions for portal-only usage
+
+  // Validate generated CSS
+  const hasOnlyPortalClasses = validatePortalOnlyCSS(generatedCSS);
+};
+```
+
+## Testing Procedures
+
+### Prerequisites
+
+1. **API Keys Required:**
+
+   - Gemini API Key (for AI-powered CSS generation)
+   - Set via environment variables or extension options
+
+2. **Compatible Websites:**
+   - Must contain elements with `portal-*` class names
+   - Portal elements should be properly structured in the DOM
+
+### Test Cases
+
+#### Test Case 1: Basic Functionality
+
+1. **Setup:**
+
+   - Navigate to a portal-enabled website
+   - Open the extension and go to Pilot Mode
+   - Upload 1-2 reference images
+
+2. **Expected Behavior:**
+
+   - Extension detects portal classes
+   - Generates initial CSS based on reference images
+   - Applies CSS and takes screenshots
+   - Runs feedback loops (max 3 iterations)
+   - Provides option to navigate to inner pages
+
+3. **Success Criteria:**
+   - CSS generated uses only `.portal-` classes
+   - Visual styling improves with each iteration
+   - No custom class names (like `.humand-`) in generated CSS
+   - Process completes within reasonable time
+
+#### Test Case 2: Edge Cases
+
+1. **No Portal Classes Found:**
+
+   - Expected: Warning message, graceful degradation
+
+2. **API Key Missing:**
+
+   - Expected: Clear error message, setup instructions
+
+3. **Network Issues:**
+
+   - Expected: Timeout handling, retry mechanisms
+
+4. **Invalid Reference Images:**
+   - Expected: Format validation, error handling
+
+#### Test Case 3: CSS Quality Validation
+
+1. **Initial CSS Generation:**
+
+   - Should contain only `.portal-` class selectors
+   - Should be comprehensive and well-structured
+   - Should provide good foundation for iterations
+
+2. **Feedback Loop Iterations:**
+   - Should maintain portal-only classes
+   - Should preserve good existing styles
+   - Should only modify styles that don't match reference
+   - Should improve visual matching with each iteration
+
+### Performance Metrics
+
+- **CSS Generation Time:** < 30 seconds per iteration
+- **Screenshot Capture:** < 5 seconds
+- **Feedback Loop:** Max 3 iterations, 2-3 minutes total
+- **Memory Usage:** Monitor for memory leaks during long sessions
+
+### Common Issues & Troubleshooting
+
+#### Issue: "Non-portal classes detected"
+
+- **Cause:** AI generated CSS with custom class names
+- **Fix:** Enhanced prompts now prevent this issue
+- **Monitoring:** CSS validation provides warnings
+
+#### Issue: "Quality degradation after first iteration"
+
+- **Cause:** Insufficient context in feedback loops
+- **Fix:** Comprehensive context now provided to AI
+- **Prevention:** Better prompts and CSS validation
+
+#### Issue: "CSS not applying correctly"
+
+- **Cause:** Specificity issues or malformed CSS
+- **Solution:** Use !important declarations, validate CSS syntax
+
+### Monitoring & Logging
+
+- Enable debug logs: `[PILOT-DEBUG]` prefixed messages
+- Monitor API request/response times
+- Track CSS validation warnings
+- Review generated CSS for quality issues
+
+### Future Improvements
+
+1. **Enhanced Visual Comparison:** More sophisticated image analysis
+2. **CSS Optimization:** Minification and optimization of generated CSS
+3. **Template Library:** Pre-built CSS templates for common portal layouts
+4. **A/B Testing:** Compare different AI models and prompts for best results
+
+## Example Workflow
+
+```
+1. User uploads reference image showing desired design
+2. Extension detects portal classes: [portal-header, portal-card, portal-footer]
+3. Initial CSS generated with comprehensive context
+4. CSS applied, screenshot taken
+5. Feedback loop compares screenshot to reference
+6. AI generates improved CSS using only portal classes
+7. Process repeats until visual match achieved or max iterations reached
+8. User can navigate to inner pages for consistent styling
+```
+
+This improved system ensures high-quality, maintainable CSS generation that uses only the available portal classes and maintains visual consistency throughout the feedback process.

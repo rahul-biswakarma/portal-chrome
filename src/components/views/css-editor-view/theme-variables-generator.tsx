@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useAppContext } from '@/contexts';
-import { Plus, RotateCcw } from 'lucide-react';
+import { RotateCcw } from 'lucide-react';
 import {
   Accordion,
   AccordionContent,
@@ -392,15 +392,7 @@ export const ThemeVariablesGenerator = ({
   };
 
   if (!showGenerator && !forceShow) {
-    return (
-      <Button
-        variant="outline"
-        className="mb-2"
-        onClick={() => setShowGenerator(true)}
-      >
-        <Plus className="mr-2 h-4 w-4" /> Add Theme Variables
-      </Button>
-    );
+    return null;
   }
 
   return (

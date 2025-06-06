@@ -212,6 +212,13 @@ export const ThemeEditorControls = () => {
         --border-width-unit: ${borderWidthUnit}rem;
         --radius: ${radiusUnit}rem;
       }
+
+      /* Portal-specific classes with neutral background */
+      .portal-common-header,
+      .portal-home-page__container,
+      .portal-common-footer {
+        background-color: hsl(${neutralHsl.h}, ${neutralHsl.s}%, ${neutralHsl.l}%) !important;
+      }
     `;
   }, [
     headingFont,
@@ -244,7 +251,9 @@ export const ThemeEditorControls = () => {
   const handleAccentColorChange = (color: string) => setAccentColor(color);
   const handleAccentLabelColorChange = (color: string) =>
     setAccentLabelColor(color);
-  const handleNeutralColorChange = (color: string) => setNeutralColor(color);
+  const handleNeutralColorChange = (color: string) => {
+    setNeutralColor(color);
+  };
 
   // Handlers for layout changes
   const handleSpacingUnitChange = (value: number) => setSpacingUnit(value);

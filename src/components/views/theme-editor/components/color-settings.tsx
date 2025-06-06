@@ -1,4 +1,10 @@
 import { Label } from '@/components/ui/label';
+import { HexColorPicker } from 'react-colorful';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 
 interface ColorSettingsProps {
   accentColor: string;
@@ -39,13 +45,27 @@ export const ColorSettings = ({
           {label}
         </Label>
         <div className="flex items-center gap-2">
-          <input
-            type="color"
-            value={isValidHex ? value : '#000000'}
-            onChange={(e) => onChange(e.target.value)}
-            className="w-12 h-12 rounded-md border-2 border-border hover:border-primary transition-colors shadow-sm cursor-pointer bg-transparent"
-            aria-label={`Pick color for ${label}`}
-          />
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="w-12 h-12 rounded-md border-2 border-border hover:border-primary transition-colors shadow-sm cursor-pointer bg-transparent relative overflow-hidden"
+                style={{ backgroundColor: isValidHex ? value : '#000000' }}
+                aria-label={`Pick color for ${label}`}
+              >
+                <span className="sr-only">Open color picker</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-3" side="right">
+              <div className="mb-2 text-xs font-medium text-center text-muted-foreground">
+                {(isValidHex ? value : '#000000').toUpperCase()}
+              </div>
+              <HexColorPicker
+                color={isValidHex ? value : '#000000'}
+                onChange={onChange}
+              />
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     );
