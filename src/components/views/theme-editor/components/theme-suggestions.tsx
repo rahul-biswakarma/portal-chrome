@@ -7,7 +7,6 @@ import {
   CardContent,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 
 // These are your utility functions, ensure their paths are correct
@@ -237,182 +236,68 @@ IMPORTANT: Return ONLY the JSON array, no other text or explanations.`;
 
 // New component for the aesthetic theme preview card content
 const AestheticThemePreviewCardContent = ({ theme }: { theme: Theme }) => {
-  const spacing = theme.spacingUnit;
-  const radius = theme.radiusUnit;
-
-  // Determine contrasting text/line color based on the neutralColor's lightness
-  // This will be used for abstract lines and dots inside the preview
+  // Determine contrasting text color based on the neutralColor's lightness
   const isNeutralLight = isColorLight(theme.neutralColor);
-  const previewLineColor = theme.neutralTextColor
-    ? theme.neutralTextColor
-    : isNeutralLight
-      ? '#4A5568'
-      : '#E2E8F0'; // Tailwind gray-700 and gray-300
-
-  // Color for the dots in the top bar (slightly darker/lighter than neutral)
-  // const topBarDotColor = isNeutralLight
-  //   ? `rgba(${parseInt(theme.neutralColor.slice(1, 3), 16) - 20}, ${parseInt(theme.neutralColor.slice(3, 5), 16) - 20}, ${parseInt(theme.neutralColor.slice(5, 7), 16) - 20}, 1)` // crude darken
-  //   : `rgba(${parseInt(theme.neutralColor.slice(1, 3), 16) + 20}, ${parseInt(theme.neutralColor.slice(3, 5), 16) + 20}, ${parseInt(theme.neutralColor.slice(5, 7), 16) + 20}, 1)`; // crude lighten
-
-  // Fallback for topBarDotColor if hex manipulation is too complex without a library
-  const safeTopBarDotColor = isNeutralLight ? '#CBD5E0' : '#4A5568'; // Tailwind gray-400 / gray-700
-
-  // Background for the inner content area (slightly different from main neutral)
-  // For simplicity, we'll use the main neutralColor and rely on borders or shadows for separation if needed.
-  // Or, a fixed offset. Let's use a fixed offset for demonstration.
-  // const innerContentBg = isNeutralLight
-  //   ? `rgba(${Math.max(0, parseInt(theme.neutralColor.slice(1, 3), 16) - 10)}, ${Math.max(0, parseInt(theme.neutralColor.slice(3, 5), 16) - 10)}, ${Math.max(0, parseInt(theme.neutralColor.slice(5, 7), 16) - 10)}, 1)`
-  //   : `rgba(${Math.min(255, parseInt(theme.neutralColor.slice(1, 3), 16) + 10)}, ${Math.min(255, parseInt(theme.neutralColor.slice(3, 5), 16) + 10)}, ${Math.min(255, parseInt(theme.neutralColor.slice(5, 7), 16) + 10)}, 1)`;
-  const safeInnerContentBg = isNeutralLight ? '#F7FAFC' : '#2D3748'; // Tailwind gray-100 / gray-800
-
-  const listSectionBg = isNeutralLight ? '#FFFFFF' : '#1A202C'; // White or Tailwind gray-900
+  const textColor = isNeutralLight ? '#374151' : '#F9FAFB'; // Dark gray for light bg, light gray for dark bg
 
   return (
-    <div
-      className="flex flex-col gap-1 overflow-hidden" // Reduced gap for tighter look
-      style={{
-        padding: `${spacing * 0.75}rem`, // Use theme spacing
-        borderRadius: `${radius}rem`, // Use theme radius
-        // The main card will have theme.neutralColor as background
-      }}
-    >
-      {/* Top bar */}
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header section with accent color */}
       <div
-        className="flex items-center gap-1 px-1"
-        style={{ height: `${spacing * 1.5}rem` }}
+        className="h-8 w-full relative"
+        style={{ backgroundColor: theme.accentColor }}
       >
-        <span
-          className="block w-2 h-2 rounded-full"
-          style={{ backgroundColor: safeTopBarDotColor }}
-        ></span>
-        <span
-          className="block w-2 h-2 rounded-full"
-          style={{ backgroundColor: safeTopBarDotColor }}
-        ></span>
-        <span
-          className="block w-2 h-2 rounded-full"
-          style={{ backgroundColor: safeTopBarDotColor }}
-        ></span>
-      </div>
-
-      {/* Main content area */}
-      <div
-        className="relative p-2 overflow-hidden" // Reduced padding
-        style={{
-          backgroundColor: safeInnerContentBg, // Slightly different neutral
-          borderRadius: `${radius * 0.75}rem`,
-          minHeight: '60px', // Ensure some height
-        }}
-      >
-        {/* Wavy background element - using accent color with opacity */}
-        <div
-          className="absolute top-[-10%] left-[-10%] w-[120%] h-[120%] opacity-20 -z-1"
-          style={{
-            backgroundColor: theme.accentColor,
-            borderRadius: '30% 70% 70% 30% / 30% 30% 70% 70%',
-            transform: 'rotate(-15deg)',
-          }}
-        />
-        <div className="relative z-10 flex justify-between items-start">
-          <div className="flex-grow pr-2">
-            {' '}
-            {/* Text lines group */}
-            <div
-              className="h-2 mb-1"
-              style={{
-                width: '70%',
-                backgroundColor: previewLineColor,
-                borderRadius: `${radius * 0.25}rem`,
-              }}
-            ></div>
-            <div
-              className="h-1.5 mb-1"
-              style={{
-                width: '90%',
-                backgroundColor: previewLineColor,
-                borderRadius: `${radius * 0.25}rem`,
-              }}
-            ></div>
-            <div
-              className="h-1.5"
-              style={{
-                width: '50%',
-                backgroundColor: previewLineColor,
-                borderRadius: `${radius * 0.25}rem`,
-              }}
-            ></div>
-          </div>
-          <div // Accent placeholder shape
-            className="flex-shrink-0"
+        <div className="absolute inset-0 flex items-center justify-end pr-2">
+          <div
+            className="w-4 h-4 rounded"
             style={{
-              width: `${spacing * 3.5}rem`,
-              height: `${spacing * 3.5}rem`,
-              backgroundColor: theme.accentColor,
-              borderRadius: `${radius * 0.5}rem`,
+              backgroundColor: theme.accentLabelColor,
+              opacity: 0.9,
             }}
-          ></div>
+          />
         </div>
       </div>
 
-      {/* Lower list-like section */}
+      {/* Main content area with neutral background */}
       <div
-        className="p-2 mt-1" // Reduced padding and margin
-        style={{
-          backgroundColor: listSectionBg,
-          borderRadius: `${radius * 0.75}rem`,
-        }}
+        className="flex-1 p-3 flex flex-col justify-between"
+        style={{ backgroundColor: theme.neutralColor }}
       >
-        {[
-          theme.accentColor,
-          theme.accentLabelColor,
-          theme.neutralTextColor || previewLineColor,
-        ].map((color, i) => (
-          <div key={i} className="flex items-center gap-1.5 mb-1 last:mb-0">
-            <span
-              className="block flex-shrink-0"
-              style={{
-                width: `${spacing * 1}rem`,
-                height: `${spacing * 1}rem`,
-                backgroundColor: color,
-                borderRadius: `${radius * 0.25}rem`,
-              }}
-            ></span>
-            <div
-              className="flex-grow h-1"
-              style={{
-                backgroundColor: previewLineColor,
-                opacity: 0.7,
-                borderRadius: `${radius * 0.25}rem`,
-              }}
-            ></div>
-            <div className="flex flex-col gap-px">
-              <i
-                className="block w-px h-px rounded-full"
-                style={{
-                  backgroundColor: previewLineColor,
-                  width: '1.5px',
-                  height: '1.5px',
-                }}
-              ></i>
-              <i
-                className="block w-px h-px rounded-full"
-                style={{
-                  backgroundColor: previewLineColor,
-                  width: '1.5px',
-                  height: '1.5px',
-                }}
-              ></i>
-              <i
-                className="block w-px h-px rounded-full"
-                style={{
-                  backgroundColor: previewLineColor,
-                  width: '1.5px',
-                  height: '1.5px',
-                }}
-              ></i>
-            </div>
-          </div>
-        ))}
+        {/* Content lines */}
+        <div className="space-y-2">
+          <div
+            className="h-2 rounded-full"
+            style={{
+              backgroundColor: textColor,
+              opacity: 0.8,
+              width: '80%',
+            }}
+          />
+          <div
+            className="h-1.5 rounded-full"
+            style={{
+              backgroundColor: textColor,
+              opacity: 0.6,
+              width: '60%',
+            }}
+          />
+        </div>
+
+        {/* Color palette indicator */}
+        <div className="flex items-center space-x-1 mt-3">
+          <div
+            className="w-3 h-3 rounded-full border border-white/20"
+            style={{ backgroundColor: theme.accentColor }}
+          />
+          <div
+            className="w-3 h-3 rounded-full border border-white/20"
+            style={{ backgroundColor: theme.accentLabelColor }}
+          />
+          <div
+            className="w-3 h-3 rounded-full border border-white/20"
+            style={{ backgroundColor: theme.neutralColor }}
+          />
+        </div>
       </div>
     </div>
   );
@@ -452,10 +337,6 @@ export const ThemeSuggestions = ({
     }
   };
 
-  const getCardTitleColor = (neutralColor: string | undefined) => {
-    return isColorLight(neutralColor) ? '#1A202C' : '#F7FAFC'; // Dark for light bg, Light for dark bg
-  };
-
   return (
     <div className="flex flex-col gap-4 pt-3">
       <div className="flex justify-between items-center">
@@ -465,7 +346,7 @@ export const ThemeSuggestions = ({
         <Button onClick={handleGenerateClick} disabled={isLoading} size="sm">
           {isLoading ? (
             <>
-              <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-2"></div>
+              <div className="inline-block w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mr-2"></div>
               Generating...
             </>
           ) : (
@@ -476,7 +357,7 @@ export const ThemeSuggestions = ({
 
       {isLoading && (
         <div className="text-sm text-blue-700 bg-blue-100 p-3 rounded-md flex items-center gap-2 border border-blue-200">
-          <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+          <div className="inline-block w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin flex-shrink-0"></div>
           Analyzing page and crafting personalized themes with Gemini AI... This
           might take a moment.
         </div>
@@ -490,44 +371,30 @@ export const ThemeSuggestions = ({
       )}
 
       {suggestedThemes && suggestedThemes.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {suggestedThemes.map((theme, index) => (
             <Card
               key={index}
-              className="shadow-lg overflow-hidden transition-all hover:shadow-xl cursor-pointer"
+              className="overflow-hidden transition-all hover:shadow-lg cursor-pointer border-0 group"
               style={{
-                backgroundColor: theme.neutralColor,
-                borderRadius: '0px',
-                border: `${theme.borderWidthUnit}rem solid ${isColorLight(theme.neutralColor) ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.1)'}`,
-                aspectRatio: '1 / 1',
+                aspectRatio: '4 / 5',
                 display: 'flex',
                 flexDirection: 'column',
               }}
               onClick={() => onApplyTheme(theme)}
             >
-              <CardHeader className="pb-1 pt-2 px-2.5 flex-shrink-0">
-                <CardTitle
-                  className="text-xs font-semibold truncate"
-                  style={{
-                    fontFamily: theme.headingFont,
-                    color: getCardTitleColor(theme.neutralColor),
-                  }}
-                  title={theme.name}
-                >
-                  {theme.name}
-                </CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2 pt-3 px-3 flex-shrink-0 bg-white"></CardHeader>
               {/* CardContent will now be our aesthetic preview */}
               <CardContent className="p-0 flex-grow">
                 <AestheticThemePreviewCardContent theme={theme} />
               </CardContent>
-              <CardFooter className="pt-1.5 pb-2 px-2 flex-shrink-0">
+              <CardFooter className="pt-2 pb-3 px-3 flex-shrink-0 bg-white">
                 <div
-                  className="w-full text-xs font-medium text-center py-1 px-2 rounded"
+                  className="w-full text-xs font-medium text-center py-2 px-3 rounded-md transition-all group-hover:shadow-sm"
                   style={{
                     backgroundColor: theme.accentColor,
                     color: theme.accentLabelColor,
-                    borderRadius: `${theme.radiusUnit * 0.75}rem`,
+                    borderRadius: `${Math.max(theme.radiusUnit * 4, 0.375)}rem`,
                   }}
                 >
                   Apply Theme
