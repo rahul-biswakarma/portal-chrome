@@ -4,7 +4,8 @@ export type Tab =
   | 'versions'
   | 'settings'
   | 'theme-editor'
-  | 'css-editor';
+  | 'css-editor'
+  | 'chat-customization';
 
 // Node in the portal class tree
 export interface TreeNode {
