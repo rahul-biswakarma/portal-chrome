@@ -1,7 +1,7 @@
 import './globals.css';
 
 import { ViewTabs } from './components/view-tabs';
-import { PilotModeView } from './components/views/customize-view/pilot-mode-view';
+import { PilotModeView } from './components/views/pilot-mode';
 import { HierarchyView } from './components/views/hierarchy-view/hierarchy-view';
 import { Settings } from './components/views/settings/settings';
 import { CssEditorView } from './components/views/css-editor-view/css-editor-view';

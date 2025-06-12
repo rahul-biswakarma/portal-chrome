@@ -1,198 +1,186 @@
+import React from 'react';
 import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { RotateCcw } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import type { LayoutSettingsProps } from '../types';
 
-interface LayoutSettingsProps {
-  spacingUnit: number;
-  radiusUnit: number;
-  borderWidthUnit: number;
-  onSpacingUnitChange: (value: number) => void;
-  onRadiusUnitChange: (value: number) => void;
-  onBorderWidthUnitChange: (value: number) => void;
-}
-
-// Original default values
-const originalDefaults = {
-  spacingUnit: 0.25, // 100% base value
-  radiusUnit: 0.0625,
-  borderWidthUnit: 0.0625,
-};
-
-// Define preset options based on 0.25rem as 100%
-const radiusPresets = [
-  { label: 'None', value: 0, remValue: '0rem' },
-  { label: 'Small', value: 0.0625, remValue: '0.0625rem' }, // Original default
-  { label: 'Medium', value: 0.125, remValue: '0.125rem' },
-  { label: 'Large', value: 0.25, remValue: '0.25rem' },
-  { label: 'Full', value: 0.5, remValue: '0.5rem' },
-];
-
-const spacingPresets = [
-  { label: '90%', value: 0.225, remValue: '0.225rem' }, // 90% of 0.25rem
-  { label: '95%', value: 0.2375, remValue: '0.2375rem' }, // 95% of 0.25rem
-  { label: '100%', value: 0.25, remValue: '0.25rem' }, // Original default (100%)
-  { label: '105%', value: 0.2625, remValue: '0.2625rem' }, // 105% of 0.25rem
-  { label: '110%', value: 0.275, remValue: '0.275rem' }, // 110% of 0.25rem
-];
-
-const borderPresets = [
-  { label: 'None', value: 0, remValue: '0rem' },
-  { label: 'Thin', value: 0.0625, remValue: '0.0625rem' }, // Original default
-  { label: 'Medium', value: 0.125, remValue: '0.125rem' },
-  { label: 'Thick', value: 0.1875, remValue: '0.1875rem' },
-];
-
-export const LayoutSettings = ({
-  spacingUnit,
-  radiusUnit,
-  borderWidthUnit,
-  onSpacingUnitChange,
-  onRadiusUnitChange,
-  onBorderWidthUnitChange,
-}: LayoutSettingsProps) => {
-  // Convert current values to closest preset values for display
-  const getCurrentRadiusPreset = () => {
+export const LayoutSettings: React.FC<LayoutSettingsProps> = ({
+  layout,
+  onLayoutChange,
+}) => {
+  const SliderControl = ({
+    label,
+    value,
+    onChange,
+    min,
+    max,
+    step,
+    unit,
+    description,
+  }: {
+    label: string;
+    value: number;
+    onChange: (value: number) => void;
+    min: number;
+    max: number;
+    step: number;
+    unit: string;
+    description?: string;
+  }) => {
     return (
-      radiusPresets.find(
-        (preset) => Math.abs(preset.value - radiusUnit) < 0.01,
-      ) || radiusPresets[1]
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label className="text-sm font-medium text-foreground">
+              {label}
+            </Label>
+            {description && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {description}
+              </p>
+            )}
+          </div>
+          <span className="text-sm font-mono bg-muted px-2 py-1 rounded">
+            {value.toFixed(4)}{unit}
+          </span>
+        </div>
+        
+        <Slider
+          value={[value]}
+          onValueChange={(values) => onChange(values[0])}
+          min={min}
+          max={max}
+          step={step}
+          className="w-full"
+        />
+        
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>{min}{unit}</span>
+          <span>{max}{unit}</span>
+        </div>
+      </div>
     );
   };
 
-  const getCurrentSpacingPreset = () => {
-    return (
-      spacingPresets.find(
-        (preset) => Math.abs(preset.value - spacingUnit) < 0.01,
-      ) || spacingPresets[2]
-    );
+  const handleSpacingChange = (value: number) => {
+    onLayoutChange({ ...layout, spacingUnit: value });
   };
 
-  const getCurrentBorderPreset = () => {
-    return (
-      borderPresets.find(
-        (preset) => Math.abs(preset.value - borderWidthUnit) < 0.01,
-      ) || borderPresets[1]
-    );
+  const handleRadiusChange = (value: number) => {
+    onLayoutChange({ ...layout, radiusUnit: value });
   };
 
-  const handleReset = () => {
-    onSpacingUnitChange(originalDefaults.spacingUnit);
-    onRadiusUnitChange(originalDefaults.radiusUnit);
-    onBorderWidthUnitChange(originalDefaults.borderWidthUnit);
+  const handleBorderWidthChange = (value: number) => {
+    onLayoutChange({ ...layout, borderWidthUnit: value });
   };
 
   return (
-    <div className="flex flex-col gap-6 border-b border-border pb-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">
-          Layout Settings
-        </h2>
-        <Button
-          onClick={handleReset}
-          variant="outline"
-          size="sm"
-          className="gap-1"
-        >
-          <RotateCcw className="h-3 w-3" />
-          Reset
-        </Button>
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold text-foreground">Layout & Spacing</h3>
+        <p className="text-sm text-muted-foreground">
+          Adjust spacing, border radius, and border width for consistent design patterns.
+        </p>
       </div>
 
-      {/* Radius Section */}
-      <div className="flex flex-col gap-3">
-        <Label className="text-sm font-medium text-foreground">Radius</Label>
-        <div className="grid grid-cols-5 gap-2">
-          {radiusPresets.map((preset) => {
-            const isSelected = getCurrentRadiusPreset().value === preset.value;
-            return (
-              <button
-                key={preset.label}
-                onClick={() => onRadiusUnitChange(preset.value)}
-                className={`flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                  isSelected
-                    ? 'border-primary bg-accent/50'
-                    : 'border-border bg-card hover:border-primary/50'
-                }`}
-              >
-                {/* Visual representation */}
-                <div
-                  className={`w-8 h-8 ${isSelected ? 'bg-primary' : 'bg-muted-foreground'}`}
-                  style={{
-                    borderRadius:
-                      preset.value === 0.5 ? '50%' : `${preset.value * 16}px`,
-                  }}
-                />
-                <span
-                  className={`text-xs font-medium ${isSelected ? 'text-primary' : 'text-foreground'}`}
-                >
-                  {preset.label}
-                </span>
-              </button>
-            );
-          })}
+      <div className="space-y-6">
+        <SliderControl
+          label="Spacing Unit"
+          value={layout.spacingUnit}
+          onChange={handleSpacingChange}
+          min={0.125}
+          max={2}
+          step={0.0625}
+          unit="rem"
+          description="Base unit for margins, padding, and gaps throughout the interface"
+        />
+
+        <SliderControl
+          label="Border Radius"
+          value={layout.radiusUnit}
+          onChange={handleRadiusChange}
+          min={0}
+          max={1}
+          step={0.0625}
+          unit="rem"
+          description="Roundness of corners for buttons, cards, and other elements"
+        />
+
+        <SliderControl
+          label="Border Width"
+          value={layout.borderWidthUnit}
+          onChange={handleBorderWidthChange}
+          min={0}
+          max={0.5}
+          step={0.0625}
+          unit="rem"
+          description="Thickness of borders and dividers"
+        />
+      </div>
+
+      <div className="p-4 bg-muted rounded-lg">
+        <h4 className="text-sm font-medium mb-3">Layout Preview</h4>
+        <div className="space-y-3">
+          {/* Spacing preview */}
+          <div className="flex items-center gap-2">
+            <div 
+              className="w-4 h-4 bg-primary rounded"
+              style={{ marginRight: `${layout.spacingUnit}rem` }}
+            />
+            <div 
+              className="w-4 h-4 bg-primary rounded"
+              style={{ marginRight: `${layout.spacingUnit}rem` }}
+            />
+            <div className="w-4 h-4 bg-primary rounded" />
+            <span className="text-xs text-muted-foreground ml-2">
+              Spacing: {layout.spacingUnit}rem
+            </span>
+          </div>
+          
+          {/* Radius preview */}
+          <div className="flex items-center gap-2">
+            <div 
+              className="w-8 h-8 bg-primary"
+              style={{ borderRadius: `${layout.radiusUnit}rem` }}
+            />
+            <span className="text-xs text-muted-foreground">
+              Radius: {layout.radiusUnit}rem
+            </span>
+          </div>
+          
+          {/* Border preview */}
+          <div className="flex items-center gap-2">
+            <div 
+              className="w-8 h-8 bg-background border-primary"
+              style={{ 
+                borderWidth: `${layout.borderWidthUnit}rem`,
+                borderRadius: `${layout.radiusUnit}rem`
+              }}
+            />
+            <span className="text-xs text-muted-foreground">
+              Border: {layout.borderWidthUnit}rem
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Spacing Section */}
-      <div className="flex flex-col gap-3">
-        <Label className="text-sm font-medium text-foreground">Spacing</Label>
-        <div className="grid grid-cols-5 gap-2">
-          {spacingPresets.map((preset) => {
-            const isSelected = getCurrentSpacingPreset().value === preset.value;
-            return (
-              <button
-                key={preset.label}
-                onClick={() => onSpacingUnitChange(preset.value)}
-                className={`flex items-center justify-center p-3 rounded-lg border-2 transition-all ${
-                  isSelected
-                    ? 'border-primary bg-accent/50'
-                    : 'border-border bg-card hover:border-primary/50'
-                }`}
-              >
-                <span
-                  className={`text-sm font-medium ${isSelected ? 'text-primary' : 'text-foreground'}`}
-                >
-                  {preset.label}
-                </span>
-              </button>
-            );
-          })}
+      <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+        <div>
+          <h5 className="text-sm font-medium mb-2">Common Values</h5>
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <div>Tight: 0.125rem</div>
+            <div>Normal: 0.25rem</div>
+            <div>Relaxed: 0.5rem</div>
+            <div>Loose: 1rem</div>
+          </div>
         </div>
-      </div>
-
-      {/* Border Width Section */}
-      <div className="flex flex-col gap-3">
-        <Label className="text-sm font-medium text-foreground">
-          Border Width
-        </Label>
-        <div className="grid grid-cols-4 gap-2">
-          {borderPresets.map((preset) => {
-            const isSelected = getCurrentBorderPreset().value === preset.value;
-            return (
-              <button
-                key={preset.label}
-                onClick={() => onBorderWidthUnitChange(preset.value)}
-                className={`flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all ${
-                  isSelected
-                    ? 'border-primary bg-accent/50'
-                    : 'border-border bg-card hover:border-primary/50'
-                }`}
-              >
-                {/* Visual representation */}
-                <div
-                  className={`w-8 h-6 ${isSelected ? 'bg-accent' : 'bg-muted'}`}
-                  style={{
-                    border: `${Math.max(1, preset.value * 16)}px solid hsl(var(${isSelected ? '--primary' : '--muted-foreground'}))`,
-                  }}
-                />
-                <span
-                  className={`text-xs font-medium ${isSelected ? 'text-primary' : 'text-foreground'}`}
-                >
-                  {preset.label}
-                </span>
-              </button>
-            );
-          })}
+        <div>
+          <h5 className="text-sm font-medium mb-2">Current Scale</h5>
+          <div className="space-y-1 text-xs font-mono">
+            <div>1x: {layout.spacingUnit}rem</div>
+            <div>2x: {(layout.spacingUnit * 2).toFixed(3)}rem</div>
+            <div>4x: {(layout.spacingUnit * 4).toFixed(3)}rem</div>
+            <div>8x: {(layout.spacingUnit * 8).toFixed(3)}rem</div>
+          </div>
         </div>
       </div>
     </div>
