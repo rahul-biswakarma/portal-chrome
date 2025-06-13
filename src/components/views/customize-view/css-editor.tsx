@@ -13,16 +13,7 @@ import { AppContext } from '@/contexts/app-context';
 import { useContext } from 'react';
 import { Button } from '@/components/ui/button';
 import { getActiveTab } from '@/utils/chrome-utils';
-import {
-  Play,
-  RotateCcw,
-  RotateCw,
-  Copy,
-  CheckIcon,
-  Download,
-  Save,
-  X,
-} from 'lucide-react';
+import { Play, RotateCcw, RotateCw, Copy, CheckIcon, Download, Save, X } from 'lucide-react';
 import { useLogger } from '@/services/logger';
 import { FetchCssModal } from './fetch-css-modal';
 
@@ -41,13 +32,8 @@ export const CssEditor = () => {
     throw new Error('CssEditor must be used within an AppProvider');
   }
 
-  const {
-    cssContent,
-    setCssContent,
-    generationStage,
-    devRevCssStage,
-    fetchCssFromDevRev,
-  } = appContext;
+  const { cssContent, setCssContent, generationStage, devRevCssStage, fetchCssFromDevRev } =
+    appContext;
 
   // Function to clean CSS response (remove markdown)
   const cleanCSSResponse = (css: string): string => {
@@ -69,15 +55,13 @@ export const CssEditor = () => {
     // Clean CSS before applying
     const cleanedCSS = cleanCSSResponse(css);
 
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       chrome.scripting.executeScript(
         {
           target: { tabId: tab.id as number },
-          func: (cssContent) => {
+          func: cssContent => {
             // Remove existing style if it exists
-            const existingStyle = document.getElementById(
-              'portal-generated-css',
-            );
+            const existingStyle = document.getElementById('portal-generated-css');
             if (existingStyle) {
               existingStyle.remove();
             }
@@ -92,7 +76,7 @@ export const CssEditor = () => {
         },
         () => {
           resolve();
-        },
+        }
       );
     });
   };
@@ -122,8 +106,7 @@ export const CssEditor = () => {
     if (
       currentEditorContent &&
       currentEditorContent.trim() !== '' &&
-      currentEditorContent.trim() !==
-        '/* CSS will appear here when generated */'
+      currentEditorContent.trim() !== '/* CSS will appear here when generated */'
     ) {
       // Apply the CSS automatically with a slight debounce
       const timer = setTimeout(() => {
@@ -180,7 +163,7 @@ export const CssEditor = () => {
       },
       () => {
         addLog('Applied styles removed from page', 'success');
-      },
+      }
     );
   };
 
@@ -201,14 +184,14 @@ export const CssEditor = () => {
         addLog('CSS fetched from DevRev successfully', 'success');
       } else {
         throw new Error(
-          'Could not retrieve CSS from DevRev preferences. Check the console for details.',
+          'Could not retrieve CSS from DevRev preferences. Check the console for details.'
         );
       }
     } catch (error) {
       console.error('Error fetching CSS from DevRev:', error);
       addLog(
         `Error fetching CSS from DevRev: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'error',
+        'error'
       );
     } finally {
       setIsFetching(false);
@@ -223,7 +206,7 @@ export const CssEditor = () => {
         effects: EditorView.scrollIntoView(0),
       });
       // Attempt to trigger undo command
-      const command = historyKeymap.find((k) => k.key === 'Mod-z')?.run;
+      const command = historyKeymap.find(k => k.key === 'Mod-z')?.run;
       if (command) {
         command(viewRef.current);
       }
@@ -233,9 +216,7 @@ export const CssEditor = () => {
   const handleRedo = () => {
     if (viewRef.current) {
       // Execute redo command through the editor's command system
-      const command = historyKeymap.find(
-        (k) => k.key === 'Mod-y' || k.key === 'Mod-Shift-z',
-      )?.run;
+      const command = historyKeymap.find(k => k.key === 'Mod-y' || k.key === 'Mod-Shift-z')?.run;
       if (command) {
         command(viewRef.current);
       }
@@ -312,7 +293,7 @@ export const CssEditor = () => {
             },
           }),
           EditorView.lineWrapping,
-          EditorView.updateListener.of((update) => {
+          EditorView.updateListener.of(update => {
             if (update.docChanged) {
               const content = update.state.doc.toString();
               setCurrentEditorContent(content);
@@ -356,10 +337,7 @@ export const CssEditor = () => {
   }, [cssContent]);
 
   // Determine if buttons should be disabled
-  const isLoading =
-    generationStage === 'generating' ||
-    devRevCssStage === 'loading' ||
-    isFetching;
+  const isLoading = generationStage === 'generating' || devRevCssStage === 'loading' || isFetching;
 
   const isEditorEmpty = !currentEditorContent;
 
@@ -367,7 +345,7 @@ export const CssEditor = () => {
     <div className="flex flex-col w-full h-full gap-4">
       <div
         ref={editorRef}
-        className="w-full h-full rounded-lg max-h-full flex-1 border border-border shadow-sm overflow-hidden bg-background"
+        className="w-full flex-1 rounded-lg border border-border shadow-sm overflow-y-auto bg-background"
       />
 
       <div className="flex justify-between items-center pt-1">

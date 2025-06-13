@@ -13,7 +13,7 @@ export const ViewTabs = ({
 }) => {
   return (
     <div className="h-full flex-1 flex flex-col grow">
-      <div className="flex flex-wrap gap-2 justify-center items-center p-2">
+      <div className="flex gap-2 justify-center items-center p-2 overflow-x-auto whitespace-nowrap">
         {config.map(tab => (
           <div
             className={clsx(

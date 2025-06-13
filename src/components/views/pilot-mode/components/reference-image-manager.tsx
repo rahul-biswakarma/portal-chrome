@@ -10,7 +10,7 @@ export const ReferenceImageManager: React.FC<ReferenceImageManagerProps> = ({
   onAdd,
   onRemove,
   maxImages,
-  isProcessing
+  isProcessing,
 }) => {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -29,19 +29,22 @@ export const ReferenceImageManager: React.FC<ReferenceImageManagerProps> = ({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Eye className="w-5 h-5" />
+        <CardTitle className="flex items-center gap-2 text-[color:var(--foreground)]">
+          <Eye className="w-5 h-5 text-[color:var(--muted-foreground)]" />
           Reference Images ({images.length}/{maxImages})
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {images.map((image) => (
-            <div key={image.id} className="relative group">
+          {images.map(image => (
+            <div
+              key={image.id}
+              className="relative group rounded-lg bg-[color:var(--card)] border border-[color:var(--border)] shadow-sm"
+            >
               <img
                 src={image.url}
                 alt={image.name}
-                className="w-full h-32 object-cover rounded-lg border"
+                className="w-full h-32 object-cover rounded-lg border border-[color:var(--border)]"
               />
               <Button
                 size="sm"
@@ -53,17 +56,20 @@ export const ReferenceImageManager: React.FC<ReferenceImageManagerProps> = ({
                 <X className="w-4 h-4" />
               </Button>
               <div className="absolute bottom-2 left-2 right-2">
-                <Badge variant="secondary" className="text-xs truncate">
+                <Badge
+                  variant="secondary"
+                  className="text-xs truncate bg-[color:var(--muted)] text-[color:var(--muted-foreground)]"
+                >
                   {image.name}
                 </Badge>
               </div>
             </div>
           ))}
-          
+
           {images.length < maxImages && (
-            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 dark:border-gray-600">
-              <Upload className="w-8 h-8 text-gray-400" />
-              <span className="text-sm text-gray-500">Add Image</span>
+            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[color:var(--border)] rounded-lg cursor-pointer bg-[color:var(--card)] hover:bg-[color:var(--muted)] transition-colors">
+              <Upload className="w-8 h-8 text-[color:var(--muted-foreground)]" />
+              <span className="text-sm text-[color:var(--muted-foreground)]">Add Image</span>
               <input
                 type="file"
                 className="hidden"
@@ -75,13 +81,13 @@ export const ReferenceImageManager: React.FC<ReferenceImageManagerProps> = ({
             </label>
           )}
         </div>
-        
+
         {images.length === 0 && (
-          <p className="text-sm text-gray-500 text-center py-4">
+          <p className="text-sm text-[color:var(--muted-foreground)] text-center py-4">
             Upload reference images showing your desired design
           </p>
         )}
       </CardContent>
     </Card>
   );
-}; 
+};
