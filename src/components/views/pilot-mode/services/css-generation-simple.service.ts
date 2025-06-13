@@ -1,24 +1,23 @@
 import { generateCSSWithGemini } from '@/utils/gemini-client';
-import { getEnvVariable } from '@/utils/storage';
-import type { 
-  CSSGenerationService, 
-  PageData, 
+import { getEnvVariable } from '@/utils/environment';
+import type {
+  CSSGenerationService,
+  PageData,
   PilotConfig,
   CSSGenerationOptions,
-  PortalElement 
+  PortalElement,
 } from '../types';
-import { 
-  cleanCSSResponse, 
-  validateCSSStructure, 
-  formatPortalTree, 
+import {
+  cleanCSSResponse,
+  validateCSSStructure,
+  formatPortalTree,
   getAllPortalClasses,
-  generateFreshSessionId
+  generateFreshSessionId,
 } from '../utils';
 
 // Helper type for tree structure
 interface TreeNode {
-  element?: string;
-  tagName?: string;
+  element: string;
   portalClasses: string[];
   tailwindClasses: string[];
   text?: string;
@@ -26,7 +25,6 @@ interface TreeNode {
 }
 
 export class SimpleCSSGenerationService implements CSSGenerationService {
-  
   async generateCSS(
     pageData: PageData,
     config: PilotConfig,
@@ -41,15 +39,16 @@ export class SimpleCSSGenerationService implements CSSGenerationService {
 
       // Generate fresh session ID for each generation (no chat history)
       const sessionId = generateFreshSessionId('css-gen');
-      
+
       // Create the prompt based on iteration
-      const prompt = options.iteration === 1 
-        ? this.createInitialPrompt(pageData, config)
-        : this.createFeedbackPrompt(pageData, config, options);
+      const prompt =
+        options.iteration === 1
+          ? this.createInitialPrompt(pageData, config)
+          : this.createFeedbackPrompt(pageData, config, options);
 
       // Convert portal elements to tree structure
       const tree = this.createTreeFromPortalElements(pageData.portalElements);
-      
+
       // Create tailwind data structure
       const tailwindData = this.createTailwindDataFromElements(pageData.portalElements);
 
@@ -72,7 +71,7 @@ export class SimpleCSSGenerationService implements CSSGenerationService {
       }
 
       const cleanedCSS = cleanCSSResponse(css);
-      
+
       // Validate the generated CSS
       const validation = validateCSSStructure(cleanedCSS);
       if (!validation.valid) {
@@ -83,7 +82,9 @@ export class SimpleCSSGenerationService implements CSSGenerationService {
       return cleanedCSS;
     } catch (error) {
       console.error('Error generating CSS:', error);
-      throw new Error(`CSS generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `CSS generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
@@ -94,57 +95,53 @@ export class SimpleCSSGenerationService implements CSSGenerationService {
   }> {
     const validation = validateCSSStructure(css);
     const warnings: string[] = [];
-    
+
     // Additional validation checks
     if (css.length < 50) {
       warnings.push('Generated CSS appears to be very short');
     }
-    
+
     if (!css.includes('@media') && css.length > 200) {
       warnings.push('CSS does not include responsive breakpoints');
     }
-    
+
     // Check for modern CSS features
     const modernFeatures = ['flex', 'grid', 'transform', 'transition'];
-    const hasModernFeatures = modernFeatures.some(feature => 
-      css.toLowerCase().includes(feature)
-    );
-    
+    const hasModernFeatures = modernFeatures.some(feature => css.toLowerCase().includes(feature));
+
     if (!hasModernFeatures && css.length > 100) {
       warnings.push('CSS may not utilize modern layout features');
     }
-    
+
     return {
       isValid: validation.valid,
       errors: validation.errors,
-      warnings
+      warnings,
     };
   }
 
   private createTreeFromPortalElements(elements: PortalElement[]): TreeNode {
     return {
       element: 'div',
-      tagName: 'div',
       portalClasses: [],
       tailwindClasses: [],
-      children: elements.map(el => this.convertElementToTreeNode(el))
+      children: elements.map(el => this.convertElementToTreeNode(el)),
     };
   }
 
   private convertElementToTreeNode(element: PortalElement): TreeNode {
     return {
       element: element.tagName,
-      tagName: element.tagName,
       portalClasses: element.portalClasses,
       tailwindClasses: element.tailwindClasses,
       text: element.text,
-      children: element.children.map(child => this.convertElementToTreeNode(child))
+      children: element.children.map(child => this.convertElementToTreeNode(child)),
     };
   }
 
   private createTailwindDataFromElements(elements: PortalElement[]): Record<string, string[]> {
     const tailwindData: Record<string, string[]> = {};
-    
+
     const processElement = (element: PortalElement) => {
       element.portalClasses.forEach(cls => {
         if (!tailwindData[cls]) {
@@ -153,7 +150,7 @@ export class SimpleCSSGenerationService implements CSSGenerationService {
       });
       element.children.forEach(processElement);
     };
-    
+
     elements.forEach(processElement);
     return tailwindData;
   }
@@ -161,7 +158,7 @@ export class SimpleCSSGenerationService implements CSSGenerationService {
   private createInitialPrompt(pageData: PageData, config: PilotConfig): string {
     const portalClasses = getAllPortalClasses(pageData.portalElements);
     const portalTree = formatPortalTree(pageData.portalElements);
-    
+
     return `Create CSS to transform this page to match the reference design.
 
 DESIGN GOAL: ${config.designDescription || 'Transform the page to match the reference design aesthetics'}
@@ -189,9 +186,13 @@ ${config.advancedSettings.optimizeForPerformance ? 'Optimize CSS for performance
 Generate clean, modern CSS that transforms the page to match the reference design.`;
   }
 
-  private createFeedbackPrompt(pageData: PageData, config: PilotConfig, options: CSSGenerationOptions): string {
+  private createFeedbackPrompt(
+    pageData: PageData,
+    config: PilotConfig,
+    options: CSSGenerationOptions
+  ): string {
     const portalClasses = getAllPortalClasses(pageData.portalElements);
-    
+
     return `Improve the CSS based on feedback to better match the reference design.
 
 DESIGN GOAL: ${config.designDescription || 'Transform the page to match the reference design aesthetics'}
@@ -222,4 +223,4 @@ Generate improved CSS that addresses the feedback while maintaining existing imp
 }
 
 // Export singleton instance
-export const simpleCSSGenerationService = new SimpleCSSGenerationService(); 
+export const simpleCSSGenerationService = new SimpleCSSGenerationService();

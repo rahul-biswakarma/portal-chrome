@@ -14,11 +14,11 @@ export const ViewTabs = ({
   return (
     <div className="h-full flex-1 flex flex-col grow">
       <div className="flex flex-wrap gap-2 justify-center items-center p-2">
-        {config.map((tab) => (
+        {config.map(tab => (
           <div
             className={clsx(
               'px-2 py-1 hover:bg-mute rounded cursor-pointer select-none font-medium',
-              activeTab === tab.id && 'bg-secondary',
+              activeTab === tab.id && 'bg-secondary'
             )}
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -28,10 +28,10 @@ export const ViewTabs = ({
         ))}
       </div>
       <Separator />
-      <div className="h-full">
-        {config.map((tab) => (
+      <div className="h-full overflow-hidden">
+        {config.map(tab => (
           <div
-            className={clsx('h-full', activeTab !== tab.id && 'hidden')}
+            className={clsx('h-full overflow-y-auto', activeTab !== tab.id && 'hidden')}
             key={tab.id}
           >
             {tab.content}

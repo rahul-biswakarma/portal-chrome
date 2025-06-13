@@ -1,20 +1,17 @@
-import type { 
-  ThemeConfig, 
-  ThemeService, 
-  CSSGenerationOptions,
-  ConfigValidation 
-} from '../types';
-import { 
+import type { ThemeConfig, ThemeService, CSSGenerationOptions, ConfigValidation } from '../types';
+import {
   getDefaultThemeConfig,
   validateThemeConfig,
   getUniqueFonts,
   getGoogleFontUrl,
-  generateCSSVariables
+  generateCSSVariables,
 } from '../utils';
 
 export class ThemeServiceImpl implements ThemeService {
-  
-  generateCSS(config: ThemeConfig, options: CSSGenerationOptions = this.getDefaultOptions()): string {
+  generateCSS(
+    config: ThemeConfig,
+    options: CSSGenerationOptions = this.getDefaultOptions()
+  ): string {
     const variables = generateCSSVariables(config);
     const fontImports = this.generateFontImports(config, options);
     const customStyles = this.generateCustomStyles(config);
@@ -26,8 +23,10 @@ export class ThemeServiceImpl implements ThemeService {
       this.generateRootVariables(variables),
       customStyles,
       typographyStyles,
-      portalStyles
-    ].filter(Boolean).join('\n\n');
+      portalStyles,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   validateConfig(config: Partial<ThemeConfig>): ConfigValidation {
@@ -52,9 +51,7 @@ export class ThemeServiceImpl implements ThemeService {
     const uniqueFonts = getUniqueFonts(config);
     if (uniqueFonts.length === 0) return '';
 
-    const imports = uniqueFonts
-      .map(font => `@import url('${getGoogleFontUrl(font)}');`)
-      .join('\n');
+    const imports = uniqueFonts.map(font => `@import url('${getGoogleFontUrl(font)}');`).join('\n');
 
     return imports;
   }
@@ -116,7 +113,7 @@ h6 {
 }`.trim();
   }
 
-  private generateCustomStyles(config: ThemeConfig): string {
+  private generateCustomStyles(_config: ThemeConfig): string {
     return `
 /* Typography Size Variables */
 :root {
@@ -165,7 +162,7 @@ h6 {
 }`.trim();
   }
 
-  private generatePortalStyles(config: ThemeConfig, options: CSSGenerationOptions): string {
+  private generatePortalStyles(_config: ThemeConfig, options: CSSGenerationOptions): string {
     if (!options.includePortalSpecific) return '';
 
     const neutralHsl = `hsl(var(--neutral-h), var(--neutral-s), var(--neutral-l))`;
@@ -199,7 +196,7 @@ h6 {
     try {
       const parsed = JSON.parse(configJson);
       const validation = this.validateConfig(parsed);
-      
+
       if (!validation.isValid) {
         console.warn('Invalid theme configuration:', validation.errors);
         return null;
@@ -215,29 +212,44 @@ h6 {
   // Generate CSS for specific sections
   generateFontCSS(config: ThemeConfig): string {
     return [
-      this.generateFontImports(config, { includeFontImports: true, includePortalSpecific: false, useModernColorFormat: true }),
-      this.generateTypographyStyles(config)
-    ].filter(Boolean).join('\n\n');
+      this.generateFontImports(config, {
+        includeFontImports: true,
+        includePortalSpecific: false,
+        useModernColorFormat: true,
+      }),
+      this.generateTypographyStyles(config),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   generateColorCSS(config: ThemeConfig): string {
     const variables = generateCSSVariables(config);
     const colorVariables = Object.entries(variables)
-      .filter(([key]) => key.includes('color') || key.includes('accent') || key.includes('neutral') || key.includes('primary') || key.includes('background'))
+      .filter(
+        ([key]) =>
+          key.includes('color') ||
+          key.includes('accent') ||
+          key.includes('neutral') ||
+          key.includes('primary') ||
+          key.includes('background')
+      )
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
-    
+
     return this.generateRootVariables(colorVariables);
   }
 
   generateLayoutCSS(config: ThemeConfig): string {
     const variables = generateCSSVariables(config);
     const layoutVariables = Object.entries(variables)
-      .filter(([key]) => key.includes('spacing') || key.includes('radius') || key.includes('border'))
+      .filter(
+        ([key]) => key.includes('spacing') || key.includes('radius') || key.includes('border')
+      )
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
-    
+
     return this.generateRootVariables(layoutVariables);
   }
 }
 
 // Export singleton instance
-export const themeService = new ThemeServiceImpl(); 
+export const themeService = new ThemeServiceImpl();

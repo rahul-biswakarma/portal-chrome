@@ -2,9 +2,9 @@ import { useState, useCallback, useRef } from 'react';
 import { dataCollectionService } from '../services/data-collection.service';
 import { cssApplicationService } from '../services/css-application.service';
 import { evaluationService } from '../services/evaluation.service';
-import { generateCSSWithGemini, evaluateCSSResultWithGemini } from '@/utils/gemini-client';
-import { getEnvVariable } from '@/utils/env-variables';
-import type { 
+import { generateCSSWithGemini } from '@/utils/gemini-client';
+import { getEnvVariable } from '@/utils/environment';
+import type {
   UsePilotModeReturn,
   PilotStage,
   ProcessingStage,
@@ -14,9 +14,10 @@ import type {
   ProcessingContext,
   LogEntry,
   PilotErrorInfo,
-  EvaluationResult
+  EvaluationResult,
+  PortalElement,
 } from '../types';
-import { 
+import {
   createLogEntry,
   createPilotError,
   generateSessionId,
@@ -25,8 +26,17 @@ import {
   formatPortalTree,
   getAllPortalClasses,
   cleanCSSResponse,
-  createReferenceImage
+  createReferenceImage,
 } from '../utils';
+
+// Local tree node interface for CSS generation
+interface TreeNode {
+  element: string;
+  portalClasses: string[];
+  tailwindClasses: string[];
+  text?: string;
+  children: TreeNode[];
+}
 
 const defaultConfig: PilotConfig = {
   referenceImages: [],
@@ -37,8 +47,8 @@ const defaultConfig: PilotConfig = {
     preserveExistingStyles: false,
     useImportantDeclarations: true,
     generateResponsiveCSS: true,
-    optimizeForPerformance: false
-  }
+    optimizeForPerformance: false,
+  },
 };
 
 export const usePilotMode = (): UsePilotModeReturn => {
@@ -57,32 +67,68 @@ export const usePilotMode = (): UsePilotModeReturn => {
   const currentIterationRef = useRef(0);
 
   // Progress calculation
+  // Progress object will be defined after helper functions
+
+  // Helper functions moved up to avoid hoisting issues
+  const getProgressMessage = (stage: ProcessingStage, iteration: number): string => {
+    switch (stage) {
+      case 'collecting-data':
+        return 'Analyzing page structure and elements...';
+      case 'taking-screenshot':
+        return 'Capturing page screenshot...';
+      case 'generating-css':
+        return `Generating CSS design (iteration ${iteration})...`;
+      case 'applying-css':
+        return 'Applying CSS to page...';
+      case 'evaluating':
+        return 'Evaluating design match...';
+      case 'complete':
+        return 'Processing complete!';
+      default:
+        return 'Ready to start...';
+    }
+  };
+
+  const estimateTimeRemaining = (): number => {
+    if (!processingContext || currentIterationRef.current === 0) return 0;
+    const elapsed = Date.now() - processingContext.startTime;
+    const avgTimePerIteration = elapsed / currentIterationRef.current;
+    const remainingIterations = config.maxIterations - currentIterationRef.current;
+    return avgTimePerIteration * remainingIterations;
+  };
+
+  const addLog = useCallback(
+    (message: string, level: LogEntry['level'] = 'info', details?: Record<string, unknown>) => {
+      const logEntry = createLogEntry(
+        level,
+        message,
+        details,
+        processingStage,
+        currentIterationRef.current
+      );
+      setLogs(prev => [...prev, logEntry]);
+    },
+    [processingStage]
+  );
+
+  // Progress object defined after helper functions
   const progress: ProgressInfo = {
     stage: processingStage,
-    progress: calculateProgress(
-      processingStage,
-      currentIterationRef.current,
-      config.maxIterations
-    ),
+    progress: calculateProgress(processingStage, currentIterationRef.current, config.maxIterations),
     message: getProgressMessage(processingStage, currentIterationRef.current),
     iteration: currentIterationRef.current,
     totalIterations: config.maxIterations,
-    estimatedTimeRemaining: processingContext?.startTime 
-      ? estimateTimeRemaining() 
-      : undefined
+    estimatedTimeRemaining: processingContext?.startTime ? estimateTimeRemaining() : undefined,
   };
 
-  // Helper functions
-  const addLog = useCallback((message: string, level: LogEntry['level'] = 'info', details?: Record<string, unknown>) => {
-    const logEntry = createLogEntry(level, message, details, processingStage, currentIterationRef.current);
-    setLogs(prev => [...prev, logEntry]);
-  }, [processingStage]);
-
-  const setErrorState = useCallback((errorType: PilotErrorInfo['type'], message: string, details?: Record<string, unknown>) => {
-    const errorInfo = createPilotError(errorType, message, details);
-    setError(errorInfo);
-    addLog(message, 'error', details);
-  }, [addLog]);
+  const setErrorState = useCallback(
+    (errorType: PilotErrorInfo['type'], message: string, details?: Record<string, unknown>) => {
+      const errorInfo = createPilotError(errorType, message, details);
+      setError(errorInfo);
+      addLog(message, 'error', details);
+    },
+    [addLog]
+  );
 
   const clearError = useCallback(() => {
     setError(null);
@@ -93,55 +139,65 @@ export const usePilotMode = (): UsePilotModeReturn => {
     setConfig(prev => ({ ...prev, ...updates }));
   }, []);
 
-  const addReferenceImage = useCallback(async (file: File) => {
-    try {
-      const referenceImage = await createReferenceImage(file);
-      updateConfig({
-        referenceImages: [...config.referenceImages, referenceImage]
-      });
-      addLog(`Added reference image: ${file.name}`, 'success');
-    } catch (error) {
-      addLog(
-        `Failed to add reference image: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'error'
-      );
-      throw error;
-    }
-  }, [config.referenceImages, updateConfig, addLog]);
+  const addReferenceImage = useCallback(
+    async (file: File) => {
+      try {
+        const referenceImage = await createReferenceImage(file);
+        updateConfig({
+          referenceImages: [...config.referenceImages, referenceImage],
+        });
+        addLog(`Added reference image: ${file.name}`, 'success');
+      } catch (error) {
+        addLog(
+          `Failed to add reference image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          'error'
+        );
+        throw error;
+      }
+    },
+    [config.referenceImages, updateConfig, addLog]
+  );
 
-  const removeReferenceImage = useCallback((id: string) => {
-    const image = config.referenceImages.find(img => img.id === id);
-    if (image) {
-      updateConfig({
-        referenceImages: config.referenceImages.filter(img => img.id !== id)
-      });
-      addLog(`Removed reference image: ${image.name}`, 'info');
-    }
-  }, [config.referenceImages, updateConfig, addLog]);
+  const removeReferenceImage = useCallback(
+    (id: string) => {
+      const image = config.referenceImages.find(img => img.id === id);
+      if (image) {
+        updateConfig({
+          referenceImages: config.referenceImages.filter(img => img.id !== id),
+        });
+        addLog(`Removed reference image: ${image.name}`, 'info');
+      }
+    },
+    [config.referenceImages, updateConfig, addLog]
+  );
 
   // Core processing functions
   const collectPageData = async (): Promise<PageData> => {
     setProcessingStage('collecting-data');
     addLog('Collecting page data...', 'info');
-    
+
     const result = await dataCollectionService.collectPageData();
-    
+
     if (!result.success || !result.data) {
       throw new Error(result.error || 'Failed to collect page data');
     }
-    
+
     if (result.warnings && result.warnings.length > 0) {
       result.warnings.forEach(warning => addLog(warning, 'warning'));
     }
-    
+
     addLog('Page data collected successfully', 'success');
     return result.data;
   };
 
-  const generateCSS = async (pageData: PageData, iteration: number, previousFeedback?: string): Promise<string> => {
+  const generateCSS = async (
+    pageData: PageData,
+    iteration: number,
+    previousFeedback?: string
+  ): Promise<string> => {
     setProcessingStage('generating-css');
     addLog(`Generating CSS (iteration ${iteration})...`, 'info');
-    
+
     try {
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) {
@@ -150,10 +206,10 @@ export const usePilotMode = (): UsePilotModeReturn => {
 
       // Generate fresh session ID for each CSS generation (no chat history)
       const sessionId = generateFreshSessionId('css-gen');
-      
+
       // Create prompt based on iteration
       const prompt = createCSSPrompt(pageData, config, iteration, previousFeedback);
-      
+
       // Convert to the format expected by generateCSSWithGemini
       const tree = createTreeFromElements(pageData.portalElements);
       const tailwindData = createTailwindData(pageData.portalElements);
@@ -177,7 +233,7 @@ export const usePilotMode = (): UsePilotModeReturn => {
 
       const cleanedCSS = cleanCSSResponse(css);
       addLog(`CSS generated successfully (${cleanedCSS.length} characters)`, 'success');
-      
+
       return cleanedCSS;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -189,33 +245,34 @@ export const usePilotMode = (): UsePilotModeReturn => {
   const applyCSS = async (css: string): Promise<string> => {
     setProcessingStage('applying-css');
     addLog('Applying CSS to page...', 'info');
-    
+
     const result = await cssApplicationService.applyCSS(css);
-    
+
     if (!result.success) {
       throw new Error(result.error || 'Failed to apply CSS');
     }
-    
+
     addLog('CSS applied successfully', 'success');
-    
+
     // Return the screenshot after CSS application
     return result.screenshotAfter || '';
   };
 
-  const evaluateResults = async (css: string, screenshot: string, iteration: number): Promise<EvaluationResult> => {
+  const evaluateResults = async (
+    css: string,
+    screenshot: string,
+    iteration: number
+  ): Promise<EvaluationResult> => {
     setProcessingStage('evaluating');
     addLog('Evaluating results...', 'info');
-    
-    // Generate fresh session ID for each evaluation (no chat history)
-    const sessionId = generateFreshSessionId('eval');
-    
+
     try {
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
       if (!apiKey) {
         throw new Error('Gemini API key not found');
       }
 
-      // Use the evaluation service with fresh session
+      // Use the evaluation service
       const result = await evaluationService.evaluateResults(
         config.referenceImages,
         screenshot,
@@ -223,17 +280,17 @@ export const usePilotMode = (): UsePilotModeReturn => {
         config,
         iteration
       );
-      
+
       addLog(
         `Evaluation complete: ${result.isDone ? 'Design matches!' : 'Needs improvement'}`,
         result.isDone ? 'success' : 'info'
       );
-      
+
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       addLog(`Evaluation failed: ${message}`, 'error');
-      
+
       // Return a failed evaluation result
       return {
         iteration,
@@ -243,7 +300,7 @@ export const usePilotMode = (): UsePilotModeReturn => {
         qualityScore: 0,
         timestamp: Date.now(),
         screenshotAfter: screenshot,
-        cssApplied: css
+        cssApplied: css,
       };
     }
   };
@@ -263,10 +320,10 @@ export const usePilotMode = (): UsePilotModeReturn => {
       setPilotStage('processing');
       setProcessingStage('collecting-data');
       currentIterationRef.current = 0;
-      
+
       // Create abort controller
       abortControllerRef.current = new AbortController();
-      
+
       // Initialize processing context with fresh session
       const sessionId = generateSessionId();
       setProcessingContext({
@@ -275,7 +332,7 @@ export const usePilotMode = (): UsePilotModeReturn => {
         previousScreenshot: '',
         feedbackHistory: [],
         sessionId,
-        startTime: Date.now()
+        startTime: Date.now(),
       });
 
       addLog('Starting pilot mode processing...', 'info');
@@ -284,9 +341,8 @@ export const usePilotMode = (): UsePilotModeReturn => {
       const collectedPageData = await collectPageData();
       setPageData(collectedPageData);
 
-      let currentCSS = collectedPageData.currentCSS;
       let currentScreenshot = collectedPageData.screenshot;
-      let feedbackHistory: EvaluationResult[] = [];
+      const feedbackHistory: EvaluationResult[] = [];
 
       // Step 2: Iterative CSS generation and evaluation
       for (let iteration = 1; iteration <= config.maxIterations; iteration++) {
@@ -301,42 +357,47 @@ export const usePilotMode = (): UsePilotModeReturn => {
         // Generate CSS
         const previousFeedback = feedbackHistory[feedbackHistory.length - 1]?.feedback;
         const css = await generateCSS(collectedPageData, iteration, previousFeedback);
-        
+
         // Apply CSS
         const screenshotAfter = await applyCSS(css);
-        currentCSS = css;
         currentScreenshot = screenshotAfter || currentScreenshot;
-        
+
         // Update page data with new CSS for next iteration
         collectedPageData.currentCSS = css;
-        
+
         // Evaluate results
         const evaluation = await evaluateResults(css, currentScreenshot, iteration);
         feedbackHistory.push(evaluation);
-        
+
         // Update processing context
-        setProcessingContext(prev => prev ? {
-          ...prev,
-          iteration,
-          previousCSS: css,
-          previousScreenshot: currentScreenshot,
-          feedbackHistory
-        } : null);
+        setProcessingContext(prev =>
+          prev
+            ? {
+                ...prev,
+                iteration,
+                previousCSS: css,
+                previousScreenshot: currentScreenshot,
+                feedbackHistory,
+              }
+            : null
+        );
 
         // Check if we're done
-        if (evaluation.isDone || evaluation.qualityScore >= config.evaluationThreshold) {
+        if (evaluation.isDone || (evaluation.qualityScore ?? 0) >= config.evaluationThreshold) {
           addLog(`Design goal achieved in ${iteration} iterations!`, 'success');
           break;
         }
 
-        addLog(`Iteration ${iteration} complete. Quality score: ${evaluation.qualityScore}`, 'info');
+        addLog(
+          `Iteration ${iteration} complete. Quality score: ${evaluation.qualityScore}`,
+          'info'
+        );
       }
 
       // Complete
       setProcessingStage('complete');
       setPilotStage('complete');
       addLog('Pilot mode processing completed!', 'success');
-
     } catch (error) {
       console.error('Error in pilot mode processing:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -372,19 +433,27 @@ export const usePilotMode = (): UsePilotModeReturn => {
     addLog('Session reset', 'info');
   }, [clearError, addLog]);
 
-  const retryFromStage = useCallback(async (stage: ProcessingStage) => {
-    addLog(`Retrying from stage: ${stage}`, 'info');
-    setProcessingStage(stage);
-    // This would implement retry logic based on the stage
-    // For now, just restart the entire process
-    await startProcessing();
-  }, [addLog, startProcessing]);
+  const retryFromStage = useCallback(
+    async (stage: ProcessingStage) => {
+      addLog(`Retrying from stage: ${stage}`, 'info');
+      setProcessingStage(stage);
+      // This would implement retry logic based on the stage
+      // For now, just restart the entire process
+      await startProcessing();
+    },
+    [addLog, startProcessing]
+  );
 
   // Helper functions for CSS generation
-  const createCSSPrompt = (pageData: PageData, config: PilotConfig, iteration: number, previousFeedback?: string): string => {
+  const createCSSPrompt = (
+    pageData: PageData,
+    config: PilotConfig,
+    iteration: number,
+    previousFeedback?: string
+  ): string => {
     const portalClasses = getAllPortalClasses(pageData.portalElements);
     const portalTree = formatPortalTree(pageData.portalElements);
-    
+
     if (iteration === 1) {
       return `Create CSS to transform this page to match the reference design.
 
@@ -439,7 +508,7 @@ Generate improved CSS that addresses the feedback while maintaining existing imp
     }
   };
 
-  const createTreeFromElements = (elements: any[]): any => {
+  const createTreeFromElements = (elements: PortalElement[]): TreeNode => {
     return {
       element: 'div',
       portalClasses: [],
@@ -449,14 +518,20 @@ Generate improved CSS that addresses the feedback while maintaining existing imp
         portalClasses: el.portalClasses,
         tailwindClasses: el.tailwindClasses,
         text: el.text,
-        children: el.children
-      }))
+        children: el.children.map(child => ({
+          element: child.tagName,
+          portalClasses: child.portalClasses,
+          tailwindClasses: child.tailwindClasses,
+          text: child.text,
+          children: [],
+        })),
+      })),
     };
   };
 
-  const createTailwindData = (elements: any[]): Record<string, string[]> => {
+  const createTailwindData = (elements: PortalElement[]): Record<string, string[]> => {
     const tailwindData: Record<string, string[]> = {};
-    const processElement = (element: any) => {
+    const processElement = (element: PortalElement) => {
       element.portalClasses.forEach((cls: string) => {
         if (!tailwindData[cls]) {
           tailwindData[cls] = element.tailwindClasses;
@@ -468,25 +543,7 @@ Generate improved CSS that addresses the feedback while maintaining existing imp
     return tailwindData;
   };
 
-  const getProgressMessage = (stage: ProcessingStage, iteration: number): string => {
-    switch (stage) {
-      case 'collecting-data': return 'Analyzing page structure and elements...';
-      case 'taking-screenshot': return 'Capturing page screenshot...';
-      case 'generating-css': return `Generating CSS design (iteration ${iteration})...`;
-      case 'applying-css': return 'Applying CSS to page...';
-      case 'evaluating': return 'Evaluating design match...';
-      case 'complete': return 'Processing complete!';
-      default: return 'Ready to start...';
-    }
-  };
-
-  const estimateTimeRemaining = (): number => {
-    if (!processingContext || currentIterationRef.current === 0) return 0;
-    const elapsed = Date.now() - processingContext.startTime;
-    const avgTimePerIteration = elapsed / currentIterationRef.current;
-    const remainingIterations = config.maxIterations - currentIterationRef.current;
-    return avgTimePerIteration * remainingIterations;
-  };
+  // Removed duplicate function declarations
 
   return {
     // State
@@ -507,6 +564,6 @@ Generate improved CSS that addresses the feedback while maintaining existing imp
     resetSession,
     addReferenceImage,
     removeReferenceImage,
-    retryFromStage
+    retryFromStage,
   };
-}; 
+};
