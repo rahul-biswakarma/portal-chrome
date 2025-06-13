@@ -1,14 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {
-  copyFileSync,
-  mkdirSync,
-  existsSync,
-  readdirSync,
-  statSync,
-  cpSync,
-} from 'fs';
+import { copyFileSync, mkdirSync, existsSync, readdirSync, statSync, cpSync } from 'fs';
 import tailwindcss from '@tailwindcss/vite';
 
 // Function to recursively copy directory
@@ -68,23 +61,19 @@ export default defineConfig({
     },
   },
   build: {
+    outDir: 'dist',
     rollupOptions: {
       input: {
-        main: path.resolve(__dirname, 'index.html'),
-        background: path.resolve(__dirname, 'src/background.ts'),
-        content: path.resolve(__dirname, 'src/content.ts'),
+        popup: 'src/popup.html',
+        background: 'src/background.ts',
+        content: 'src/content.ts',
       },
       output: {
-        entryFileNames: (chunkInfo) => {
-          return chunkInfo.name === 'background' || chunkInfo.name === 'content'
-            ? '[name].js'
-            : 'assets/[name]-[hash].js';
-        },
-        // Prevent variable name collisions
-        manualChunks: undefined,
+        entryFileNames: '[name].js',
+        chunkFileNames: '[name].js',
+        assetFileNames: '[name].[ext]',
       },
     },
-    outDir: 'dist',
     emptyOutDir: true,
     // Add terser options to prevent variable name conflicts
     minify: 'terser',

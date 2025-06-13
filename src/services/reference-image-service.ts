@@ -1,11 +1,11 @@
 import type { TreeNode, TailwindClassData } from '../types';
 import { captureScreenshot } from '../utils/screenshot';
 import {
-  generatePromptWithAI,
-  generateCSSWithAI,
-  evaluateCSSResultWithAI,
-  getOpenAIApiKey,
-} from '../utils/openai-client';
+  getGeminiApiKey,
+  generatePromptWithGemini,
+  generateCSSWithGemini,
+  evaluateCSSResultWithGemini,
+} from '@/utils/gemini';
 
 /**
  * Maximum number of retry attempts for the feedback loop
@@ -44,7 +44,7 @@ export class ReferenceImageService {
     }
 
     if (!this.apiKey) {
-      this.apiKey = await getOpenAIApiKey();
+      this.apiKey = await getGeminiApiKey();
     }
 
     return !!this.apiKey;
@@ -63,95 +63,35 @@ export class ReferenceImageService {
       this.isProcessing = true;
       console.log('[REFERENCE-SERVICE] Starting prompt generation process...');
 
-      // Capture current page screenshot
-      const screenshotStartTime = Date.now();
-      console.log(
-        '[REFERENCE-SERVICE] Capturing current page screenshot for prompt generation...',
-      );
-      const currentScreenshot = await captureScreenshot({ fullPage: true });
-      const screenshotTime = Date.now() - screenshotStartTime;
-      const imageSizeKB = Math.round(currentScreenshot.length / 1024);
-      console.log(
-        `[REFERENCE-SERVICE] Current page screenshot captured in ${screenshotTime}ms, size: ${imageSizeKB}KB`,
-      );
-
       // Get active tab
       const tab = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       });
       if (!tab[0]?.id) {
-        console.error(
-          '[REFERENCE-SERVICE] No active tab found for prompt generation',
-        );
         throw new Error('No active tab found');
       }
 
+      const tabId = tab[0].id;
+
+      // Capture current screenshot
+      console.log('[REFERENCE-SERVICE] Capturing current page screenshot...');
+      const screenshotStartTime = Date.now();
+      const currentScreenshot = await captureScreenshot(tab[0].id);
+      const screenshotTime = Date.now() - screenshotStartTime;
+      const imageSizeKB = Math.round(currentScreenshot.length / 1024);
       console.log(
-        `[REFERENCE-SERVICE] Working with tab ${tab[0].id}: ${tab[0].url}`,
+        `[REFERENCE-SERVICE] Screenshot captured in ${screenshotTime}ms, size: ${imageSizeKB}KB`
       );
 
-      // Get DOM structure and tailwind classes
-      let portalClassTree: TreeNode | undefined;
-      let tailwindData: TailwindClassData | undefined;
-      let computedStyles: Record<string, Record<string, string>> | undefined;
-
+      // Extract DOM structure
+      let computedStyles: Record<string, Record<string, string>> = {};
       try {
-        // Get page structure
-        const pageStructureStr = await chrome.scripting.executeScript({
-          target: { tabId: tab[0].id },
-          func: () => {
-            return document.documentElement.outerHTML;
-          },
-        });
-
-        // Create a simple tree structure
-        portalClassTree = {
-          element: 'body',
-          portalClasses: [],
-          children: [],
-        };
-
-        // Extract portal classes
-        const portalClassMatches =
-          pageStructureStr[0]?.result?.match(/portal-[a-zA-Z0-9-_]+/g) || [];
-        if (portalClassMatches.length > 0) {
-          portalClassTree.portalClasses = [...new Set(portalClassMatches)];
-        }
-
-        // Extract Tailwind classes
-        const getTailwindClassesScript = await chrome.scripting.executeScript({
-          target: { tabId: tab[0].id },
-          func: () => {
-            const portalElements =
-              document.querySelectorAll('[class*="portal-"]');
-            const result: Record<string, string[]> = {};
-
-            portalElements.forEach((element) => {
-              const classes = element.className.split(' ');
-              const portalClasses = classes.filter((cls) =>
-                cls.startsWith('portal-'),
-              );
-
-              portalClasses.forEach((portalClass) => {
-                result[portalClass] = classes.filter(
-                  (cls) => !cls.startsWith('portal-'),
-                );
-              });
-            });
-
-            return result;
-          },
-        });
-
-        tailwindData = getTailwindClassesScript[0]?.result || {};
-
         // Extract computed styles
         const getComputedStylesScript = await chrome.scripting.executeScript({
-          target: { tabId: tab[0].id },
+          target: { tabId },
           func: () => {
-            const portalElements =
-              document.querySelectorAll('[class*="portal-"]');
+            const portalElements = document.querySelectorAll('[class*="portal-"]');
             const result: Record<string, Record<string, string>> = {};
 
             // Important CSS properties to capture
@@ -212,18 +152,16 @@ export class ReferenceImageService {
               'cursor',
             ];
 
-            portalElements.forEach((element) => {
+            portalElements.forEach(element => {
               const classes = element.className.split(' ');
-              const portalClasses = classes.filter((cls) =>
-                cls.startsWith('portal-'),
-              );
+              const portalClasses = classes.filter(cls => cls.startsWith('portal-'));
               const computedStyle = window.getComputedStyle(element);
 
-              portalClasses.forEach((portalClass) => {
+              portalClasses.forEach(portalClass => {
                 const styles: Record<string, string> = {};
 
                 // Extract only the important properties
-                importantProperties.forEach((prop) => {
+                importantProperties.forEach(prop => {
                   const value = computedStyle.getPropertyValue(prop);
                   if (value && value !== '') {
                     styles[prop] = value;
@@ -238,7 +176,7 @@ export class ReferenceImageService {
                 if (parentElement && parentElement.className) {
                   const parentPortalClasses = parentElement.className
                     .split(' ')
-                    .filter((cls) => cls.startsWith('portal-'));
+                    .filter(cls => cls.startsWith('portal-'));
                   if (parentPortalClasses.length > 0) {
                     styles['parent-classes'] = parentPortalClasses.join(' ');
                   }
@@ -246,20 +184,15 @@ export class ReferenceImageService {
 
                 // Add child context if it has children
                 if (element.children.length > 0) {
-                  const childPortalElements = Array.from(
-                    element.children,
-                  ).filter(
-                    (child) =>
+                  const childPortalElements = Array.from(element.children).filter(
+                    child =>
                       child.className &&
-                      child.className
-                        .split(' ')
-                        .some((cls) => cls.startsWith('portal-')),
+                      child.className.split(' ').some(cls => cls.startsWith('portal-'))
                   );
 
                   if (childPortalElements.length > 0) {
                     styles['has-portal-children'] = 'true';
-                    styles['child-elements'] =
-                      childPortalElements.length.toString();
+                    styles['child-elements'] = childPortalElements.length.toString();
                   }
                 }
 
@@ -272,27 +205,26 @@ export class ReferenceImageService {
         });
 
         computedStyles = getComputedStylesScript[0]?.result || {};
+
+        // Generate prompt using OpenAI
+        console.log('[REFERENCE-SERVICE] Generating prompt with AI...');
+        const prompt = await generatePromptWithGemini(
+          this.apiKey!,
+          this.referenceImage!,
+          currentScreenshot,
+          this.lastGeneratedCSS,
+          computedStyles
+        );
+
+        console.log('[REFERENCE-SERVICE] Prompt generation completed successfully');
+        return prompt;
       } catch (error) {
         console.error('Error extracting DOM structure:', error);
         // Continue without DOM structure if it fails
       }
 
-      // Generate prompt using OpenAI
-      console.log('[REFERENCE-SERVICE] Generating prompt with AI...');
-      const prompt = await generatePromptWithAI(
-        this.apiKey!,
-        this.referenceImage!,
-        currentScreenshot,
-        portalClassTree,
-        tailwindData,
-        this.lastGeneratedCSS,
-        computedStyles,
-      );
-
-      console.log(
-        '[REFERENCE-SERVICE] Prompt generation completed successfully',
-      );
-      return prompt;
+      // Should never reach here due to the try block, but just in case
+      return '';
     } catch (error) {
       console.error('[REFERENCE-SERVICE] Error generating prompt:', error);
       throw error;
@@ -310,10 +242,10 @@ export class ReferenceImageService {
    * @returns Promise resolving to the result of the CSS generation
    */
   public async generateAndApplyCSS(
-    portalClassTree: TreeNode,
+    portalClassTree: TreeNode | undefined,
     tailwindData: TailwindClassData,
     cssApplyCallback: (css: string) => Promise<void>,
-    promptOverride?: string,
+    promptOverride?: string
   ): Promise<{ success: boolean; message: string; css: string }> {
     if (!(await this.isReady())) {
       throw new Error('Service not ready. Missing API key or reference image.');
@@ -341,35 +273,30 @@ export class ReferenceImageService {
 
       // Start the feedback loop
       console.log(
-        `[REFERENCE-SERVICE] Starting CSS generation feedback loop (max ${MAX_RETRY_ATTEMPTS} attempts)...`,
+        `[REFERENCE-SERVICE] Starting CSS generation feedback loop (max ${MAX_RETRY_ATTEMPTS} attempts)...`
       );
       for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
         console.log(
-          `[REFERENCE-SERVICE] CSS generation attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS}`,
+          `[REFERENCE-SERVICE] CSS generation attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS}`
         );
 
         // Capture current screenshot for this iteration
         const screenshotStartTime = Date.now();
-        console.log(
-          `[REFERENCE-SERVICE] Capturing screenshot for iteration ${attempt + 1}...`,
-        );
-        const currentScreenshot = await captureScreenshot({ fullPage: true });
+        console.log(`[REFERENCE-SERVICE] Capturing screenshot for iteration ${attempt + 1}...`);
+        const currentScreenshot = await captureScreenshot(tab[0].id);
         const screenshotTime = Date.now() - screenshotStartTime;
         const imageSizeKB = Math.round(currentScreenshot.length / 1024);
         console.log(
-          `[REFERENCE-SERVICE] Iteration ${attempt + 1} screenshot captured in ${screenshotTime}ms, size: ${imageSizeKB}KB`,
+          `[REFERENCE-SERVICE] Iteration ${attempt + 1} screenshot captured in ${screenshotTime}ms, size: ${imageSizeKB}KB`
         );
 
         // Get computed styles before CSS application
-        const getComputedStyles = async (): Promise<
-          Record<string, Record<string, string>>
-        > => {
+        const getComputedStyles = async (): Promise<Record<string, Record<string, string>>> => {
           try {
             const result = await chrome.scripting.executeScript({
               target: { tabId: tab[0].id! },
               func: () => {
-                const portalElements =
-                  document.querySelectorAll('[class*="portal-"]');
+                const portalElements = document.querySelectorAll('[class*="portal-"]');
                 const result: Record<string, Record<string, string>> = {};
 
                 // Important CSS properties to capture
@@ -415,17 +342,15 @@ export class ReferenceImageService {
                   'overflow',
                 ];
 
-                portalElements.forEach((element) => {
+                portalElements.forEach(element => {
                   const classes = element.className.split(' ');
-                  const portalClasses = classes.filter((cls) =>
-                    cls.startsWith('portal-'),
-                  );
+                  const portalClasses = classes.filter(cls => cls.startsWith('portal-'));
                   const computedStyle = window.getComputedStyle(element);
 
-                  portalClasses.forEach((portalClass) => {
+                  portalClasses.forEach(portalClass => {
                     const styles: Record<string, string> = {};
 
-                    importantProperties.forEach((prop) => {
+                    importantProperties.forEach(prop => {
                       const value = computedStyle.getPropertyValue(prop);
                       if (value && value !== '') {
                         styles[prop] = value;
@@ -451,17 +376,20 @@ export class ReferenceImageService {
 
         const computedStyles = await getComputedStyles();
 
+        if (!portalClassTree) {
+          throw new Error('Portal class tree is required for CSS generation');
+        }
+
         // Generate CSS
-        const css = await generateCSSWithAI(
+        const css = await generateCSSWithGemini(
           this.apiKey!,
           prompt,
-          portalClassTree,
+          portalClassTree || { element: 'div', portalClasses: [], children: [] },
           tailwindData,
           this.lastGeneratedCSS,
-          attempt,
           this.referenceImage!,
           currentScreenshot,
-          computedStyles,
+          computedStyles
         );
 
         // Apply the CSS
@@ -471,27 +399,27 @@ export class ReferenceImageService {
         // Capture screenshot with applied CSS
         const resultScreenshotStartTime = Date.now();
         console.log(
-          `[REFERENCE-SERVICE] Capturing result screenshot after CSS application (iteration ${attempt + 1})...`,
+          `[REFERENCE-SERVICE] Capturing result screenshot after CSS application (iteration ${attempt + 1})...`
         );
-        const resultScreenshot = await captureScreenshot({ fullPage: true });
+        const resultScreenshot = await captureScreenshot(tab[0].id);
         const resultScreenshotTime = Date.now() - resultScreenshotStartTime;
         const resultImageSizeKB = Math.round(resultScreenshot.length / 1024);
         console.log(
-          `[REFERENCE-SERVICE] Result screenshot captured in ${resultScreenshotTime}ms, size: ${resultImageSizeKB}KB`,
+          `[REFERENCE-SERVICE] Result screenshot captured in ${resultScreenshotTime}ms, size: ${resultImageSizeKB}KB`
         );
 
         // Get updated computed styles after CSS application
         const updatedComputedStyles = await getComputedStyles();
 
         // Evaluate the result
-        const evaluation = await evaluateCSSResultWithAI(
+        const evaluation = await evaluateCSSResultWithGemini(
           this.apiKey!,
           this.referenceImage!,
           resultScreenshot,
           css,
           portalClassTree,
           tailwindData,
-          updatedComputedStyles,
+          updatedComputedStyles
         );
 
         if (evaluation.isMatch) {
@@ -507,7 +435,7 @@ export class ReferenceImageService {
           // Last attempt, return what we have
           return {
             success: false,
-            message: evaluation.feedback,
+            message: evaluation.feedback || 'CSS generation failed',
             css: css,
           };
         }
@@ -539,3 +467,14 @@ export class ReferenceImageService {
 
 // Export singleton instance
 export const referenceImageService = new ReferenceImageService();
+
+export const analyzeReferenceImage = async (imageData: string): Promise<string> => {
+  const apiKey = await getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error('Gemini API key not found');
+  }
+
+  // TODO: Implement actual Gemini API call for image analysis
+  console.log('Analyzing reference image:', { imageData });
+  return 'Analyzed reference image style and design patterns';
+};

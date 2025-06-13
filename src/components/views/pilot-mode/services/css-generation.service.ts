@@ -1,4 +1,4 @@
-import { generateCSSWithGemini } from '@/utils/gemini-client';
+import { generateCSSWithGemini } from '@/utils/gemini';
 import type {
   CSSGenerationService,
   PageData,
@@ -101,7 +101,6 @@ export class CSSGenerationServiceImpl implements CSSGenerationService {
       simpleTree,
       tailwindData,
       pageData.currentCSS,
-      0, // iteration
       config.referenceImages[0]?.url,
       pageData.screenshot,
       pageData.computedStyles,
@@ -131,7 +130,6 @@ export class CSSGenerationServiceImpl implements CSSGenerationService {
       tree,
       tailwindData,
       pageData.currentCSS,
-      options.iteration - 1,
       _config.referenceImages[0]?.url,
       pageData.screenshot,
       pageData.computedStyles,

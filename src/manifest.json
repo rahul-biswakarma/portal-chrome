@@ -13,12 +13,7 @@
     "notifications",
     "windows"
   ],
-  "host_permissions": [
-    "https://*.openai.com/*",
-    "https://*.devrev-eng.ai/*",
-    "https://*.devrev.ai/*",
-    "<all_urls>"
-  ],
+  "host_permissions": ["https://*.devrev-eng.ai/*", "https://*.devrev.ai/*", "<all_urls>"],
   "background": {
     "service_worker": "background.js",
     "type": "module"

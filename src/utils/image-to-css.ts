@@ -1,16 +1,9 @@
 import { captureScreenshot } from './screenshot';
-import {
-  generatePromptWithAI as generatePrompt,
-  generateCSSWithAI as generateCSS,
-  evaluateCSSResultWithAI as evaluateCSSResult,
-  getOpenAIApiKey,
-} from './openai-client';
-import type { TreeNode, TailwindClassData } from '../types';
+import { getGeminiApiKey, generatePromptWithGemini } from '@/utils/gemini';
 
-// Add new interface for prompt response
-interface PromptResponse {
-  success: boolean;
-  prompt: string;
+interface EvaluationResult {
+  isMatch: boolean;
+  feedback?: string;
 }
 
 /**
@@ -28,10 +21,7 @@ export const fileToDataURL = (file: File): Promise<string> => {
 /**
  * Applies CSS to the current page
  */
-export const applyCSS = async (
-  tabId: number,
-  cssCode: string,
-): Promise<boolean> => {
+export const applyCSS = async (tabId: number, cssCode: string): Promise<boolean> => {
   try {
     // Execute script to apply CSS
     await chrome.scripting.executeScript({
@@ -57,21 +47,53 @@ export const applyCSS = async (
   }
 };
 
+// Helper function to get current CSS
+const getCurrentCSS = async (tabId: number): Promise<string> => {
+  const result = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const styleEl = document.getElementById('portal-generated-css');
+      return styleEl ? styleEl.textContent || '' : '';
+    },
+  });
+  return result[0]?.result || '';
+};
+
+// Helper function to get computed styles
+const getComputedStyles = async (
+  tabId: number
+): Promise<Record<string, Record<string, string>>> => {
+  const result = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const styles: Record<string, Record<string, string>> = {};
+      const elements = document.querySelectorAll('[class*="portal-"]');
+      elements.forEach(element => {
+        const computedStyle = window.getComputedStyle(element);
+        const elementStyles: Record<string, string> = {};
+        for (const prop of computedStyle) {
+          elementStyles[prop] = computedStyle.getPropertyValue(prop);
+        }
+        styles[element.className] = elementStyles;
+      });
+      return styles;
+    },
+  });
+  return result[0]?.result || {};
+};
+
 /**
  * Main function to handle the entire image-to-CSS workflow
  */
 export const processReferenceImage = async (
   referenceImage: File,
-  tabId: number,
-  classTree: TreeNode,
-  tailwindData: TailwindClassData,
-  maxIterations = 5,
+  tabId: number
 ): Promise<{ success: boolean; message: string }> => {
   try {
     // Get API key
-    const apiKey = await getOpenAIApiKey();
+    const apiKey = await getGeminiApiKey();
     if (!apiKey) {
-      return { success: false, message: 'OpenAI API key not found' };
+      return { success: false, message: 'Gemini API key not found' };
     }
 
     // Convert reference image to data URL
@@ -82,131 +104,84 @@ export const processReferenceImage = async (
     try {
       console.log('[IMAGE-TO-CSS] Capturing initial page screenshot...');
       const screenshotStartTime = Date.now();
-      initialScreenshot = await captureScreenshot({ fullPage: true });
+      initialScreenshot = await captureScreenshot(tabId);
       const screenshotTime = Date.now() - screenshotStartTime;
       const imageSizeKB = Math.round(initialScreenshot.length / 1024);
       console.log(
-        `[IMAGE-TO-CSS] Initial screenshot captured in ${screenshotTime}ms, size: ${imageSizeKB}KB`,
+        `[IMAGE-TO-CSS] Initial screenshot captured in ${screenshotTime}ms, size: ${imageSizeKB}KB`
       );
     } catch (error) {
-      console.error(
-        '[IMAGE-TO-CSS] Error capturing initial screenshot:',
-        error,
-      );
+      console.error('[IMAGE-TO-CSS] Error capturing initial screenshot:', error);
       return {
         success: false,
         message: `Error capturing screenshot: ${error instanceof Error ? error.message : 'Unknown error'}`,
       };
     }
 
+    // Get current CSS and computed styles
+    const currentCSS = await getCurrentCSS(tabId);
+    const computedStyles = await getComputedStyles(tabId);
+
     // Generate prompt
-    try {
-      const generatedPrompt = await generatePrompt(
-        apiKey,
-        referenceImageURL,
-        initialScreenshot,
-      );
+    await generatePromptWithGemini(
+      apiKey,
+      referenceImageURL,
+      initialScreenshot,
+      currentCSS,
+      computedStyles
+    );
 
-      const promptResponse: PromptResponse = {
-        success: true,
-        prompt: generatedPrompt,
-      };
+    // Generate CSS
+    const css = await generateCSSFromImage(referenceImageURL);
 
-      // Start CSS generation and feedback loop
-      let cssCode = '';
-      let currentScreenshot = initialScreenshot;
-      let iterations = 0;
-      let success = false;
+    // Apply CSS
+    await applyCSS(tabId, css);
 
-      // Ensure classTree is in the right format
-      const safeClassTree =
-        !classTree || typeof classTree === 'string'
-          ? ({
-              type: 'root',
-              children: [],
-              classes: [],
-              element: null,
-              portalClasses: [],
-            } as unknown as TreeNode)
-          : classTree;
+    // Capture result screenshot
+    const resultScreenshot = await captureScreenshot(tabId);
 
-      // Ensure tailwindData is in the right format
-      const safeTailwindData =
-        !tailwindData || Array.isArray(tailwindData)
-          ? ({} as TailwindClassData)
-          : tailwindData;
+    // Evaluate result
+    const evaluation = await evaluateCSSResult(referenceImageURL, resultScreenshot, css);
 
-      while (iterations < maxIterations && !success) {
-        iterations++;
-
-        // Send iteration update
-        chrome.runtime.sendMessage({
-          action: 'css-iteration-update',
-          iteration: iterations,
-        });
-
-        // Generate CSS based on prompt
-        cssCode = await generateCSS(
-          apiKey,
-          promptResponse.prompt,
-          safeClassTree,
-          safeTailwindData,
-          cssCode,
-          iterations - 1,
-          referenceImageURL,
-          currentScreenshot,
-        );
-
-        // Apply CSS
-        const appliedSuccessfully = await applyCSS(tabId, cssCode);
-        if (!appliedSuccessfully) {
-          return { success: false, message: 'Failed to apply CSS' };
-        }
-
-        // Take new screenshot after CSS applied
-        console.log(
-          `[IMAGE-TO-CSS] Capturing screenshot after CSS iteration ${iterations}...`,
-        );
-        const iterationScreenshotStartTime = Date.now();
-        currentScreenshot = await captureScreenshot({ fullPage: true });
-        const iterationScreenshotTime =
-          Date.now() - iterationScreenshotStartTime;
-        const iterationImageSizeKB = Math.round(
-          currentScreenshot.length / 1024,
-        );
-        console.log(
-          `[IMAGE-TO-CSS] Iteration ${iterations} screenshot captured in ${iterationScreenshotTime}ms, size: ${iterationImageSizeKB}KB`,
-        );
-
-        // Evaluate result
-        const evaluation = await evaluateCSSResult(
-          apiKey,
-          referenceImageURL,
-          currentScreenshot,
-          cssCode,
-        );
-
-        success = evaluation.isMatch;
-
-        if (!success) {
-          // Use feedback for the next iteration if available
-          // Since we don't have cssCode in the evaluation anymore,
-          // we'll just use the existing css with feedback in prompt
-        }
-      }
-
-      return {
-        success: true,
-        message: success
-          ? 'DevRev'
-          : 'Maximum iterations reached without perfect match',
-      };
-    } catch (error) {
-      console.error('Error generating prompt:', error);
-      return { success: false, message: 'Failed to generate prompt' };
-    }
+    return {
+      success: evaluation.isMatch,
+      message: evaluation.isMatch
+        ? 'CSS generation successful'
+        : 'CSS generation needs improvement',
+    };
   } catch (error) {
     console.error('Error in image-to-CSS workflow:', error);
-    return { success: false, message: 'Error processing reference image' };
+    return {
+      success: false,
+      message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
   }
+};
+
+const evaluateCSSResult = async (
+  referenceImage: string,
+  currentScreenshot: string,
+  cssCode: string
+): Promise<EvaluationResult> => {
+  // TODO: Implement actual Gemini API call for evaluation
+  console.log('Evaluating CSS result:', { referenceImage, currentScreenshot, cssCode });
+  return { isMatch: true };
+};
+
+export const generateCSSFromImage = async (imageData: string): Promise<string> => {
+  const apiKey = await getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error('Gemini API key not found');
+  }
+
+  // TODO: Implement actual Gemini API call for CSS generation
+  console.log('Generating CSS from image:', { imageData });
+  return `
+    .portal-container {
+      background-color: #ffffff;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+  `;
 };

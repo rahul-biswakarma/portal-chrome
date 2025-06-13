@@ -1,13 +1,9 @@
 import { getActiveTab } from '@/utils/chrome-utils';
 import { captureScreenshot } from '@/utils/screenshot';
-import type { 
-  CSSApplicationService, 
-  CSSApplicationResult 
-} from '../types';
+import type { CSSApplicationService, CSSApplicationResult } from '../types';
 import { validateCSSStructure } from '../utils';
 
 export class CSSApplicationServiceImpl implements CSSApplicationService {
-  
   async applyCSS(css: string): Promise<CSSApplicationResult> {
     try {
       // Validate CSS before applying
@@ -20,8 +16,8 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
           validationResult: {
             validRules: 0,
             invalidRules: validation.errors,
-            appliedRules: 0
-          }
+            appliedRules: 0,
+          },
         };
       }
 
@@ -30,18 +26,18 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
         return {
           success: false,
           appliedCSS: '',
-          error: 'No active tab found'
+          error: 'No active tab found',
         };
       }
 
       // Apply CSS to the page
       const applicationResult = await this.injectCSS(tab.id, css);
-      
+
       if (!applicationResult.success) {
         return {
           success: false,
           appliedCSS: '',
-          error: applicationResult.error || 'Failed to apply CSS'
+          error: applicationResult.error || 'Failed to apply CSS',
         };
       }
 
@@ -51,10 +47,13 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
       // Capture screenshot after CSS application
       let screenshotAfter: string | undefined;
       try {
-        screenshotAfter = await captureScreenshot({ fullPage: true });
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab.id) {
+          throw new Error('No active tab found');
+        }
+        screenshotAfter = await captureScreenshot(tab.id);
       } catch (error) {
-        console.warn('Failed to capture screenshot after CSS application:', error);
-        // Don't fail the entire operation for screenshot issues
+        console.error('Error capturing screenshot after CSS application:', error);
       }
 
       // Count applied rules for validation result
@@ -67,16 +66,15 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
         validationResult: {
           validRules: ruleCount,
           invalidRules: [],
-          appliedRules: ruleCount
-        }
+          appliedRules: ruleCount,
+        },
       };
-
     } catch (error) {
       console.error('Error applying CSS:', error);
       return {
         success: false,
         appliedCSS: '',
-        error: error instanceof Error ? error.message : 'Unknown error during CSS application'
+        error: error instanceof Error ? error.message : 'Unknown error during CSS application',
       };
     }
   }
@@ -97,7 +95,7 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
             return true;
           }
           return false;
-        }
+        },
       });
 
       return true;
@@ -125,7 +123,7 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
           const appliedCSS = styleEl.textContent || '';
           return appliedCSS.trim() === expectedCSS.trim();
         },
-        args: [css]
+        args: [css],
       });
 
       return result[0]?.result || false;
@@ -135,7 +133,10 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
     }
   }
 
-  private async injectCSS(tabId: number, css: string): Promise<{ success: boolean; error?: string }> {
+  private async injectCSS(
+    tabId: number,
+    css: string
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       const result = await chrome.scripting.executeScript({
         target: { tabId },
@@ -161,13 +162,13 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
               return { success: false, error: 'CSS application verification failed' };
             }
           } catch (error) {
-            return { 
-              success: false, 
-              error: error instanceof Error ? error.message : 'Unknown error in CSS injection' 
+            return {
+              success: false,
+              error: error instanceof Error ? error.message : 'Unknown error in CSS injection',
             };
           }
         },
-        args: [css]
+        args: [css],
       });
 
       const injectionResult = result[0]?.result;
@@ -178,9 +179,9 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
       return injectionResult;
     } catch (error) {
       console.error('Error injecting CSS:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Failed to inject CSS' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to inject CSS',
       };
     }
   }
@@ -210,7 +211,7 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
         func: () => {
           const styleEl = document.getElementById('portal-generated-css');
           return styleEl ? styleEl.textContent || '' : '';
-        }
+        },
       });
 
       return result[0]?.result || '';
@@ -238,23 +239,23 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
   // Method to apply CSS with automatic backup and rollback on failure
   async applyCSSWithRollback(css: string): Promise<CSSApplicationResult> {
     const backup = await this.backupCurrentCSS();
-    
+
     try {
       const result = await this.applyCSS(css);
-      
+
       if (!result.success && backup) {
         // Rollback to previous CSS on failure
         console.log('CSS application failed, rolling back...');
         await this.restoreCSS(backup);
       }
-      
+
       return result;
     } catch (error) {
       // Ensure rollback on any error
       if (backup) {
         await this.restoreCSS(backup);
       }
-      
+
       throw error;
     }
   }
@@ -264,19 +265,20 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
     try {
       // Split CSS into rules
       const rules = css.split('}').filter(rule => rule.trim());
-      
+
       // Apply rules in chunks
       let appliedRules = '';
       let successfulChunks = 0;
-      
+
       for (let i = 0; i < rules.length; i += chunkSize) {
-        const chunk = rules.slice(i, i + chunkSize)
+        const chunk = rules
+          .slice(i, i + chunkSize)
           .map(rule => rule.trim() + '}')
           .join('\n');
-        
+
         const chunkCSS = appliedRules + chunk;
         const result = await this.applyCSS(chunkCSS);
-        
+
         if (result.success) {
           appliedRules = chunkCSS;
           successfulChunks++;
@@ -285,7 +287,7 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
           break;
         }
       }
-      
+
       // Return final result
       if (appliedRules) {
         return await this.applyCSS(appliedRules);
@@ -293,7 +295,7 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
         return {
           success: false,
           appliedCSS: '',
-          error: 'No CSS rules could be applied safely'
+          error: 'No CSS rules could be applied safely',
         };
       }
     } catch (error) {
@@ -301,11 +303,11 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
       return {
         success: false,
         appliedCSS: '',
-        error: error instanceof Error ? error.message : 'Unknown error in safe CSS application'
+        error: error instanceof Error ? error.message : 'Unknown error in safe CSS application',
       };
     }
   }
 }
 
 // Export singleton instance
-export const cssApplicationService = new CSSApplicationServiceImpl(); 
+export const cssApplicationService = new CSSApplicationServiceImpl();

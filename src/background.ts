@@ -1,23 +1,5 @@
 // Background script for Portal Chrome Extension
-// Inline utility functions instead of importing
-/**
- * Check if the current URL is a restricted URL that cannot be accessed by extensions
- * @returns {boolean} True if the URL is restricted
- */
-function isRestrictedUrl(url: string): boolean {
-  // Check if URL starts with any of these restricted protocols
-  return (
-    url.startsWith('chrome://') ||
-    url.startsWith('chrome-extension://') ||
-    url.startsWith('chrome-search://') ||
-    url.startsWith('chrome-devtools://') ||
-    url.startsWith('devtools://') ||
-    url.startsWith('view-source:') ||
-    url.startsWith('about:') ||
-    url.startsWith('edge:') || // For Edge
-    url.startsWith('data:')
-  );
-}
+import { isRestrictedUrl } from './utils/url-utils';
 
 // Configure side panel when extension is installed - only if sidePanel API exists
 chrome.runtime.onInstalled.addListener(() => {
@@ -32,7 +14,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // Listen for tab activation changes
-chrome.tabs.onActivated.addListener((activeInfo) => {
+chrome.tabs.onActivated.addListener(activeInfo => {
   checkTabCompatibility(activeInfo.tabId);
 });
 
@@ -79,8 +61,7 @@ async function checkTabCompatibility(tabId: number) {
         chrome.action.setBadgeText({ text: '✗', tabId });
         chrome.action.setBadgeBackgroundColor({ color: '#E53E3E', tabId });
         chrome.action.setTitle({
-          title:
-            'Portal Extension: Not compatible with this page. No portal-* classes found.',
+          title: 'Portal Extension: Not compatible with this page. No portal-* classes found.',
           tabId,
         });
       } else {
@@ -125,10 +106,7 @@ function checkForPortalClasses(): boolean {
       window.location.href.startsWith('chrome-search://') ||
       window.location.href.startsWith('about:')
     ) {
-      console.warn(
-        'Cannot check for portal classes on restricted URL:',
-        window.location.href,
-      );
+      console.warn('Cannot check for portal classes on restricted URL:', window.location.href);
       return false;
     }
 
@@ -142,7 +120,7 @@ function checkForPortalClasses(): boolean {
 }
 
 // Enable side panel when extension icon is clicked
-chrome.action.onClicked.addListener(async (tab) => {
+chrome.action.onClicked.addListener(async tab => {
   if (tab.id) {
     // Use tab.url directly to check if it's a restricted URL
     if (tab.url && isRestrictedUrl(tab.url)) {
@@ -216,10 +194,10 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   // Handle capture visible tab
   if (request.action === 'captureVisibleTab') {
     captureVisibleTab()
-      .then((dataUrl) => {
+      .then(dataUrl => {
         sendResponse({ success: true, data: dataUrl });
       })
-      .catch((error) => {
+      .catch(error => {
         console.error('Error capturing tab:', error);
         sendResponse({ success: false, error: error.message });
       });
@@ -241,49 +219,37 @@ async function captureVisibleTab(): Promise<string> {
     try {
       // Check if the tabs API and captureVisibleTab are available
       if (!chrome.tabs || !chrome.tabs.captureVisibleTab) {
-        console.error(
-          '[BACKGROUND] Screenshot API not available in this browser context',
-        );
-        reject(
-          new Error('Screenshot API not available in this browser context'),
-        );
+        console.error('[BACKGROUND] Screenshot API not available in this browser context');
+        reject(new Error('Screenshot API not available in this browser context'));
         return;
       }
 
-      console.log(
-        '[BACKGROUND] Using chrome.tabs.captureVisibleTab with quality: 100',
-      );
-      chrome.tabs.captureVisibleTab(
-        { format: 'png', quality: 100 },
-        (dataUrl) => {
-          const totalTime = Date.now() - startTime;
+      console.log('[BACKGROUND] Using chrome.tabs.captureVisibleTab with quality: 100');
+      chrome.tabs.captureVisibleTab({ format: 'png', quality: 100 }, dataUrl => {
+        const totalTime = Date.now() - startTime;
 
-          if (chrome.runtime.lastError) {
-            console.error(
-              `[BACKGROUND] Screenshot capture failed after ${totalTime}ms:`,
-              chrome.runtime.lastError.message,
-            );
-            reject(new Error(chrome.runtime.lastError.message));
-          } else if (!dataUrl) {
-            console.error(
-              `[BACKGROUND] Screenshot capture failed after ${totalTime}ms: No data returned`,
-            );
-            reject(new Error('Failed to capture screenshot'));
-          } else {
-            const imageSizeKB = Math.round(dataUrl.length / 1024);
-            console.log(
-              `[BACKGROUND] Screenshot capture completed in ${totalTime}ms, size: ${imageSizeKB}KB`,
-            );
-            resolve(dataUrl);
-          }
-        },
-      );
+        if (chrome.runtime.lastError) {
+          console.error(
+            `[BACKGROUND] Screenshot capture failed after ${totalTime}ms:`,
+            chrome.runtime.lastError.message
+          );
+          reject(new Error(chrome.runtime.lastError.message));
+        } else if (!dataUrl) {
+          console.error(
+            `[BACKGROUND] Screenshot capture failed after ${totalTime}ms: No data returned`
+          );
+          reject(new Error('Failed to capture screenshot'));
+        } else {
+          const imageSizeKB = Math.round(dataUrl.length / 1024);
+          console.log(
+            `[BACKGROUND] Screenshot capture completed in ${totalTime}ms, size: ${imageSizeKB}KB`
+          );
+          resolve(dataUrl);
+        }
+      });
     } catch (error) {
       const totalTime = Date.now() - startTime;
-      console.error(
-        `[BACKGROUND] Screenshot capture exception after ${totalTime}ms:`,
-        error,
-      );
+      console.error(`[BACKGROUND] Screenshot capture exception after ${totalTime}ms:`, error);
       reject(error);
     }
   });

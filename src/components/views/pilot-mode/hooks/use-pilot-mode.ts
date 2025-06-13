@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { dataCollectionService } from '../services/data-collection.service';
 import { cssApplicationService } from '../services/css-application.service';
 import { evaluationService } from '../services/evaluation.service';
-import { generateCSSWithGemini } from '@/utils/gemini-client';
+import { generateCSSWithGemini } from '@/utils/gemini';
 import { getEnvVariable } from '@/utils/environment';
 import type {
   UsePilotModeReturn,
@@ -220,7 +220,6 @@ export const usePilotMode = (): UsePilotModeReturn => {
         tree,
         tailwindData,
         pageData.currentCSS,
-        iteration - 1, // Gemini expects 0-based iteration
         config.referenceImages[0]?.url,
         pageData.screenshot,
         pageData.computedStyles,

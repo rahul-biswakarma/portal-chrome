@@ -21,7 +21,7 @@ A Chrome extension for customizing portal interfaces with AI-powered theme gener
 
 ### CSS Generation
 
-- **AI-Powered CSS**: Generate CSS from reference images using OpenAI
+- **AI-Powered CSS**: Generate CSS using Gemini AI
 - **Visual Feedback Loop**: Iterative improvement based on visual comparisons
 - **Manual CSS Editor**: Direct CSS editing with syntax highlighting
 - **DevRev Integration**: Save and load themes from DevRev portal preferences
@@ -31,8 +31,7 @@ A Chrome extension for customizing portal interfaces with AI-powered theme gener
 ### Prerequisites
 
 1. **Gemini API Key**: Get your free API key from [Google AI Studio](https://ai.google.dev/)
-2. **OpenAI API Key** (optional): For image-to-CSS generation
-3. **DevRev Credentials** (optional): For theme persistence
+2. **DevRev Credentials** (optional): For theme persistence
 
 ### Installation
 
@@ -47,7 +46,6 @@ A Chrome extension for customizing portal interfaces with AI-powered theme gener
 2. Go to **Settings** tab
 3. Enter your API keys:
    - **Gemini API Key**: Required for AI theme generation
-   - **OpenAI API Key**: Optional, for image-to-CSS features
    - **DevRev Credentials**: Optional, for theme saving
 
 ## Usage
@@ -76,7 +74,7 @@ The AI will:
 - Modify **Layout Settings** for spacing and borders
 - All changes are applied in real-time
 
-### CSS Generation from Images
+### CSS Generation
 
 1. Go to **Customize** tab
 2. Upload a reference image

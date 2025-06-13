@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { CustomizeView } from './components/views/customize-view/customize-view';
-import './index.css';
+import './globals.css';
 
 const Popup = () => {
   return (
@@ -17,6 +17,6 @@ if (root) {
   ReactDOM.createRoot(root).render(
     <React.StrictMode>
       <Popup />
-    </React.StrictMode>,
+    </React.StrictMode>
   );
 }
