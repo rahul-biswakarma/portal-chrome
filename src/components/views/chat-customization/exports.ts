@@ -7,7 +7,9 @@ export type * from './types';
 // Export services (for advanced usage)
 export { ChatService } from './services/chat.service';
 export { ContextService } from './services/context.service';
+export { CSSApplicationService } from './services/css-application.service';
+export { LLMService } from './services/llm.service';
 
 // Export components (for customization)
 export { MessageList } from './components/chat-panel/message-list';
-export { MessageInput } from './components/chat-panel/message-input'; 
+export { MessageInput } from './components/chat-panel/message-input';

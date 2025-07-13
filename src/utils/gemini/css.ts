@@ -1,5 +1,5 @@
 import type { TreeNode } from '../../types';
-import { makeGeminiRequest } from './client';
+import { makeGeminiRequest, getApiParameters } from './client';
 import type { GeminiMessage } from './types';
 
 // Constants for prompts
@@ -85,11 +85,14 @@ export const generateCSSWithGemini = async (
     parts,
   };
 
+  // Get API parameters to use the correct model
+  const { model } = await getApiParameters();
+
   // Make the request
   const response = await makeGeminiRequest({
     apiKey,
     messages: [message],
-    modelName: 'gemini-pro-vision',
+    modelName: model,
     sessionId,
     temperature: 0.2,
   });
@@ -139,11 +142,14 @@ export const evaluateCSSResultWithGemini = async (
     parts,
   };
 
+  // Get API parameters to use the correct model
+  const { model } = await getApiParameters();
+
   // Make the request
   const response = await makeGeminiRequest({
     apiKey,
     messages: [message],
-    modelName: 'gemini-pro-vision',
+    modelName: model,
     sessionId,
     temperature: 0.2,
   });
@@ -203,11 +209,14 @@ export const generatePromptWithGemini = async (
     parts,
   };
 
+  // Get API parameters to use the correct model
+  const { model } = await getApiParameters();
+
   // Make the request
   const response = await makeGeminiRequest({
     apiKey,
     messages: [message],
-    modelName: 'gemini-pro-vision',
+    modelName: model,
     sessionId,
     temperature: 0.2,
   });
