@@ -5,7 +5,6 @@ import { PilotModeView } from './components/views/pilot-mode';
 import { HierarchyView } from './components/views/hierarchy-view/hierarchy-view';
 import { Settings } from './components/views/settings/settings';
 import { CssEditorView } from './components/views/css-editor-view/css-editor-view';
-import { ThemeEditorView } from './components/views/theme-editor/theme-editor-view';
 import { ChatCustomizationView } from './components/views/chat-customization';
 
 import type { ViewTabsSchema } from './types';
@@ -38,18 +37,14 @@ const views: ViewTabsSchema[] = [
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
         Chat AI
       </div>
     ),
     content: <ChatCustomizationView />,
   },
-  {
-    id: 'theme-editor',
-    trigger: 'Theme Editor',
-    content: <ThemeEditorView />,
-  },
+
   {
     id: 'hierarchy',
     trigger: (
@@ -110,11 +105,7 @@ function App() {
     <AppProvider>
       <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
         <div className="h-full overflow-hidden">
-          <ViewTabs
-            config={views}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-          />
+          <ViewTabs config={views} activeTab={activeTab} setActiveTab={setActiveTab} />
         </div>
       </div>
     </AppProvider>

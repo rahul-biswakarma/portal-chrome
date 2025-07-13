@@ -142,7 +142,7 @@ export class CSSApplicationService {
     const cleanExistingCSS = this.removePreviousChatAIChanges(existingCSS);
 
     // Merge clean existing CSS with new CSS
-    return `${cleanExistingCSS}\n\n/* Chat AI Generated Changes */\n${newCSS}`;
+    return `${cleanExistingCSS}\n\n${newCSS}`;
   }
 
   /**

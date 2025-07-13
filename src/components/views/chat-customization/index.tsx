@@ -22,7 +22,7 @@ interface ChatMessage {
       newValue: string;
       confidence: number;
     }>;
-    suggestions?: string[];
+
     processingTime?: number;
   };
 }
@@ -35,19 +35,9 @@ interface ChatSession {
   updatedAt: number;
 }
 
-const DEFAULT_SUGGESTIONS = [
-  'Make the header more modern',
-  'Improve button hover effects',
-  'Add subtle shadows to cards',
-  'Make the navigation more responsive',
-  'Enhance the color scheme',
-  'Improve typography spacing',
-];
-
 export function ChatCustomizationView() {
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>(DEFAULT_SUGGESTIONS);
   const [llmService] = useState(() => new LLMService());
   const [contextService] = useState(() => new ContextService());
   const [cssService] = useState(() => CSSApplicationService.getInstance());
@@ -74,13 +64,9 @@ export function ChatCustomizationView() {
 
       setCurrentSession(session);
 
-      // Initialize context and generate dynamic suggestions
+      // Initialize context (suggestions removed)
       try {
-        const context = await contextService.analyzeCurrentPage();
-        const dynamicSuggestions = llmService.generateSuggestions({
-          portalElements: context.portalElements,
-        });
-        setSuggestions(dynamicSuggestions);
+        await contextService.analyzeCurrentPage();
       } catch (error) {
         console.warn('Could not analyze page context:', error);
       }
@@ -136,7 +122,6 @@ export function ChatCustomizationView() {
           timestamp: Date.now(),
           metadata: {
             cssChanges: llmResponse.cssChanges,
-            suggestions: llmResponse.suggestions,
             processingTime: llmResponse.processingTime,
           },
         };
@@ -151,8 +136,7 @@ export function ChatCustomizationView() {
             : null
         );
 
-        // Update suggestions based on the conversation
-        setSuggestions(llmResponse.suggestions);
+        // Suggestions removed from UI
 
         // Auto-apply CSS changes if they exist
         if (llmResponse.cssChanges && llmResponse.cssChanges.length > 0) {
@@ -262,7 +246,6 @@ export function ChatCustomizationView() {
 
         <MessageInput
           onSendMessage={handleSendMessage}
-          suggestions={suggestions}
           isLoading={isLoading}
           placeholder="Describe your styling changes..."
         />
