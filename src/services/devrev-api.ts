@@ -18,6 +18,7 @@ interface StylesheetInfo {
 interface PortalConfiguration {
   aat_keyring_id?: string;
   org_favicon?: { id: string } | string;
+  org_logo?: { id: string } | string;
   [key: string]: unknown;
 }
 
@@ -71,8 +72,7 @@ interface ArtifactPrepareResponse {
 export const getDevRevConfig = async (): Promise<DevRevConfig> => {
   const pat = (await getEnvVariable('DEVREV_PAT')) || '';
   const donId = (await getEnvVariable('DEVREV_ORG_DON_ID')) || '';
-  const baseUrl =
-    (await getEnvVariable('DEVREV_API_URL')) || 'https://api.dev.devrev-eng.ai';
+  const baseUrl = (await getEnvVariable('DEVREV_API_URL')) || 'https://api.dev.devrev-eng.ai';
 
   return { baseUrl, pat, donId };
 };
@@ -80,52 +80,49 @@ export const getDevRevConfig = async (): Promise<DevRevConfig> => {
 /**
  * Get portal preferences from DevRev
  */
-export const getPortalPreferences =
-  async (): Promise<PreferencesGetResponse | null> => {
-    try {
-      const { baseUrl, pat, donId } = await getDevRevConfig();
+export const getPortalPreferences = async (): Promise<PreferencesGetResponse | null> => {
+  try {
+    const { baseUrl, pat, donId } = await getDevRevConfig();
 
-      if (!pat || !donId) {
-        throw new Error('DevRev PAT or DON ID is missing');
-      }
-
-      const url = new URL(`${baseUrl}/internal/preferences.get`);
-      url.searchParams.append('type', 'portal_preferences');
-      url.searchParams.append('object', donId);
-
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: {
-          Authorization: pat,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          `Failed to get preferences: ${response.status} ${response.statusText}`,
-          errorText,
-        );
-        throw new Error(
-          `Failed to get preferences: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error getting portal preferences:', error);
-      return null;
+    if (!pat || !donId) {
+      throw new Error('DevRev PAT or DON ID is missing');
     }
-  };
+
+    const url = new URL(`${baseUrl}/internal/preferences.get`);
+    url.searchParams.append('type', 'portal_preferences');
+    url.searchParams.append('object', donId);
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        Authorization: pat,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(
+        `Failed to get preferences: ${response.status} ${response.statusText}`,
+        errorText
+      );
+      throw new Error(`Failed to get preferences: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error getting portal preferences:', error);
+    return null;
+  }
+};
 
 /**
  * Prepare an artifact for upload
  */
 export const prepareArtifact = async (
   fileName: string,
-  fileType?: string,
+  fileType?: string
 ): Promise<ArtifactPrepareResponse | null> => {
   try {
     const { baseUrl, pat } = await getDevRevConfig();
@@ -149,9 +146,7 @@ export const prepareArtifact = async (
     });
 
     if (!response.ok) {
-      throw new Error(
-        `Failed to prepare artifact: ${response.status} ${response.statusText}`,
-      );
+      throw new Error(`Failed to prepare artifact: ${response.status} ${response.statusText}`);
     }
 
     return await response.json();
@@ -165,7 +160,7 @@ export const prepareArtifact = async (
  * Prepare content upload for an artifact
  */
 export const prepareArtifactContent = async (
-  fileType: string = 'text/css',
+  fileType: string = 'text/css'
 ): Promise<ContentsPrepareResponse | null> => {
   try {
     const { baseUrl, pat } = await getDevRevConfig();
@@ -174,24 +169,21 @@ export const prepareArtifactContent = async (
       throw new Error('DevRev PAT is missing');
     }
 
-    const response = await fetch(
-      `${baseUrl}/internal/artifacts.contents.prepare`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: pat,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          configuration_set: 'portal_css',
-          file_type: fileType,
-        }),
+    const response = await fetch(`${baseUrl}/internal/artifacts.contents.prepare`, {
+      method: 'POST',
+      headers: {
+        Authorization: pat,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({
+        configuration_set: 'portal_css',
+        file_type: fileType,
+      }),
+    });
 
     if (!response.ok) {
       throw new Error(
-        `Failed to prepare artifact content: ${response.status} ${response.statusText}`,
+        `Failed to prepare artifact content: ${response.status} ${response.statusText}`
       );
     }
 
@@ -206,7 +198,7 @@ export const prepareArtifactContent = async (
  * Validate staged content
  */
 export const validateArtifactContent = async (
-  stagedContentId: string,
+  stagedContentId: string
 ): Promise<ContentsValidateResponse | null> => {
   try {
     const { baseUrl, pat } = await getDevRevConfig();
@@ -215,23 +207,20 @@ export const validateArtifactContent = async (
       throw new Error('DevRev PAT is missing');
     }
 
-    const response = await fetch(
-      `${baseUrl}/internal/artifacts.contents.validate`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: pat,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: stagedContentId,
-        }),
+    const response = await fetch(`${baseUrl}/internal/artifacts.contents.validate`, {
+      method: 'POST',
+      headers: {
+        Authorization: pat,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({
+        id: stagedContentId,
+      }),
+    });
 
     if (!response.ok) {
       throw new Error(
-        `Failed to validate artifact content: ${response.status} ${response.statusText}`,
+        `Failed to validate artifact content: ${response.status} ${response.statusText}`
       );
     }
 
@@ -247,7 +236,7 @@ export const validateArtifactContent = async (
  */
 export const createArtifactFromContent = async (
   fileName: string,
-  stagedContentId: string,
+  stagedContentId: string
 ): Promise<ArtifactCreateResponse | null> => {
   try {
     const { baseUrl, pat } = await getDevRevConfig();
@@ -256,25 +245,22 @@ export const createArtifactFromContent = async (
       throw new Error('DevRev PAT is missing');
     }
 
-    const response = await fetch(
-      `${baseUrl}/internal/artifacts.create-from-content`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: pat,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          file_name: fileName,
-          staged_content_id: stagedContentId,
-          configuration_set: 'portal_css',
-        }),
+    const response = await fetch(`${baseUrl}/internal/artifacts.create-from-content`, {
+      method: 'POST',
+      headers: {
+        Authorization: pat,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({
+        file_name: fileName,
+        staged_content_id: stagedContentId,
+        configuration_set: 'portal_css',
+      }),
+    });
 
     if (!response.ok) {
       throw new Error(
-        `Failed to create artifact from content: ${response.status} ${response.statusText}`,
+        `Failed to create artifact from content: ${response.status} ${response.statusText}`
       );
     }
 
@@ -291,13 +277,13 @@ export const createArtifactFromContent = async (
 export const uploadArtifactContent = async (
   url: string,
   formData: Array<{ key: string; value: string }>,
-  fileContent: string,
+  fileContent: string
 ): Promise<boolean> => {
   try {
     const formDataObj = new FormData();
 
     // Add all form fields from the prepare response
-    formData.forEach((field) => {
+    formData.forEach(field => {
       formDataObj.append(field.key, field.value);
     });
 
@@ -322,7 +308,7 @@ export const uploadArtifactContent = async (
  */
 export const updatePortalPreferences = async (
   preferences: PreferencesGetResponse,
-  stylesheetArtifactId: string,
+  stylesheetArtifactId: string
 ): Promise<boolean> => {
   try {
     const { baseUrl, pat, donId } = await getDevRevConfig();
@@ -337,8 +323,7 @@ export const updatePortalPreferences = async (
       preferences.preference;
 
     // Process configuration to remove aat_keyring_id and fix org_favicon
-    const configuration =
-      preferenceWithoutModifiedBy.configuration || ({} as PortalConfiguration);
+    const configuration = preferenceWithoutModifiedBy.configuration || ({} as PortalConfiguration);
     const styling = preferenceWithoutModifiedBy.styling || ({} as StylingInfo);
     const { aat_keyring_id, org_favicon, ...restConfig } = configuration;
     const { header_image, ...restStyling } = styling as StylingInfo;
@@ -348,9 +333,10 @@ export const updatePortalPreferences = async (
       object: donId,
       configuration: {
         ...restConfig,
-        ...(org_favicon && typeof org_favicon === 'object'
-          ? { org_favicon: org_favicon.id }
+        ...(configuration.org_logo && typeof configuration.org_logo === 'object'
+          ? { org_logo: configuration.org_logo.id }
           : {}),
+        ...(org_favicon && typeof org_favicon === 'object' ? { org_favicon: org_favicon.id } : {}),
       },
       styling: {
         ...restStyling,
@@ -386,9 +372,7 @@ export const updatePortalPreferences = async (
 /**
  * Upload CSS to DevRev and update portal preferences
  */
-export const uploadCssToDevRev = async (
-  cssContent: string,
-): Promise<boolean> => {
+export const uploadCssToDevRev = async (cssContent: string): Promise<boolean> => {
   try {
     if (!cssContent || cssContent.trim() === '') {
       console.error('Empty CSS content provided');
@@ -411,7 +395,7 @@ export const uploadCssToDevRev = async (
     const uploadSuccess = await uploadArtifactContent(
       contentsPrepareResponse.url,
       contentsPrepareResponse.form_data,
-      cssContent,
+      cssContent
     );
 
     if (!uploadSuccess) {
@@ -422,32 +406,22 @@ export const uploadCssToDevRev = async (
     const stagedContentId = contentsPrepareResponse.staged_content.id;
     const validateResponse = await validateArtifactContent(stagedContentId);
 
-    if (
-      !validateResponse ||
-      validateResponse.staged_content.status !== 'succeeded'
-    ) {
+    if (!validateResponse || validateResponse.staged_content.status !== 'succeeded') {
       throw new Error(
-        'Content validation failed: ' +
-          (validateResponse?.staged_content.error || 'Unknown error'),
+        'Content validation failed: ' + (validateResponse?.staged_content.error || 'Unknown error')
       );
     }
 
     // Step 5: Create artifact from staged content
     const fileName = `portal-stylesheet-${new Date().toISOString()}.css`;
-    const createResponse = await createArtifactFromContent(
-      fileName,
-      stagedContentId,
-    );
+    const createResponse = await createArtifactFromContent(fileName, stagedContentId);
 
     if (!createResponse) {
       throw new Error('Failed to create artifact from content');
     }
 
     // Step 6: Update preferences with new artifact ID
-    const updateSuccess = await updatePortalPreferences(
-      preferences,
-      createResponse.artifact.id,
-    );
+    const updateSuccess = await updatePortalPreferences(preferences, createResponse.artifact.id);
 
     return updateSuccess;
   } catch (error) {
@@ -459,9 +433,7 @@ export const uploadCssToDevRev = async (
 /**
  * Get artifact content by ID
  */
-export const getArtifactContent = async (
-  artifactId: string,
-): Promise<string | null> => {
+export const getArtifactContent = async (artifactId: string): Promise<string | null> => {
   try {
     const { baseUrl, pat } = await getDevRevConfig();
 
@@ -480,9 +452,7 @@ export const getArtifactContent = async (
     });
 
     if (!response.ok) {
-      throw new Error(
-        `Failed to get artifact: ${response.status} ${response.statusText}`,
-      );
+      throw new Error(`Failed to get artifact: ${response.status} ${response.statusText}`);
     }
 
     // The artifact API returns the raw file content
@@ -519,7 +489,7 @@ export const initializeCssFromDevRev = async (): Promise<string | null> => {
 
       if (!response.ok) {
         throw new Error(
-          `Failed to fetch CSS from preview URL: ${response.status} ${response.statusText}`,
+          `Failed to fetch CSS from preview URL: ${response.status} ${response.statusText}`
         );
       }
 
@@ -529,7 +499,7 @@ export const initializeCssFromDevRev = async (): Promise<string | null> => {
     }
 
     throw new Error(
-      `Invalid stylesheet format in DevRev preferences: ${JSON.stringify(stylesheet)}`,
+      `Invalid stylesheet format in DevRev preferences: ${JSON.stringify(stylesheet)}`
     );
   } catch (error) {
     console.error('Error initializing CSS from DevRev:', error);
