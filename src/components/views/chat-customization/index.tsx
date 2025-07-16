@@ -7,6 +7,7 @@ import { LLMService } from './services/llm.service';
 import { ContextService } from './services/context.service';
 import { CSSApplicationService } from './services/css-application.service';
 import { useAppContext } from '@/contexts';
+import { ErrorModal } from '@/components/ui/error-modal';
 
 // Types for the Chat AI implementation
 interface ChatMessage {
@@ -41,6 +42,17 @@ export function ChatCustomizationView() {
   const [llmService] = useState(() => new LLMService());
   const [contextService] = useState(() => new ContextService());
   const [cssService] = useState(() => CSSApplicationService.getInstance());
+  const [errorModal, setErrorModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    error: string | Error;
+    details?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    error: '',
+    details: undefined,
+  });
   const { setCssContent } = useAppContext();
 
   // Initialize chat session and context
@@ -146,18 +158,41 @@ export function ChatCustomizationView() {
               console.log('CSS changes applied successfully to page and CSS editor');
             } else {
               console.warn('Failed to apply CSS changes');
+              setErrorModal({
+                isOpen: true,
+                title: 'CSS Application Error',
+                error: 'Failed to apply CSS changes to the page',
+                details:
+                  'Check the browser console for more details about the CSS application failure.',
+              });
             }
           } catch (error) {
             console.error('Error applying CSS changes:', error);
+            setErrorModal({
+              isOpen: true,
+              title: 'CSS Application Error',
+              error: error instanceof Error ? error : new Error(String(error)),
+              details: error instanceof Error ? error.stack : undefined,
+            });
           }
         }
       } catch (error) {
         console.error('Failed to process message:', error);
 
+        // Show error modal with details
+        setErrorModal({
+          isOpen: true,
+          title: 'Chat AI Processing Error',
+          error: error instanceof Error ? error : new Error(String(error)),
+          details: error instanceof Error ? error.stack : undefined,
+        });
+
+        // Also add a system message to the chat
         const errorMessage: ChatMessage = {
           id: `msg_${Date.now()}`,
           type: 'system',
-          content: 'Sorry, I encountered an error processing your request. Please try again.',
+          content:
+            'Sorry, I encountered an error processing your request. Please check the error details and try again.',
           timestamp: Date.now(),
         };
 
@@ -264,6 +299,15 @@ export function ChatCustomizationView() {
           </div>
         </div>
       </div>
+
+      {/* Error Modal */}
+      <ErrorModal
+        isOpen={errorModal.isOpen}
+        onClose={() => setErrorModal(prev => ({ ...prev, isOpen: false }))}
+        title={errorModal.title}
+        error={errorModal.error}
+        details={errorModal.details}
+      />
     </div>
   );
 }

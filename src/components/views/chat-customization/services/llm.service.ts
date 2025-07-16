@@ -3,6 +3,10 @@ import { generateCSSWithGemini } from '@/utils/gemini';
 import { getEnvVariable } from '@/utils/environment';
 import { getActiveTab } from '@/utils/chrome-utils';
 import { captureScreenshot } from '@/utils/screenshot';
+import {
+  CSS_GENERATION_RULES,
+  ADDITIONAL_CSS_REQUIREMENTS,
+} from '@/constants/css-generation-rules';
 
 interface LLMResponse {
   understanding: string;
@@ -300,14 +304,14 @@ ${portalClasses.map(cls => `- .${cls}`).join('\n')}
 CURRENT CSS:
 ${currentCSS || '/* No existing CSS */'}
 
-REQUIREMENTS:
-1. Use ONLY the portal classes listed above
-2. Generate specific CSS changes that match the user's request
-3. Focus on the specific styling the user mentioned
-4. Make changes that are visually impactful
-5. Ensure good contrast and accessibility
-6. DO NOT duplicate existing CSS rules - only generate NEW or MODIFIED rules
-7. Generate clean, minimal CSS without comments or explanations
+${CSS_GENERATION_RULES}
+
+${ADDITIONAL_CSS_REQUIREMENTS}
+5. Focus on the specific styling the user mentioned
+6. Make changes that are visually impactful
+7. DO NOT duplicate existing CSS rules - only generate NEW or MODIFIED rules
+8. Generate clean, minimal CSS without comments or explanations
+9. Only use the portal classes listed above in the AVAILABLE PORTAL CLASSES section
 
 Generate only the CSS rules needed to fulfill the user's request. Return only valid CSS without any explanations, comments, or markdown formatting.`;
   }

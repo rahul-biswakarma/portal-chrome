@@ -1,5 +1,9 @@
 import { generateCSSWithGemini } from '@/utils/gemini';
 import { getEnvVariable } from '@/utils/environment';
+import {
+  CSS_GENERATION_RULES,
+  ADDITIONAL_CSS_REQUIREMENTS,
+} from '@/constants/css-generation-rules';
 import type {
   CSSGenerationService,
   PageData,
@@ -171,12 +175,11 @@ ${portalClasses.map(cls => `- .${cls}`).join('\n')}
 CURRENT CSS:
 ${pageData.currentCSS || '/* No existing CSS */'}
 
-REQUIREMENTS:
-1. Use ONLY the portal classes listed above
-2. Generate complete CSS that matches the reference design
-3. Focus on colors, typography, spacing, layout, and visual effects
-4. Make it modern and visually appealing
-5. Ensure good contrast and accessibility
+${CSS_GENERATION_RULES}
+
+${ADDITIONAL_CSS_REQUIREMENTS}
+5. Generate complete CSS that matches the reference design
+6. Only use the portal classes listed above in the AVAILABLE CLASSES section
 
 ${config.advancedSettings.generateResponsiveCSS ? 'Include responsive breakpoints for mobile and tablet.' : ''}
 ${config.advancedSettings.useImportantDeclarations ? 'Use !important declarations where necessary to override existing styles.' : ''}
@@ -207,12 +210,15 @@ ${pageData.currentCSS || '/* No existing CSS */'}
 AVAILABLE CLASSES:
 ${portalClasses.map(cls => `- .${cls}`).join('\n')}
 
-REQUIREMENTS:
-1. Address the specific feedback provided
-2. Improve visual accuracy to match the reference design
-3. Build upon the existing CSS rather than starting over
-4. Focus on the areas mentioned in the feedback
-5. Maintain any working elements from the previous iteration
+${CSS_GENERATION_RULES}
+
+${ADDITIONAL_CSS_REQUIREMENTS}
+5. Address the specific feedback provided
+6. Improve visual accuracy to match the reference design
+7. Build upon the existing CSS rather than starting over
+8. Focus on the areas mentioned in the feedback
+9. Maintain any working elements from the previous iteration
+10. Only use the portal classes listed above in the AVAILABLE CLASSES section
 
 ${config.advancedSettings.generateResponsiveCSS ? 'Ensure responsive design is maintained.' : ''}
 ${config.advancedSettings.useImportantDeclarations ? 'Use !important where needed to override existing styles.' : ''}

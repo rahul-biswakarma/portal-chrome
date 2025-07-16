@@ -16,6 +16,7 @@ import { getActiveTab } from '@/utils/chrome-utils';
 import { Play, RotateCcw, RotateCw, Copy, CheckIcon, Download, Save, X } from 'lucide-react';
 import { useLogger } from '@/services/logger';
 import { FetchCssModal } from './fetch-css-modal';
+import { ErrorModal } from '@/components/ui/error-modal';
 
 export const CssEditor = () => {
   const editorRef = useRef<HTMLDivElement>(null);
@@ -25,6 +26,17 @@ export const CssEditor = () => {
   const [showFetchModal, setShowFetchModal] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [errorModal, setErrorModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    error: string | Error;
+    details?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    error: '',
+    details: undefined,
+  });
   const appContext = useContext(AppContext);
   const { addLog } = useLogger();
 
@@ -193,6 +205,14 @@ export const CssEditor = () => {
         `Error fetching CSS from DevRev: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'error'
       );
+
+      // Show error modal with details
+      setErrorModal({
+        isOpen: true,
+        title: 'DevRev CSS Fetch Error',
+        error: error instanceof Error ? error : new Error(String(error)),
+        details: error instanceof Error ? error.stack : undefined,
+      });
     } finally {
       setIsFetching(false);
       setShowFetchModal(false);
@@ -430,6 +450,15 @@ export const CssEditor = () => {
         onClose={() => setShowFetchModal(false)}
         onConfirm={handleConfirmFetch}
         isLoading={isFetching}
+      />
+
+      {/* Error Modal */}
+      <ErrorModal
+        isOpen={errorModal.isOpen}
+        onClose={() => setErrorModal(prev => ({ ...prev, isOpen: false }))}
+        title={errorModal.title}
+        error={errorModal.error}
+        details={errorModal.details}
       />
     </div>
   );

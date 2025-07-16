@@ -7,6 +7,8 @@ import { AppContext } from '@/contexts/app-context';
 import { useLogger } from '@/services/logger';
 import { Loader2, Sparkles } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { ApplyCssWarningModal } from './apply-css-warning-modal';
+import { ErrorModal } from '@/components/ui/error-modal';
 
 export const Settings = () => {
   const [geminiKey, setGeminiKey] = useState('');
@@ -17,6 +19,18 @@ export const Settings = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [showApplyCssWarning, setShowApplyCssWarning] = useState(false);
+  const [errorModal, setErrorModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    error: string | Error;
+    details?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    error: '',
+    details: undefined,
+  });
   const appContext = useContext(AppContext);
   const { addLog } = useLogger();
 
@@ -103,10 +117,15 @@ export const Settings = () => {
     }
   };
 
-  const handleApplyCssToPortal = async () => {
+  const handleApplyCssToPortal = () => {
+    setShowApplyCssWarning(true);
+  };
+
+  const handleConfirmApplyCssToPortal = async () => {
     if (!appContext) return;
 
     try {
+      setShowApplyCssWarning(false);
       setIsUploading(true);
       setUploadStatus('idle');
       addLog('Getting CSS from editor...', 'info');
@@ -145,6 +164,14 @@ export const Settings = () => {
         'error'
       );
       setUploadStatus('error');
+
+      // Show error modal with details
+      setErrorModal({
+        isOpen: true,
+        title: 'DevRev API Error',
+        error: error instanceof Error ? error : new Error(String(error)),
+        details: error instanceof Error ? error.stack : undefined,
+      });
     } finally {
       setIsUploading(false);
 
@@ -294,6 +321,23 @@ export const Settings = () => {
       </Button>
 
       {isSaved && <p className="mt-2 text-sm text-green-600">Settings saved successfully!</p>}
+
+      {/* Apply CSS Warning Modal */}
+      <ApplyCssWarningModal
+        isOpen={showApplyCssWarning}
+        onClose={() => setShowApplyCssWarning(false)}
+        onConfirm={handleConfirmApplyCssToPortal}
+        isLoading={isUploading}
+      />
+
+      {/* Error Modal */}
+      <ErrorModal
+        isOpen={errorModal.isOpen}
+        onClose={() => setErrorModal(prev => ({ ...prev, isOpen: false }))}
+        title={errorModal.title}
+        error={errorModal.error}
+        details={errorModal.details}
+      />
     </div>
   );
 };
