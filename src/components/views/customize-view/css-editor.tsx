@@ -190,15 +190,9 @@ export const CssEditor = () => {
 
       const css = await fetchCssFromDevRev();
 
-      if (css) {
-        // Update the editor content with the fetched CSS
-        setCssContent(css);
-        addLog('CSS fetched from DevRev successfully', 'success');
-      } else {
-        throw new Error(
-          'Could not retrieve CSS from DevRev preferences. Check the console for details.'
-        );
-      }
+      // Update the editor content with the fetched CSS
+      setCssContent(css);
+      addLog('CSS fetched from DevRev successfully', 'success');
     } catch (error) {
       console.error('Error fetching CSS from DevRev:', error);
       addLog(

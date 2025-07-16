@@ -71,7 +71,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const donId = await getEnvVariable('DEVREV_ORG_DON_ID');
 
       if (!pat || !donId) {
-        throw new Error('DevRev credentials missing');
+        throw new Error(
+          'DevRev credentials missing. Please set DevRev PAT and Org DON ID in Settings.'
+        );
       }
 
       // Start loading
@@ -85,12 +87,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         return css;
       } else {
         setDevRevCssStage('idle');
-        return null;
+        throw new Error(
+          'No CSS found in DevRev portal preferences. Upload CSS first using "Apply CSS in Portal" in Settings.'
+        );
       }
     } catch (error) {
       console.error('Error fetching CSS from DevRev:', error);
       setDevRevCssStage('error');
-      return null;
+      throw error;
     }
   };
 

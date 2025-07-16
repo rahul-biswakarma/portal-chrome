@@ -149,14 +149,10 @@ export const Settings = () => {
       }
 
       addLog('Uploading CSS to DevRev...', 'info');
-      const success = await uploadCssToDevRev(cssContent);
+      await uploadCssToDevRev(cssContent);
 
-      if (success) {
-        addLog('CSS uploaded and applied to portal successfully', 'success');
-        setUploadStatus('success');
-      } else {
-        throw new Error('Failed to upload CSS');
-      }
+      addLog('CSS uploaded and applied to portal successfully', 'success');
+      setUploadStatus('success');
     } catch (error) {
       console.error('Error applying CSS to portal:', error);
       addLog(

@@ -45,30 +45,30 @@ export function ErrorModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] rounded-xl border-border bg-background shadow-xl">
         <DialogHeader className="text-left">
-          <DialogTitle className="flex items-center gap-2">
-            <AlertCircle className="text-red-500" size={20} />
+          <DialogTitle className="flex items-center gap-2 text-foreground">
+            <AlertCircle className="text-destructive" size={20} />
             {title}
           </DialogTitle>
           <DialogDescription className="text-left space-y-3">
-            <div className="bg-red-50 border border-red-200 rounded-md p-3">
-              <p className="text-sm font-medium text-red-800 mb-1">Error Message:</p>
-              <p className="text-sm text-red-700 break-words">{errorMessage}</p>
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+              <p className="text-sm font-medium text-destructive mb-1">Error Message:</p>
+              <p className="text-sm text-destructive/90 break-words">{errorMessage}</p>
             </div>
 
             {errorDetails && (
-              <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
-                <p className="text-sm font-medium text-gray-800 mb-1">Technical Details:</p>
-                <pre className="text-xs text-gray-600 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
+              <div className="bg-muted/50 border border-border rounded-lg p-3">
+                <p className="text-sm font-medium text-foreground mb-1">Technical Details:</p>
+                <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-32 overflow-y-auto font-mono bg-muted/30 p-2 rounded-md">
                   {errorDetails}
                 </pre>
               </div>
             )}
 
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-              <p className="text-sm font-medium text-blue-800 mb-1">💡 Troubleshooting Tips:</p>
-              <ul className="text-sm text-blue-700 space-y-1">
+            <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
+              <p className="text-sm font-medium text-primary mb-1">💡 Troubleshooting Tips:</p>
+              <ul className="text-sm text-primary/90 space-y-1">
                 <li>• Check your internet connection</li>
                 <li>• Verify API keys are correctly set in Settings</li>
                 <li>• Try refreshing the page and attempting again</li>
@@ -77,20 +77,14 @@ export function ErrorModal({
             </div>
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter>
-          <div className="flex gap-2">
-            {showCopyButton && (
-              <Button
-                variant="outline"
-                onClick={handleCopyError}
-                className="flex items-center gap-2"
-              >
-                {isCopied ? <CheckIcon size={16} /> : <Copy size={16} />}
-                {isCopied ? 'Copied!' : 'Copy Error'}
-              </Button>
-            )}
-            <Button onClick={onClose}>Close</Button>
-          </div>
+        <DialogFooter className="gap-2">
+          {showCopyButton && (
+            <Button variant="outline" onClick={handleCopyError} className="flex items-center gap-2">
+              {isCopied ? <CheckIcon size={16} /> : <Copy size={16} />}
+              {isCopied ? 'Copied!' : 'Copy Error'}
+            </Button>
+          )}
+          <Button onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
