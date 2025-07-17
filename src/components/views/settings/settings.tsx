@@ -9,6 +9,7 @@ import { Loader2, Sparkles } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { ApplyCssWarningModal } from './apply-css-warning-modal';
 import { ErrorModal } from '@/components/ui/error-modal';
+import { cleanCssForServerUpload } from '@/lib/utils';
 
 export const Settings = () => {
   const [geminiKey, setGeminiKey] = useState('');
@@ -148,8 +149,12 @@ export const Settings = () => {
         throw new Error('No CSS content found in editor');
       }
 
+      // Clean CSS for server upload - keeping it simple and identical to extension behavior
+      const cleanedCssForServer = cleanCssForServerUpload(cssContent);
+      addLog('Preparing CSS for server upload...', 'info');
+
       addLog('Uploading CSS to DevRev...', 'info');
-      await uploadCssToDevRev(cssContent);
+      await uploadCssToDevRev(cleanedCssForServer);
 
       addLog('CSS uploaded and applied to portal successfully', 'success');
       setUploadStatus('success');

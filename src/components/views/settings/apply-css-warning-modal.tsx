@@ -60,6 +60,15 @@ export function ApplyCssWarningModal({
                 current CSS from DevRev and merge it with your changes.
               </p>
             </div>
+            <div className="bg-green-50 border border-green-200 rounded-md p-3">
+              <p className="text-sm font-medium text-green-800 mb-1">🔧 Consistent Behavior:</p>
+              <p className="text-sm text-green-700">
+                The CSS will be uploaded exactly as you've written it, ensuring consistent behavior
+                between extension testing and server deployment. If styles don't apply as expected,
+                consider adding <code>!important</code> declarations to override existing portal
+                styles.
+              </p>
+            </div>
             <p className="text-sm text-muted-foreground">
               This action cannot be undone. The CSS will be immediately applied to your live portal.
             </p>

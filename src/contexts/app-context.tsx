@@ -66,33 +66,66 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // Function to fetch CSS from DevRev
   const fetchCssFromDevRev = async (): Promise<string | null> => {
     try {
+      console.log('🔍 [APP-CONTEXT] Starting fetchCssFromDevRev...');
+
       // Check if DevRev credentials exist
+      console.log('🔍 [APP-CONTEXT] Checking DevRev credentials...');
       const pat = await getEnvVariable('DEVREV_PAT');
       const donId = await getEnvVariable('DEVREV_ORG_DON_ID');
 
+      console.log('🔍 [APP-CONTEXT] DevRev credentials status:', {
+        hasPat: !!pat,
+        hasDonId: !!donId,
+        patLength: pat?.length || 0,
+        donIdLength: donId?.length || 0,
+        patPreview: pat ? pat.substring(0, 10) + '...' : 'null',
+        donIdPreview: donId ? donId.substring(0, 20) + '...' : 'null',
+      });
+
       if (!pat || !donId) {
-        throw new Error(
+        const error = new Error(
           'DevRev credentials missing. Please set DevRev PAT and Org DON ID in Settings.'
         );
+        console.error('❌ [APP-CONTEXT] Missing credentials:', error.message);
+        throw error;
       }
 
       // Start loading
+      console.log('🔍 [APP-CONTEXT] Setting devRevCssStage to loading...');
       setDevRevCssStage('loading');
 
       // Get CSS from DevRev
+      console.log('🔍 [APP-CONTEXT] Calling initializeCssFromDevRev...');
       const css = await initializeCssFromDevRev();
 
+      console.log('🔍 [APP-CONTEXT] initializeCssFromDevRev result:', {
+        success: !!css,
+        cssLength: css?.length || 0,
+        cssPreview: css ? css.substring(0, 200) + '...' : 'null',
+        timestamp: new Date().toISOString(),
+      });
+
       if (css) {
+        console.log('✅ [APP-CONTEXT] CSS fetched successfully, setting stage to loaded');
         setDevRevCssStage('loaded');
         return css;
       } else {
+        console.log('⚠️ [APP-CONTEXT] No CSS returned, setting stage to idle');
         setDevRevCssStage('idle');
-        throw new Error(
+        const error = new Error(
           'No CSS found in DevRev portal preferences. Upload CSS first using "Apply CSS in Portal" in Settings.'
         );
+        console.error('❌ [APP-CONTEXT] No CSS found:', error.message);
+        throw error;
       }
     } catch (error) {
-      console.error('Error fetching CSS from DevRev:', error);
+      console.error('❌ [APP-CONTEXT] Error fetching CSS from DevRev:', error);
+      console.log('🔍 [APP-CONTEXT] Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        type: error instanceof Error ? error.constructor.name : typeof error,
+        timestamp: new Date().toISOString(),
+      });
       setDevRevCssStage('error');
       throw error;
     }

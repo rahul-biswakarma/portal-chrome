@@ -78,10 +78,13 @@ export const CssEditor = () => {
               existingStyle.remove();
             }
 
-            // Create and add new style element
+            // Create and add new style element at the END of head (like server-served CSS)
             const styleEl = document.createElement('style');
             styleEl.id = 'portal-generated-css';
             styleEl.textContent = cssContent;
+
+            // Insert at the end of head to simulate server CSS loading order
+            // This ensures the same cascade behavior as server-served CSS
             document.head.appendChild(styleEl);
           },
           args: [cleanedCSS],
@@ -112,7 +115,7 @@ export const CssEditor = () => {
     }
   };
 
-  // Auto-apply CSS when editor content changes
+  // Auto-apply and auto-save CSS when editor content changes
   useEffect(() => {
     // Skip initial empty content
     if (
@@ -120,9 +123,18 @@ export const CssEditor = () => {
       currentEditorContent.trim() !== '' &&
       currentEditorContent.trim() !== '/* CSS will appear here when generated */'
     ) {
-      // Apply the CSS automatically with a slight debounce
+      // Apply the CSS and save to context automatically with debounce
       const timer = setTimeout(() => {
+        console.log('🔄 [CSS-EDITOR] Auto-applying and auto-saving CSS...');
+
+        // Apply CSS to the page
         applyCSS(currentEditorContent);
+
+        // Auto-save to context (same as clicking Save button)
+        setCssContent(currentEditorContent);
+
+        console.log('✅ [CSS-EDITOR] Auto-apply and auto-save completed');
+        addLog('CSS auto-applied and auto-saved', 'success');
       }, 500); // Delay to avoid excessive updates while typing
 
       return () => clearTimeout(timer);
@@ -144,9 +156,9 @@ export const CssEditor = () => {
 
       setIsSaving(true);
       try {
-        // Update the context with current editor content
+        // Update the context with current editor content (same as auto-save)
         setCssContent(content);
-        addLog('CSS saved successfully', 'success');
+        addLog('CSS saved manually (auto-save is also active)', 'success');
       } catch (error) {
         addLog('Failed to save CSS', 'error');
       } finally {
@@ -186,15 +198,60 @@ export const CssEditor = () => {
   const handleConfirmFetch = async () => {
     try {
       setIsFetching(true);
+      console.log('🔍 [CSS-EDITOR] Starting CSS fetch from DevRev...');
       addLog('Fetching CSS from DevRev...', 'info');
 
       const css = await fetchCssFromDevRev();
 
-      // Update the editor content with the fetched CSS
-      setCssContent(css);
-      addLog('CSS fetched from DevRev successfully', 'success');
+      console.log('✅ [CSS-EDITOR] CSS fetch completed:', {
+        success: !!css,
+        cssLength: css?.length || 0,
+        cssPreview: css ? css.substring(0, 200) + '...' : 'null',
+        timestamp: new Date().toISOString(),
+      });
+
+      if (css) {
+        console.log('🔄 [CSS-EDITOR] Updating CSS content in context...');
+        // Update the context first
+        setCssContent(css);
+
+        // Force update the editor directly (in case content is the same and useEffect doesn't trigger)
+        if (viewRef.current) {
+          console.log('🔄 [CSS-EDITOR] Force updating editor content directly...');
+          const cleanedContent = cleanCSSResponse(css);
+          const currentContent = viewRef.current.state.doc.toString();
+
+          // Always update the editor, even if content appears the same
+          viewRef.current.dispatch({
+            changes: {
+              from: 0,
+              to: currentContent.length,
+              insert: cleanedContent,
+            },
+          });
+          setCurrentEditorContent(cleanedContent);
+          console.log('✅ [CSS-EDITOR] Editor content force updated successfully');
+        }
+
+        console.log('✅ [CSS-EDITOR] CSS content updated in context successfully');
+        addLog('CSS fetched from DevRev successfully', 'success');
+      } else {
+        console.log('⚠️ [CSS-EDITOR] No CSS content returned from fetchCssFromDevRev');
+        addLog('No CSS content returned from DevRev', 'warning');
+      }
     } catch (error) {
-      console.error('Error fetching CSS from DevRev:', error);
+      console.error('❌ [CSS-EDITOR] Error fetching CSS from DevRev:', error);
+
+      // Enhanced error logging
+      const errorInfo = {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        type: error instanceof Error ? error.constructor.name : typeof error,
+        timestamp: new Date().toISOString(),
+      };
+
+      console.log('🔍 [CSS-EDITOR] Detailed error information:', errorInfo);
+
       addLog(
         `Error fetching CSS from DevRev: ${error instanceof Error ? error.message : 'Unknown error'}`,
         'error'
@@ -208,6 +265,7 @@ export const CssEditor = () => {
         details: error instanceof Error ? error.stack : undefined,
       });
     } finally {
+      console.log('🏁 [CSS-EDITOR] CSS fetch process completed, cleaning up...');
       setIsFetching(false);
       setShowFetchModal(false);
     }
@@ -332,12 +390,30 @@ export const CssEditor = () => {
 
   // Update editor content when cssContent changes
   useEffect(() => {
+    console.log('🔍 [CSS-EDITOR] cssContent useEffect triggered:', {
+      hasCssContent: !!cssContent,
+      cssContentLength: cssContent?.length || 0,
+      hasViewRef: !!viewRef.current,
+      cssContentPreview: cssContent ? cssContent.substring(0, 200) + '...' : 'null',
+    });
+
     if (viewRef.current && cssContent) {
+      console.log('🔍 [CSS-EDITOR] Updating editor content...');
+
       // Clean the CSS before updating the editor
       const cleanedContent = cleanCSSResponse(cssContent);
       const currentContent = viewRef.current.state.doc.toString();
 
+      console.log('🔍 [CSS-EDITOR] Content comparison:', {
+        currentContentLength: currentContent.length,
+        cleanedContentLength: cleanedContent.length,
+        contentsMatch: currentContent === cleanedContent,
+        currentPreview: currentContent.substring(0, 100) + '...',
+        cleanedPreview: cleanedContent.substring(0, 100) + '...',
+      });
+
       if (currentContent !== cleanedContent) {
+        console.log('🔄 [CSS-EDITOR] Dispatching editor content update...');
         viewRef.current.dispatch({
           changes: {
             from: 0,
@@ -346,7 +422,15 @@ export const CssEditor = () => {
           },
         });
         setCurrentEditorContent(cleanedContent);
+        console.log('✅ [CSS-EDITOR] Editor content updated successfully');
+      } else {
+        console.log('⚠️ [CSS-EDITOR] Content unchanged, skipping update');
       }
+    } else {
+      console.log('⚠️ [CSS-EDITOR] Cannot update editor:', {
+        hasViewRef: !!viewRef.current,
+        hasCssContent: !!cssContent,
+      });
     }
   }, [cssContent]);
 
@@ -422,18 +506,20 @@ export const CssEditor = () => {
             className="flex items-center gap-1.5 h-9 px-3"
             onClick={handleSave}
             disabled={isLoading || isEditorEmpty || isSaving}
+            title="Auto-save is active (500ms debounce)"
           >
             <Save size={14} className="mr-1" />
-            {isSaving ? 'Saving...' : 'Save'}
+            {isSaving ? 'Saving...' : 'Save (Auto)'}
           </Button>
           <Button
             size="sm"
             className="flex items-center gap-1.5 h-9 px-3"
             onClick={handleApplyCss}
             disabled={isLoading || isEditorEmpty}
+            title="Auto-apply is active (500ms debounce)"
           >
             <Play size={14} className="mr-1" />
-            Apply CSS
+            Apply CSS (Auto)
           </Button>
         </div>
       </div>

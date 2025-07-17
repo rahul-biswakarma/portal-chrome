@@ -45,22 +45,24 @@ export function ErrorModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] rounded-xl border-border bg-background shadow-xl">
+      <DialogContent className="sm:max-w-[500px] max-w-[90vw] rounded-xl border-border bg-background shadow-xl">
         <DialogHeader className="text-left">
           <DialogTitle className="flex items-center gap-2 text-foreground">
-            <AlertCircle className="text-destructive" size={20} />
-            {title}
+            <AlertCircle className="text-destructive flex-shrink-0" size={20} />
+            <span className="break-words">{title}</span>
           </DialogTitle>
           <DialogDescription className="text-left space-y-3">
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
               <p className="text-sm font-medium text-destructive mb-1">Error Message:</p>
-              <p className="text-sm text-destructive/90 break-words">{errorMessage}</p>
+              <p className="text-sm text-destructive/90 break-words whitespace-pre-wrap overflow-wrap-anywhere">
+                {errorMessage}
+              </p>
             </div>
 
             {errorDetails && (
               <div className="bg-muted/50 border border-border rounded-lg p-3">
                 <p className="text-sm font-medium text-foreground mb-1">Technical Details:</p>
-                <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-32 overflow-y-auto font-mono bg-muted/30 p-2 rounded-md">
+                <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words overflow-wrap-anywhere max-h-32 overflow-y-auto font-mono bg-muted/30 p-2 rounded-md">
                   {errorDetails}
                 </pre>
               </div>
@@ -69,15 +71,17 @@ export function ErrorModal({
             <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
               <p className="text-sm font-medium text-primary mb-1">💡 Troubleshooting Tips:</p>
               <ul className="text-sm text-primary/90 space-y-1">
-                <li>• Check your internet connection</li>
-                <li>• Verify API keys are correctly set in Settings</li>
-                <li>• Try refreshing the page and attempting again</li>
-                <li>• Check the browser console for additional error details</li>
+                <li className="break-words">• Check your internet connection</li>
+                <li className="break-words">• Verify API keys are correctly set in Settings</li>
+                <li className="break-words">• Try refreshing the page and attempting again</li>
+                <li className="break-words">
+                  • Check the browser console for additional error details
+                </li>
               </ul>
             </div>
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="gap-2">
+        <DialogFooter className="gap-2 flex-wrap">
           {showCopyButton && (
             <Button variant="outline" onClick={handleCopyError} className="flex items-center gap-2">
               {isCopied ? <CheckIcon size={16} /> : <Copy size={16} />}

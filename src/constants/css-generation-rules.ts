@@ -33,4 +33,7 @@ export const ADDITIONAL_CSS_REQUIREMENTS = `ADDITIONAL REQUIREMENTS:
 1. Focus on colors, typography, spacing, layout, and visual effects
 2. Make it modern and visually appealing
 3. Ensure good contrast and accessibility
-4. Only use the portal classes provided in the context`;
+4. Only use the portal classes provided in the context
+5. Consider adding !important to critical styles to ensure they override existing portal styles`;
+
+export const SERVER_UPLOAD_NOTE = `NOTE: CSS will be uploaded exactly as written to ensure consistent behavior between extension testing and server deployment. Add !important declarations if styles need to override existing portal styles.`;
