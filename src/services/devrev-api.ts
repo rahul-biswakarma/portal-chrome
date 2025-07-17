@@ -70,112 +70,44 @@ interface ArtifactPrepareResponse {
 }
 
 export const getDevRevConfig = async (): Promise<DevRevConfig> => {
-  console.log('🔍 [DEVREV-API] Starting getDevRevConfig...');
+  const pat = (await getEnvVariable('DEVREV_PAT')) || '';
+  const donId = (await getEnvVariable('DEVREV_ORG_DON_ID')) || '';
+  const baseUrl = (await getEnvVariable('DEVREV_API_URL')) || 'https://api.dev.devrev-eng.ai';
 
-  try {
-    const pat = (await getEnvVariable('DEVREV_PAT')) || '';
-    const donId = (await getEnvVariable('DEVREV_ORG_DON_ID')) || '';
-    const baseUrl = (await getEnvVariable('DEVREV_API_URL')) || 'https://api.dev.devrev-eng.ai';
-
-    console.log('🔍 [DEVREV-API] DevRev config loaded:', {
-      baseUrl,
-      hasPat: !!pat,
-      hasDonId: !!donId,
-      patLength: pat.length,
-      donIdLength: donId.length,
-      patPreview: pat ? pat.substring(0, 10) + '...' : 'empty',
-      donIdPreview: donId ? donId.substring(0, 20) + '...' : 'empty',
-    });
-
-    const config = { baseUrl, pat, donId };
-    console.log('✅ [DEVREV-API] DevRev config ready');
-    return config;
-  } catch (error) {
-    console.error('❌ [DEVREV-API] Error loading DevRev config:', error);
-    throw error;
-  }
+  return { baseUrl, pat, donId };
 };
 
 /**
  * Get portal preferences from DevRev
  */
 export const getPortalPreferences = async (): Promise<PreferencesGetResponse | null> => {
-  console.log('🔍 [DEVREV-API] Starting getPortalPreferences...');
+  const { baseUrl, pat, donId } = await getDevRevConfig();
 
-  try {
-    const { baseUrl, pat, donId } = await getDevRevConfig();
-
-    console.log('🔍 [DEVREV-API] DevRev config for preferences:', {
-      baseUrl,
-      hasPat: !!pat,
-      hasDonId: !!donId,
-      patLength: pat?.length || 0,
-      donIdLength: donId?.length || 0,
-    });
-
-    if (!pat || !donId) {
-      console.error('❌ [DEVREV-API] Missing credentials for getPortalPreferences');
-      throw new Error('DevRev PAT or DON ID is missing');
-    }
-
-    const url = new URL(`${baseUrl}/internal/preferences.get`);
-    url.searchParams.append('type', 'portal_preferences');
-    url.searchParams.append('object', donId);
-
-    console.log('🔍 [DEVREV-API] Making preferences API request:', {
-      url: url.toString(),
-      method: 'GET',
-      headers: {
-        Authorization: pat ? `${pat.substring(0, 10)}...` : 'missing',
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Authorization: pat,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    console.log('🔍 [DEVREV-API] Preferences API response:', {
-      ok: response.ok,
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ [DEVREV-API] Failed to get preferences:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorText: errorText,
-      });
-      throw new Error(
-        `Failed to get preferences: ${response.status} ${response.statusText}. Response: ${errorText}`
-      );
-    }
-
-    const data = await response.json();
-    console.log('✅ [DEVREV-API] Preferences data received:', {
-      hasData: !!data,
-      type: data?.type,
-      object: data?.object,
-      hasPreference: !!data?.preference,
-      hasStylesheet: !!data?.preference?.stylesheet,
-      stylesheetType: data?.preference?.stylesheet
-        ? typeof data.preference.stylesheet
-        : 'undefined',
-      preferenceKeys: data?.preference ? Object.keys(data.preference) : [],
-    });
-
-    return data;
-  } catch (error) {
-    console.error('❌ [DEVREV-API] Error in getPortalPreferences:', error);
-    throw error;
+  if (!pat || !donId) {
+    throw new Error('DevRev PAT or DON ID is missing');
   }
+
+  const url = new URL(`${baseUrl}/internal/preferences.get`);
+  url.searchParams.append('type', 'portal_preferences');
+  url.searchParams.append('object', donId);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Authorization: pat,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to get preferences: ${response.status} ${response.statusText}. Response: ${errorText}`
+    );
+  }
+
+  const data = await response.json();
+  return data;
 };
 
 /**
@@ -497,77 +429,32 @@ export const uploadCssToDevRev = async (cssContent: string): Promise<boolean> =>
  * Get artifact content by ID
  */
 export const getArtifactContent = async (artifactId: string): Promise<string | null> => {
-  console.log('🔍 [DEVREV-API] Starting getArtifactContent...', {
-    artifactId: artifactId,
+  const { baseUrl, pat } = await getDevRevConfig();
+
+  if (!pat) {
+    throw new Error('DevRev PAT is missing');
+  }
+
+  const url = new URL(`${baseUrl}/internal/artifacts.get`);
+  url.searchParams.append('id', artifactId);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: {
+      Authorization: pat,
+    },
   });
 
-  try {
-    const { baseUrl, pat } = await getDevRevConfig();
-
-    console.log('🔍 [DEVREV-API] DevRev config for artifact:', {
-      baseUrl,
-      hasPat: !!pat,
-      patLength: pat?.length || 0,
-    });
-
-    if (!pat) {
-      console.error('❌ [DEVREV-API] Missing PAT for getArtifactContent');
-      throw new Error('DevRev PAT is missing');
-    }
-
-    const url = new URL(`${baseUrl}/internal/artifacts.get`);
-    url.searchParams.append('id', artifactId);
-
-    console.log('🔍 [DEVREV-API] Making artifact API request:', {
-      url: url.toString(),
-      method: 'GET',
-      artifactId: artifactId,
-      headers: {
-        Authorization: pat ? `${pat.substring(0, 10)}...` : 'missing',
-      },
-    });
-
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Authorization: pat,
-      },
-    });
-
-    console.log('🔍 [DEVREV-API] Artifact API response:', {
-      ok: response.ok,
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ [DEVREV-API] Failed to get artifact:', {
-        artifactId: artifactId,
-        status: response.status,
-        statusText: response.statusText,
-        errorText: errorText,
-      });
-      throw new Error(
-        `Failed to get artifact: ${response.status} ${response.statusText}. Response: ${errorText}`
-      );
-    }
-
-    // The artifact API returns the raw file content
-    // For CSS files, we can convert to text
-    const content = await response.text();
-    console.log('✅ [DEVREV-API] Artifact content retrieved:', {
-      artifactId: artifactId,
-      contentLength: content.length,
-      contentPreview: content.substring(0, 200) + '...',
-    });
-
-    return content;
-  } catch (error) {
-    console.error('❌ [DEVREV-API] Error in getArtifactContent:', error);
-    throw error;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      `Failed to get artifact: ${response.status} ${response.statusText}. Response: ${errorText}`
+    );
   }
+
+  // The artifact API returns the raw file content
+  // For CSS files, we can convert to text
+  return await response.text();
 };
 
 /**
@@ -575,94 +462,33 @@ export const getArtifactContent = async (artifactId: string): Promise<string | n
  * This should be called once when the extension is opened
  */
 export const initializeCssFromDevRev = async (): Promise<string | null> => {
-  console.log('🔍 [DEVREV-API] Starting initializeCssFromDevRev...');
+  // Get current preferences to check if stylesheet exists
+  const preferences = await getPortalPreferences();
 
-  try {
-    // Get current preferences to check if stylesheet exists
-    console.log('🔍 [DEVREV-API] Getting portal preferences...');
-    const preferences = await getPortalPreferences();
-
-    console.log('🔍 [DEVREV-API] Portal preferences result:', {
-      hasPreferences: !!preferences,
-      hasPreference: !!preferences?.preference,
-      hasStylesheet: !!preferences?.preference?.stylesheet,
-      stylesheetType: preferences?.preference?.stylesheet
-        ? typeof preferences.preference.stylesheet
-        : 'undefined',
-      stylesheetPreview: preferences?.preference?.stylesheet
-        ? JSON.stringify(preferences.preference.stylesheet).substring(0, 100) + '...'
-        : 'null',
-    });
-
-    if (!preferences?.preference?.stylesheet) {
-      console.log('⚠️ [DEVREV-API] No stylesheet found in preferences, returning null');
-      return null;
-    }
-
-    // The stylesheet can be either a string (artifact ID) or an object with preview_url
-    const stylesheet = preferences.preference.stylesheet;
-    console.log('🔍 [DEVREV-API] Processing stylesheet:', {
-      type: typeof stylesheet,
-      isString: typeof stylesheet === 'string',
-      isObject: typeof stylesheet === 'object',
-      hasPreviewUrl: typeof stylesheet === 'object' && stylesheet?.preview_url,
-      stylesheetContent:
-        typeof stylesheet === 'string'
-          ? stylesheet
-          : JSON.stringify(stylesheet).substring(0, 200) + '...',
-    });
-
-    if (typeof stylesheet === 'string') {
-      console.log('🔍 [DEVREV-API] Stylesheet is artifact ID, fetching artifact content...');
-      // Old format: stylesheet is an artifact ID
-      const artifactContent = await getArtifactContent(stylesheet);
-      console.log('✅ [DEVREV-API] Artifact content fetched:', {
-        success: !!artifactContent,
-        contentLength: artifactContent?.length || 0,
-        contentPreview: artifactContent ? artifactContent.substring(0, 200) + '...' : 'null',
-      });
-      return artifactContent;
-    } else if (typeof stylesheet === 'object' && stylesheet.preview_url) {
-      console.log('🔍 [DEVREV-API] Stylesheet has preview_url, fetching from URL...');
-      const previewUrl = stylesheet.preview_url;
-      console.log('🔍 [DEVREV-API] Preview URL:', previewUrl);
-
-      // New format: stylesheet is an object with preview_url
-      const response = await fetch(previewUrl);
-
-      console.log('🔍 [DEVREV-API] Preview URL fetch response:', {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ [DEVREV-API] Failed to fetch from preview URL:', {
-          status: response.status,
-          statusText: response.statusText,
-          errorText: errorText,
-        });
-        throw new Error(
-          `Failed to fetch CSS from preview URL: ${response.status} ${response.statusText}. Response: ${errorText}`
-        );
-      }
-
-      const cssContent = await response.text();
-      console.log('✅ [DEVREV-API] CSS content fetched from preview URL:', {
-        contentLength: cssContent.length,
-        contentPreview: cssContent.substring(0, 200) + '...',
-      });
-      return cssContent;
-    }
-
-    console.error('❌ [DEVREV-API] Invalid stylesheet format:', stylesheet);
-    throw new Error(
-      `Invalid stylesheet format in DevRev preferences: ${JSON.stringify(stylesheet)}`
-    );
-  } catch (error) {
-    console.error('❌ [DEVREV-API] Error in initializeCssFromDevRev:', error);
-    throw error;
+  if (!preferences?.preference?.stylesheet) {
+    return null;
   }
+
+  // The stylesheet can be either a string (artifact ID) or an object with preview_url
+  const stylesheet = preferences.preference.stylesheet;
+
+  if (typeof stylesheet === 'string') {
+    // Old format: stylesheet is an artifact ID
+    return await getArtifactContent(stylesheet);
+  } else if (typeof stylesheet === 'object' && stylesheet.preview_url) {
+    // New format: stylesheet is an object with preview_url
+    const response = await fetch(stylesheet.preview_url);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Failed to fetch CSS from preview URL: ${response.status} ${response.statusText}. Response: ${errorText}`
+      );
+    }
+
+    const cssContent = await response.text();
+    return cssContent;
+  }
+
+  throw new Error(`Invalid stylesheet format in DevRev preferences: ${JSON.stringify(stylesheet)}`);
 };
