@@ -5,11 +5,14 @@ import type { PreferenceOption } from '../types';
 
 interface PreferenceToggleProps {
   option: PreferenceOption;
-  value: boolean;
+  value: boolean | undefined;
   onChange: (value: boolean) => void;
 }
 
 export const PreferenceToggle: React.FC<PreferenceToggleProps> = ({ option, value, onChange }) => {
+  // Use the value if defined, otherwise fall back to the default value
+  const displayValue = value !== undefined ? value : (option.currentValue as boolean);
+
   return (
     <div className="flex items-center justify-between space-x-2">
       <div className="space-y-0.5">
@@ -22,7 +25,7 @@ export const PreferenceToggle: React.FC<PreferenceToggleProps> = ({ option, valu
       </div>
       <Switch
         id={option.id}
-        checked={value}
+        checked={displayValue}
         onCheckedChange={onChange}
         aria-describedby={option.description ? `${option.id}-description` : undefined}
       />

@@ -47,7 +47,13 @@ export class CSSGenerationService {
     // Process each preference for this element
     element.availablePreferences.forEach(preference => {
       const userValue = preferences[preference.id];
+
+      // Only generate CSS if the value has been explicitly set AND is different from default
       if (userValue === undefined || userValue === null) return;
+
+      // Check if the user value is different from the default value
+      const defaultValue = preference.currentValue;
+      if (userValue === defaultValue) return;
 
       const css = this.generateCSSForPreference(preference, userValue, options);
       if (css) {
@@ -104,12 +110,48 @@ export class CSSGenerationService {
         console.warn(`Unsupported preference type: ${preference.type}`);
     }
 
+    // Validate and fix CSS - ensure it has actual selectors
+    if (css && metadata.targetClasses && metadata.targetClasses.length > 0) {
+      // If the CSS doesn't contain any of the target classes, it might be malformed
+      const containsTargetClass = metadata.targetClasses.some(className =>
+        css.includes(`.${className}`)
+      );
+
+      if (!containsTargetClass) {
+        console.warn(`Visual Preferences: CSS template missing target classes, auto-fixing...`);
+
+        // Try to extract CSS properties and apply them to actual target classes
+        const cssDeclarations = this.extractCSSDeclarations(css);
+        if (cssDeclarations) {
+          css = metadata.targetClasses
+            .map(className => `.${className} { ${cssDeclarations} }`)
+            .join('\n');
+        }
+      }
+    }
+
     // Add !important if specified
     if (css && options.useImportant) {
       css = css.replace(/;/g, ' !important;');
     }
 
     return css;
+  }
+
+  // Helper method to extract CSS declarations from potentially malformed CSS
+  private extractCSSDeclarations(css: string): string | null {
+    // Try to extract everything between { and }
+    const match = css.match(/\{([^}]+)\}/);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+
+    // If no braces found, assume it's just declarations
+    if (css.includes(':') && css.includes(';')) {
+      return css.trim();
+    }
+
+    return null;
   }
 
   async applyTextReplacements(

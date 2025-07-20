@@ -6,7 +6,7 @@ import type { PreferenceOption } from '../types';
 
 interface LayoutSelectorProps {
   option: PreferenceOption;
-  value: string;
+  value: string | undefined;
   onChange: (value: string) => void;
 }
 
@@ -26,11 +26,14 @@ export const LayoutSelector: React.FC<LayoutSelectorProps> = ({ option, value, o
 
   const availableValues = (option.availableValues as string[]) || [];
 
+  // Use the value if defined, otherwise fall back to the default value
+  const displayValue = value !== undefined ? value : String(option.currentValue);
+
   return (
     <div className="space-y-2">
       <Label className="text-sm font-medium">{option.label}</Label>
       {option.description && <p className="text-xs text-muted-foreground">{option.description}</p>}
-      <RadioGroup value={value} onValueChange={onChange} className="grid grid-cols-3 gap-2">
+      <RadioGroup value={displayValue} onValueChange={onChange} className="grid grid-cols-3 gap-2">
         {availableValues.map(layoutValue => (
           <div key={layoutValue} className="flex items-center space-x-2">
             <RadioGroupItem value={layoutValue} id={`${option.id}-${layoutValue}`} />

@@ -11,7 +11,7 @@ import type { PreferenceOption, PreferenceValue } from '../types';
 
 interface PreferenceDropdownProps {
   option: PreferenceOption;
-  value: string;
+  value: string | undefined;
   onChange: (value: string) => void;
 }
 
@@ -22,13 +22,16 @@ export const PreferenceDropdown: React.FC<PreferenceDropdownProps> = ({
 }) => {
   const availableValues = (option.availableValues as PreferenceValue[]) || [];
 
+  // Use the value if defined, otherwise fall back to the default value
+  const displayValue = value !== undefined ? value : String(option.currentValue);
+
   return (
     <div className="space-y-2">
       <Label htmlFor={option.id} className="text-sm font-medium">
         {option.label}
       </Label>
       {option.description && <p className="text-xs text-muted-foreground">{option.description}</p>}
-      <Select value={value} onValueChange={onChange}>
+      <Select value={displayValue} onValueChange={onChange}>
         <SelectTrigger id={option.id}>
           <SelectValue placeholder={`Select ${option.label.toLowerCase()}`} />
         </SelectTrigger>

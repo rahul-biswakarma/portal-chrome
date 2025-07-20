@@ -32,13 +32,11 @@ export const VisualPreferencesView: React.FC = () => {
       const analysis = await domAnalysisService.analyzeDOM();
       setElements(analysis.elements);
 
-      // Initialize preferences from LLM-generated controls
+      // Initialize preferences as empty - only store values when explicitly changed
       const initialPreferences: UserPreferences = {};
       analysis.elements.forEach(element => {
         initialPreferences[element.id] = {};
-        element.availablePreferences.forEach(pref => {
-          initialPreferences[element.id][pref.id] = pref.currentValue;
-        });
+        // Don't set default values - only store when user explicitly changes them
       });
 
       setPreferences(initialPreferences);
@@ -83,6 +81,9 @@ export const VisualPreferencesView: React.FC = () => {
         respectExistingStyles: true,
       });
 
+      // Debug: CSS generation successful
+      console.log('Generated CSS for preferences (length):', css.length);
+
       // Set CSS in editor (the editor has auto-apply functionality)
       setCssContent(css);
     } catch (error) {
@@ -115,15 +116,18 @@ export const VisualPreferencesView: React.FC = () => {
   };
 
   const resetPreferences = () => {
+    // Clear all preferences back to empty state (no CSS generation)
     const initialPreferences: UserPreferences = {};
     elements.forEach(element => {
       initialPreferences[element.id] = {};
-      element.availablePreferences.forEach(pref => {
-        initialPreferences[element.id][pref.id] = pref.currentValue;
-      });
+      // Don't set any default values - keep empty
     });
     setPreferences(initialPreferences);
     setHasUnsavedChanges(false);
+
+    // Clear the CSS editor
+    setCssContent('');
+
     addLog('🔄 Preferences reset to defaults', 'info');
   };
 

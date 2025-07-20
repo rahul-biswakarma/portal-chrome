@@ -85,12 +85,9 @@ export const CssEditor = () => {
               styleEl = document.createElement('style');
               styleEl.id = 'portal-generated-css';
 
-              // Insert at the top of head for lower specificity (like main portal)
-              if (document.head.firstChild) {
-                document.head.insertBefore(styleEl, document.head.firstChild);
-              } else {
-                document.head.appendChild(styleEl);
-              }
+              // Insert at the bottom of head for higher specificity (natural CSS cascade)
+              // This allows overriding existing styles without !important
+              document.head.appendChild(styleEl);
             }
 
             styleEl.textContent = cssCode;

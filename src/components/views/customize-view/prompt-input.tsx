@@ -43,11 +43,9 @@ const applyCSS = async (tabId: number, css: string): Promise<void> => {
         styleEl = document.createElement('style');
         styleEl.id = 'portal-generated-css';
 
-        if (document.head.firstChild) {
-          document.head.insertBefore(styleEl, document.head.firstChild);
-        } else {
-          document.head.appendChild(styleEl);
-        }
+        // Insert at the bottom of head for higher specificity (natural CSS cascade)
+        // This allows overriding existing styles without !important
+        document.head.appendChild(styleEl);
       }
       styleEl.textContent = cssContent;
     },
