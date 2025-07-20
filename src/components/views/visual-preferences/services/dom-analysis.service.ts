@@ -289,7 +289,7 @@ export class DOMAnalysisService {
     const portalClasses = this.getAllPortalClasses(portalElements);
     const portalTree = this.formatPortalTree(portalElements);
 
-    return `You are creating a Salesforce-style user preferences page. The user should feel like they're configuring real application settings, NOT editing CSS.
+    return `You are creating a Salesforce-style user preferences page. Generate ONLY the most useful and commonly needed preferences that users would actually want to change.
 
 AVAILABLE ELEMENTS:
 ${portalClasses.map(cls => `- .${cls}`).join('\n')}
@@ -297,63 +297,81 @@ ${portalClasses.map(cls => `- .${cls}`).join('\n')}
 PAGE STRUCTURE:
 ${portalTree}
 
-TASK: Generate user-friendly preferences that look like real software settings but are secretly handled with CSS.
+FOCUS ON WHAT USERS ACTUALLY WANT TO CUSTOMIZE:
+- Show/hide major interface elements (navigation, sidebars, headers)
+- Change layout density (compact vs comfortable)
+- Toggle key features on/off
+- Basic layout arrangements (horizontal/vertical for navigation)
 
-EXAMPLES OF GOOD PREFERENCES:
-- "Show company logo" (toggle visibility)
-- "Navigation layout" (dropdown: Compact, Standard, Expanded) 
-- "Display user avatar" (toggle)
-- "Header style" (dropdown: Fixed, Sticky, Static)
-- "Show sidebar" (toggle)
-- "Content density" (dropdown: Comfortable, Compact, Cozy)
-- "Show notifications panel" (toggle)
-- "Tab arrangement" (dropdown: Top, Side, Bottom)
+AVOID:
+- Too many options per element
+- Obscure settings users won't understand
+- Technical preferences
+- Redundant or similar options
 
-AVOID TECHNICAL TERMS:
-❌ "Background color", "CSS display", "Border radius"  
-✅ "Show element", "Layout style", "Display mode"
+Focus on high-impact, commonly used settings only.
 
-For dropdowns, provide 2-4 realistic options as an array of strings.
+PREFERENCE TYPES:
+- "toggle" for simple on/off, show/hide
+- "dropdown" for 2-3 clear layout/style choices
 
-Generate ONLY valid JSON:
+USER-FRIENDLY LABELS:
+❌ Technical: "CSS", "display: none", "flex-direction"
+✅ Simple: "Show Navigation", "Compact Layout", "Display Sidebar"
+
+Generate focused JSON with essential preferences:
 {
   "elements": [
     {
-      "id": "interface-settings",
-      "name": "Interface Preferences", 
-      "description": "Customize how your interface appears",
+      "id": "header-preferences",
+      "name": "Header Configuration",
+      "description": "Customize your header appearance and behavior",
       "portalClasses": ["portal-header", "portal-nav"],
       "preferences": [
         {
-          "id": "show-logo",
+          "id": "show-company-branding",
           "type": "toggle",
-          "label": "Show Company Logo",
-          "description": "Display the company logo in the header",
+          "label": "Show Company Branding",
+          "description": "Display company logo and branding elements",
           "category": "visibility",
           "defaultValue": true,
-          "cssOnTrue": ".portal-header .logo { display: block; }",
-          "cssOnFalse": ".portal-header .logo { display: none; }",
+          "cssOnTrue": ".portal-header .branding { display: flex; }",
+          "cssOnFalse": ".portal-header .branding { display: none; }",
           "targetClasses": ["portal-header"]
         },
         {
-          "id": "nav-layout",
+          "id": "navigation-layout",
           "type": "dropdown",
           "label": "Navigation Layout",
           "description": "Choose how navigation items are arranged",
-          "category": "layout",
+          "category": "layout", 
           "defaultValue": "horizontal",
-          "options": ["horizontal", "vertical", "compact"],
+          "options": ["horizontal", "vertical", "compact", "expanded"],
           "cssOptions": {
-            "horizontal": ".portal-nav { flex-direction: row; }",
-            "vertical": ".portal-nav { flex-direction: column; }",
-            "compact": ".portal-nav { flex-direction: row; padding: 4px; }"
+            "horizontal": ".portal-nav { flex-direction: row; justify-content: space-between; }",
+            "vertical": ".portal-nav { flex-direction: column; align-items: flex-start; }",
+            "compact": ".portal-nav { flex-direction: row; gap: 4px; padding: 4px; }",
+            "expanded": ".portal-nav { flex-direction: row; gap: 16px; padding: 12px; }"
           },
           "targetClasses": ["portal-nav"]
+        },
+        {
+          "id": "show-search-bar",
+          "type": "toggle", 
+          "label": "Show Search Bar",
+          "description": "Display the search functionality in header",
+          "category": "visibility",
+          "defaultValue": true,
+          "cssOnTrue": ".portal-header .search { display: block; }",
+          "cssOnFalse": ".portal-header .search { display: none; }",
+          "targetClasses": ["portal-header"]
         }
       ]
     }
   ]
 }
+
+BE COMPREHENSIVE - Generate preferences for ALL portal elements found, with multiple options per component type.
 
 Return ONLY the JSON.`;
   }
@@ -365,20 +383,20 @@ Return ONLY the JSON.`;
       return { elements: [] };
     }
 
-    // Create user-friendly fallback preferences that look like real app settings
+    // Create simple fallback with essential preferences only
     return {
       elements: [
         {
-          id: 'interface-preferences',
-          name: 'Interface Preferences',
-          description: 'Customize your interface appearance and behavior',
+          id: 'interface-settings',
+          name: 'Interface Settings',
+          description: 'Essential interface customizations',
           portalClasses: allClasses,
           preferences: [
             {
-              id: 'show-interface-elements',
+              id: 'show-elements',
               type: 'toggle',
-              label: 'Show Interface Elements',
-              description: 'Display all interface components',
+              label: 'Show Interface',
+              description: 'Toggle interface visibility',
               category: 'visibility',
               defaultValue: true,
               cssOnTrue: allClasses.map(cls => `.${cls} { display: block; }`).join('\n'),
@@ -386,21 +404,16 @@ Return ONLY the JSON.`;
               targetClasses: allClasses,
             },
             {
-              id: 'interface-density',
+              id: 'layout-density',
               type: 'dropdown',
-              label: 'Interface Density',
-              description: 'Choose how compact or spacious the interface appears',
+              label: 'Layout Density',
+              description: 'Adjust spacing and size',
               category: 'layout',
-              defaultValue: 'comfortable',
-              options: ['compact', 'comfortable', 'spacious'],
+              defaultValue: 'normal',
+              options: ['compact', 'normal'],
               cssOptions: {
-                compact: allClasses.map(cls => `.${cls} { padding: 2px; margin: 1px; }`).join('\n'),
-                comfortable: allClasses
-                  .map(cls => `.${cls} { padding: 8px; margin: 4px; }`)
-                  .join('\n'),
-                spacious: allClasses
-                  .map(cls => `.${cls} { padding: 16px; margin: 8px; }`)
-                  .join('\n'),
+                compact: allClasses.map(cls => `.${cls} { padding: 4px; }`).join('\n'),
+                normal: allClasses.map(cls => `.${cls} { padding: 8px; }`).join('\n'),
               },
               targetClasses: allClasses,
             },

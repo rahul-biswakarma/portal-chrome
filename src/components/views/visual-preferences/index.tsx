@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, Wand2, Search, CheckCircle2 } from 'lucide-react';
 import { domAnalysisService } from './services/dom-analysis.service';
@@ -17,6 +17,11 @@ export const VisualPreferencesView: React.FC = () => {
   const { addLog, setCssContent } = useAppContext();
 
   const analyzeCurrentPage = async () => {
+    // Prevent multiple simultaneous API calls
+    if (isAnalyzing) {
+      return;
+    }
+
     setIsAnalyzing(true);
     setIsLoading(true);
     try {
@@ -73,7 +78,7 @@ export const VisualPreferencesView: React.FC = () => {
     try {
       const css = await cssGenerationService.generateCSS(newPreferences, elements, {
         minify: false,
-        addComments: true,
+        addComments: false,
         useImportant: true,
         respectExistingStyles: true,
       });
@@ -93,7 +98,7 @@ export const VisualPreferencesView: React.FC = () => {
       // Generate final CSS and set in CSS editor
       const css = await cssGenerationService.generateCSS(preferences, elements, {
         minify: false,
-        addComments: true,
+        addComments: false,
         useImportant: true,
         respectExistingStyles: true,
       });
@@ -244,20 +249,16 @@ export const VisualPreferencesView: React.FC = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {elements.map(element => (
-              <Card key={element.id} className="shadow-sm">
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-lg">{element.description}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {element.availablePreferences.map(option =>
-                      renderPreferenceControl(element, option)
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <div key={element.id} className="border rounded-lg p-4 bg-card">
+                <h3 className="font-medium text-base mb-3">{element.description}</h3>
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {element.availablePreferences.map(option =>
+                    renderPreferenceControl(element, option)
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         )}
