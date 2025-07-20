@@ -14,7 +14,7 @@ export const VisualPreferencesView: React.FC = () => {
   const [elements, setElements] = useState<DetectedElement[]>([]);
   const [preferences, setPreferences] = useState<UserPreferences>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const { addLog, setCssContent } = useAppContext();
+  const { addLog, setCssContent, cssContent } = useAppContext();
 
   const analyzeCurrentPage = async () => {
     // Prevent multiple simultaneous API calls
@@ -72,22 +72,31 @@ export const VisualPreferencesView: React.FC = () => {
     setPreferences(newPreferences);
     setHasUnsavedChanges(true);
 
-    // Generate CSS and set it in CSS editor (which auto-applies)
+    // Find the element for this preference
+    const element = elements.find(el => el.id === elementId);
+    if (!element) {
+      console.error('Element not found for preference update:', elementId);
+      return;
+    }
+
+    // Use the new comment-based CSS update system
     try {
-      const css = await cssGenerationService.generateCSS(newPreferences, elements, {
-        minify: false,
-        addComments: false,
-        useImportant: false,
-        respectExistingStyles: true,
-      });
+      const updatedCSS = await cssGenerationService.updatePreferenceCSS(
+        elementId,
+        preferenceId,
+        value,
+        element,
+        cssContent || ''
+      );
 
-      // Debug: CSS generation successful
-      console.log('Generated CSS for preferences (length):', css.length);
+      // Debug: CSS update successful
+      console.log('Updated CSS with comment wrapper (length):', updatedCSS.length);
+      console.log('Preference:', `${elementId}:${preferenceId}`, '=', value);
 
-      // Set CSS in editor (the editor has auto-apply functionality)
-      setCssContent(css);
+      // Set updated CSS in editor (the editor has auto-apply functionality)
+      setCssContent(updatedCSS);
     } catch (error) {
-      console.error('Error generating preview CSS:', error);
+      console.error('Error updating preference CSS:', error);
     }
   };
 

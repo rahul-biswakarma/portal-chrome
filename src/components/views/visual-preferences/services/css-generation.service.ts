@@ -33,6 +33,56 @@ export class CSSGenerationService {
     return options.minify ? this.minifyCSS(css) : css;
   }
 
+  // New method to update individual preference CSS
+  async updatePreferenceCSS(
+    elementId: string,
+    preferenceId: string,
+    userValue: unknown,
+    element: DetectedElement,
+    currentCSSContent: string
+  ): Promise<string> {
+    const preference = element.availablePreferences.find(p => p.id === preferenceId);
+    if (!preference || !preference.metadata) return currentCSSContent;
+
+    // Generate CSS for this specific preference
+    const css = this.generateCSSForPreference(preference, userValue, {
+      minify: false,
+      addComments: false,
+      useImportant: false,
+      respectExistingStyles: true,
+    });
+
+    // Create unique identifier for this preference
+    const prefId = `${elementId}:${preferenceId}`;
+    const startComment = `/* PREF:${prefId}:START */`;
+    const endComment = `/* PREF:${prefId}:END */`;
+
+    // Check if this preference already exists in the CSS
+    const startIndex = currentCSSContent.indexOf(startComment);
+    const endIndex = currentCSSContent.indexOf(endComment);
+
+    if (startIndex !== -1 && endIndex !== -1) {
+      // Replace existing preference CSS
+      const beforeCSS = currentCSSContent.substring(0, startIndex);
+      const afterCSS = currentCSSContent.substring(endIndex + endComment.length);
+
+      if (css.trim()) {
+        // Update with new CSS
+        return `${beforeCSS}${startComment}\n${css}\n${endComment}${afterCSS}`;
+      } else {
+        // Remove the preference (user reset to default)
+        return `${beforeCSS}${afterCSS}`.replace(/\n\n\n+/g, '\n\n').trim();
+      }
+    } else {
+      // Add new preference CSS
+      if (css.trim()) {
+        const newSection = `\n\n${startComment}\n${css}\n${endComment}`;
+        return currentCSSContent + newSection;
+      }
+      return currentCSSContent;
+    }
+  }
+
   private generateElementCSSFromLLM(
     element: DetectedElement,
     preferences: Record<string, unknown>,
