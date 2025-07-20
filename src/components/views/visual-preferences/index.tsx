@@ -24,6 +24,13 @@ export const VisualPreferencesView: React.FC = () => {
 
     setIsAnalyzing(true);
     setIsLoading(true);
+
+    // Clear existing state for re-analysis
+    setElements([]);
+    setPreferences({});
+    setHasUnsavedChanges(false);
+    setCssContent(''); // Clear any existing CSS from previous analysis
+
     try {
       addLog('🔍 Scanning page for UI elements...', 'info');
       addLog('🤖 Asking AI to generate custom UI controls...', 'info');
@@ -263,6 +270,28 @@ export const VisualPreferencesView: React.FC = () => {
           </Card>
         ) : (
           <div className="space-y-4">
+            {/* Re-analyze button for when preferences are already loaded */}
+            <div className="flex justify-center pb-4">
+              <Button
+                variant="outline"
+                onClick={analyzeCurrentPage}
+                disabled={isAnalyzing}
+                className="shadow-sm"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Re-analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Search className="h-4 w-4 mr-2" />
+                    Re-analyze Current Page
+                  </>
+                )}
+              </Button>
+            </div>
+
             {elements.map(element => (
               <div key={element.id} className="border rounded-lg p-4 bg-card">
                 <h3 className="font-medium text-base mb-3">{element.description}</h3>
