@@ -1,22 +1,12 @@
 import { useState } from 'react';
 import { useHierarchyData } from './hooks/use-hierarchy-data';
 import { hasPortalClasses } from './utils/tree-data-utils';
-import {
-  RefreshCw,
-  AlertCircle,
-  ChevronRight,
-  ChevronDown,
-} from 'lucide-react';
+import { RefreshCw, AlertCircle, ChevronRight, ChevronDown } from 'lucide-react';
 
 import './tree.css';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // Define a type for hierarchy nodes
 interface HierarchyNode {
@@ -81,9 +71,7 @@ const SimpleTreeNode = ({
     portalClasses.length > 0 ||
     (hasChildren &&
       node.children!.some(
-        (child) =>
-          child.portalClasses?.length ||
-          (child.children && child.children.length > 0),
+        child => child.portalClasses?.length || (child.children && child.children.length > 0)
       ));
 
   if (!hasPortalClassesOrChildren) return null;
@@ -111,7 +99,7 @@ const SimpleTreeNode = ({
         </span>
 
         <div className="flex flex-wrap gap-1">
-          {portalClasses.map((cls) => (
+          {portalClasses.map(cls => (
             <PortalClassBadge
               key={cls}
               className={cls}
@@ -126,7 +114,7 @@ const SimpleTreeNode = ({
 
       {hasChildren && isExpanded && (
         <div className="ml-4 pl-2 border-l border-gray-200 dark:border-gray-700">
-          {node.children!.map((child) => (
+          {node.children!.map(child => (
             <SimpleTreeNode
               key={child.id}
               node={child}
@@ -143,15 +131,8 @@ const SimpleTreeNode = ({
 };
 
 export const HierarchyView = () => {
-  const {
-    treeData,
-    arboristData,
-    loading,
-    error,
-    classColors,
-    handleClassHover,
-    refreshData,
-  } = useHierarchyData();
+  const { treeData, arboristData, loading, error, classColors, handleClassHover, refreshData } =
+    useHierarchyData();
 
   const [hoveredClass, setHoveredClass] = useState<string | null>(null);
 
@@ -174,20 +155,13 @@ export const HierarchyView = () => {
           <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
             Portal Classes
           </h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled
-            className="text-gray-400 h-7 w-7"
-          >
+          <Button variant="ghost" size="icon" disabled className="text-gray-400 h-7 w-7">
             <RefreshCw size={14} className="animate-spin" />
           </Button>
         </div>
         <div className="flex items-center justify-center p-8">
           <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin mr-3"></div>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Loading classes...
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Loading classes...</p>
         </div>
       </div>
     );
@@ -201,12 +175,7 @@ export const HierarchyView = () => {
           <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
             Portal Classes
           </h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleRefresh}
-            className="h-7 w-7"
-          >
+          <Button variant="ghost" size="icon" onClick={handleRefresh} className="h-7 w-7">
             <RefreshCw size={14} />
           </Button>
         </div>
@@ -226,24 +195,14 @@ export const HierarchyView = () => {
   }
 
   // Make sure we have valid tree data with portal classes
-  if (
-    !treeData ||
-    !hasPortalClasses(treeData) ||
-    !arboristData ||
-    arboristData.length === 0
-  ) {
+  if (!treeData || !hasPortalClasses(treeData) || !arboristData || arboristData.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 h-full overflow-hidden">
         <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
           <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
             Portal Classes
           </h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleRefresh}
-            className="h-7 w-7"
-          >
+          <Button variant="ghost" size="icon" onClick={handleRefresh} className="h-7 w-7">
             <RefreshCw size={14} />
           </Button>
         </div>
@@ -281,12 +240,7 @@ export const HierarchyView = () => {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleRefresh}
-                className="h-7 w-7"
-              >
+              <Button variant="ghost" size="icon" onClick={handleRefresh} className="h-7 w-7">
                 <RefreshCw size={14} />
               </Button>
             </TooltipTrigger>

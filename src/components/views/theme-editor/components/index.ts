@@ -4,4 +4,4 @@ export { FontSettings } from './font-settings';
 export { LayoutSettings } from './layout-settings';
 
 // Export types and utilities for the components
-export type { ColorSettingsProps, FontSettingsProps, LayoutSettingsProps } from '../types'; 
+export type { ColorSettingsProps, FontSettingsProps, LayoutSettingsProps } from '../types';

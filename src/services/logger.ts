@@ -16,7 +16,7 @@ interface LoggerState {
   clearLogs: () => void;
 }
 
-export const useLogger = create<LoggerState>((set) => ({
+export const useLogger = create<LoggerState>(set => ({
   logs: [],
   currentLog: null,
   addLog: (message: string, level: LogLevel = 'info') => {
@@ -44,14 +44,12 @@ export const LogMessages = {
   SCREENSHOT_COMPLETE: 'Screenshot captured successfully',
   SCREENSHOT_TAKING_FULLPAGE: 'Taking full page screenshot...',
   SCREENSHOT_TAKING_VIEWPORT: 'Taking viewport screenshot...',
-  SCREENSHOT_TAKING_ELEMENT: (selector: string) =>
-    `Taking screenshot of element: ${selector}`,
+  SCREENSHOT_TAKING_ELEMENT: (selector: string) => `Taking screenshot of element: ${selector}`,
   SCREENSHOT_SUCCESS: (type: string, timeMs: number, sizeKB: number) =>
     `${type} screenshot captured in ${timeMs}ms (${sizeKB}KB)`,
   SCREENSHOT_ERROR: (type: string, timeMs: number, error: string) =>
     `${type} screenshot failed after ${timeMs}ms: ${error}`,
-  SCREENSHOT_SAVE_START: (filename: string) =>
-    `Saving screenshot as: ${filename}`,
+  SCREENSHOT_SAVE_START: (filename: string) => `Saving screenshot as: ${filename}`,
   SCREENSHOT_SAVE_SUCCESS: (filename: string, timeMs: number) =>
     `Screenshot saved successfully in ${timeMs}ms: ${filename}`,
 
@@ -91,11 +89,11 @@ export const ScreenshotLogger = {
     type: 'full-page' | 'viewport' | 'element',
     timeMs: number,
     sizeKB: number,
-    context?: string,
+    context?: string
   ) => {
     const contextStr = context ? ` (${context})` : '';
     console.log(
-      `[SCREENSHOT] ${type} capture completed${contextStr} in ${timeMs}ms, size: ${sizeKB}KB`,
+      `[SCREENSHOT] ${type} capture completed${contextStr} in ${timeMs}ms, size: ${sizeKB}KB`
     );
   },
 
@@ -103,12 +101,12 @@ export const ScreenshotLogger = {
     type: 'full-page' | 'viewport' | 'element',
     timeMs: number,
     error: Error | string,
-    context?: string,
+    context?: string
   ) => {
     const contextStr = context ? ` (${context})` : '';
     const errorMsg = error instanceof Error ? error.message : error;
     console.error(
-      `[SCREENSHOT] ${type} capture failed${contextStr} after ${timeMs}ms: ${errorMsg}`,
+      `[SCREENSHOT] ${type} capture failed${contextStr} after ${timeMs}ms: ${errorMsg}`
     );
   },
 
@@ -122,19 +120,13 @@ export const ScreenshotLogger = {
 
   logSaveError: (filename: string, timeMs: number, error: Error | string) => {
     const errorMsg = error instanceof Error ? error.message : error;
-    console.error(
-      `[SCREENSHOT] Save failed after ${timeMs}ms (${filename}): ${errorMsg}`,
-    );
+    console.error(`[SCREENSHOT] Save failed after ${timeMs}ms (${filename}): ${errorMsg}`);
   },
 
   // Summary logging for multiple screenshots
-  logSessionSummary: (
-    totalScreenshots: number,
-    totalTimeMs: number,
-    totalSizeKB: number,
-  ) => {
+  logSessionSummary: (totalScreenshots: number, totalTimeMs: number, totalSizeKB: number) => {
     console.log(
-      `[SCREENSHOT-SUMMARY] Session complete: ${totalScreenshots} screenshots, ${totalTimeMs}ms total, ${totalSizeKB}KB total size`,
+      `[SCREENSHOT-SUMMARY] Session complete: ${totalScreenshots} screenshots, ${totalTimeMs}ms total, ${totalSizeKB}KB total size`
     );
   },
 };

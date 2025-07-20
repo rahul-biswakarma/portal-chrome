@@ -16,12 +16,7 @@ interface FetchCssModalProps {
   isLoading: boolean;
 }
 
-export function FetchCssModal({
-  isOpen,
-  onClose,
-  onConfirm,
-  isLoading,
-}: FetchCssModalProps) {
+export function FetchCssModal({ isOpen, onClose, onConfirm, isLoading }: FetchCssModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
@@ -31,9 +26,8 @@ export function FetchCssModal({
             Replace Current CSS?
           </DialogTitle>
           <DialogDescription className="text-left">
-            This will fetch the latest CSS from DevRev portal preferences and
-            replace your current editor content. Any unsaved changes will be
-            lost.
+            This will fetch the latest CSS from DevRev portal preferences and replace your current
+            editor content. Any unsaved changes will be lost.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

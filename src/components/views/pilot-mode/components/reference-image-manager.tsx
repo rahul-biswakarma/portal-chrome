@@ -67,9 +67,14 @@ export const ReferenceImageManager: React.FC<ReferenceImageManagerProps> = ({
           ))}
 
           {images.length < maxImages && (
-            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[color:var(--border)] rounded-lg cursor-pointer bg-[color:var(--card)] hover:bg-[color:var(--muted)] transition-colors">
-              <Upload className="w-8 h-8 text-[color:var(--muted-foreground)]" />
-              <span className="text-sm text-[color:var(--muted-foreground)]">Add Image</span>
+            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[color:var(--border)] rounded-lg cursor-pointer bg-[color:var(--card)] hover:bg-[color:var(--muted)] transition-colors group">
+              <Upload className="w-8 h-8 text-[color:var(--muted-foreground)] group-hover:text-[color:var(--foreground)] transition-colors" />
+              <span className="text-sm text-[color:var(--muted-foreground)] group-hover:text-[color:var(--foreground)] transition-colors font-medium">
+                Upload Image
+              </span>
+              <span className="text-xs text-[color:var(--muted-foreground)] mt-1">
+                or drag and drop
+              </span>
               <input
                 type="file"
                 className="hidden"
@@ -83,9 +88,15 @@ export const ReferenceImageManager: React.FC<ReferenceImageManagerProps> = ({
         </div>
 
         {images.length === 0 && (
-          <p className="text-sm text-[color:var(--muted-foreground)] text-center py-4">
-            Upload reference images showing your desired design
-          </p>
+          <div className="text-center py-6 space-y-2">
+            <p className="text-sm font-medium text-[color:var(--foreground)]">
+              Transform your portal with AI
+            </p>
+            <p className="text-xs text-[color:var(--muted-foreground)]">
+              Upload an image of a design you like, and AI will adapt its visual style to your
+              portal
+            </p>
+          </div>
         )}
       </CardContent>
     </Card>

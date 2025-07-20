@@ -3,18 +3,11 @@ import { HexColorPicker } from 'react-colorful';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle } from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { ColorSettingsProps } from '../types';
 import { isValidHexColor } from '../utils';
 
-export const ColorSettings: React.FC<ColorSettingsProps> = ({
-  colors,
-  onColorsChange,
-}) => {
+export const ColorSettings: React.FC<ColorSettingsProps> = ({ colors, onColorsChange }) => {
   const ColorInputRow = ({
     label,
     id,
@@ -34,17 +27,10 @@ export const ColorSettings: React.FC<ColorSettingsProps> = ({
       <div className="space-y-2">
         <div className="flex items-center justify-between w-full gap-3">
           <div className="flex-1">
-            <Label
-              htmlFor={id}
-              className="text-sm font-medium text-foreground"
-            >
+            <Label htmlFor={id} className="text-sm font-medium text-foreground">
               {label}
             </Label>
-            {description && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {description}
-              </p>
-            )}
+            {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
           </div>
           <div className="flex items-center gap-2">
             <Popover>
@@ -63,10 +49,7 @@ export const ColorSettings: React.FC<ColorSettingsProps> = ({
                   <div className="text-xs font-medium text-center text-muted-foreground">
                     {(isValid ? value : '#000000').toUpperCase()}
                   </div>
-                  <HexColorPicker
-                    color={isValid ? value : '#000000'}
-                    onChange={onChange}
-                  />
+                  <HexColorPicker color={isValid ? value : '#000000'} onChange={onChange} />
                 </div>
               </PopoverContent>
             </Popover>
@@ -113,7 +96,7 @@ export const ColorSettings: React.FC<ColorSettingsProps> = ({
           onChange={handleAccentChange}
           description="Main brand color used for buttons, links, and highlights"
         />
-        
+
         <ColorInputRow
           label="Accent Text Color"
           id="accent-label-color"
@@ -121,7 +104,7 @@ export const ColorSettings: React.FC<ColorSettingsProps> = ({
           onChange={handleAccentLabelChange}
           description="Text color that appears on accent backgrounds"
         />
-        
+
         <ColorInputRow
           label="Background Color"
           id="neutral-color"
@@ -134,17 +117,17 @@ export const ColorSettings: React.FC<ColorSettingsProps> = ({
       <div className="p-4 bg-muted rounded-lg">
         <h4 className="text-sm font-medium mb-2">Color Preview</h4>
         <div className="flex gap-2">
-          <div 
+          <div
             className="w-8 h-8 rounded border"
             style={{ backgroundColor: colors.accent }}
             title="Accent Color"
           />
-          <div 
+          <div
             className="w-8 h-8 rounded border"
             style={{ backgroundColor: colors.accentLabel }}
             title="Accent Label Color"
           />
-          <div 
+          <div
             className="w-8 h-8 rounded border"
             style={{ backgroundColor: colors.neutral }}
             title="Neutral Color"

@@ -9,11 +9,7 @@ export type { UseThemeEditorReturn } from './hooks/use-theme-editor';
 export { themeService, ThemeServiceImpl } from './services/theme.service';
 
 // Component exports
-export { 
-  ColorSettings, 
-  FontSettings, 
-  LayoutSettings 
-} from './components';
+export { ColorSettings, FontSettings, LayoutSettings } from './components';
 
 // Type exports
 export type {
@@ -44,4 +40,4 @@ export {
   mergeThemeConfig,
   generateCSSVariables,
   debounce,
-} from './utils'; 
+} from './utils';

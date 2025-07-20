@@ -19,10 +19,9 @@ export const canAccessPage = (url: string): boolean => {
 export const convertToArboristFormat = (
   node: TreeNode,
   tailwindClasses: TailwindClassData = {},
-  parentId = '',
+  parentId = ''
 ): ArboristNode => {
-  const nodeId =
-    node.id || (parentId ? `${parentId}-${node.element}` : node.element);
+  const nodeId = node.id || (parentId ? `${parentId}-${node.element}` : node.element);
 
   // Add element node
   const elementNode: ArboristNode = {
@@ -37,7 +36,7 @@ export const convertToArboristFormat = (
   if (node.portalClasses.length > 0) {
     const portalToTailwind: Record<string, string[]> = {};
 
-    node.portalClasses.forEach((className) => {
+    node.portalClasses.forEach(className => {
       if (tailwindClasses[className]) {
         portalToTailwind[className] = tailwindClasses[className];
       } else {
@@ -54,7 +53,7 @@ export const convertToArboristFormat = (
   if (node.children.length > 0) {
     const childrenNodes: ArboristNode[] = [];
 
-    node.children.forEach((child) => {
+    node.children.forEach(child => {
       const childNode = convertToArboristFormat(child, tailwindClasses, nodeId);
       childrenNodes.push(childNode);
     });

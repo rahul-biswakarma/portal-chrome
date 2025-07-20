@@ -7,14 +7,14 @@ import type { AdvancedSettingsProps } from '../types';
 export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
   config,
   onChange,
-  isProcessing
+  isProcessing,
 }) => {
   const updateAdvancedSetting = (key: keyof typeof config.advancedSettings, value: boolean) => {
     onChange({
       advancedSettings: {
         ...config.advancedSettings,
-        [key]: value
-      }
+        [key]: value,
+      },
     });
   };
 
@@ -32,11 +32,9 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
             className="mt-2"
             disabled={isProcessing}
           />
-          <p className="text-xs text-gray-500 mt-1">
-            Number of refinement cycles
-          </p>
+          <p className="text-xs text-gray-500 mt-1">Number of refinement cycles</p>
         </div>
-        
+
         <div>
           <Label>Quality Threshold: {(config.evaluationThreshold * 100).toFixed(0)}%</Label>
           <Slider
@@ -48,71 +46,61 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
             className="mt-2"
             disabled={isProcessing}
           />
-          <p className="text-xs text-gray-500 mt-1">
-            Minimum quality to complete
-          </p>
+          <p className="text-xs text-gray-500 mt-1">Minimum quality to complete</p>
         </div>
       </div>
 
       <div className="space-y-3 border-t pt-4">
         <h4 className="font-medium text-sm">Advanced Options</h4>
-        
+
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <Label>Generate Responsive CSS</Label>
-            <p className="text-xs text-gray-500">
-              Include mobile and tablet breakpoints
-            </p>
+            <p className="text-xs text-gray-500">Include mobile and tablet breakpoints</p>
           </div>
           <Switch
             checked={config.advancedSettings.generateResponsiveCSS}
-            onCheckedChange={(checked) => updateAdvancedSetting('generateResponsiveCSS', checked)}
+            onCheckedChange={checked => updateAdvancedSetting('generateResponsiveCSS', checked)}
             disabled={isProcessing}
           />
         </div>
-        
+
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <Label>Use !important Declarations</Label>
-            <p className="text-xs text-gray-500">
-              Override existing styles with !important
-            </p>
+            <p className="text-xs text-gray-500">Override existing styles with !important</p>
           </div>
           <Switch
             checked={config.advancedSettings.useImportantDeclarations}
-            onCheckedChange={(checked) => updateAdvancedSetting('useImportantDeclarations', checked)}
+            onCheckedChange={checked => updateAdvancedSetting('useImportantDeclarations', checked)}
             disabled={isProcessing}
           />
         </div>
-        
+
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <Label>Optimize for Performance</Label>
-            <p className="text-xs text-gray-500">
-              Use efficient selectors and minimal CSS
-            </p>
+            <p className="text-xs text-gray-500">Use efficient selectors and minimal CSS</p>
           </div>
           <Switch
             checked={config.advancedSettings.optimizeForPerformance}
-            onCheckedChange={(checked) => updateAdvancedSetting('optimizeForPerformance', checked)}
+            onCheckedChange={checked => updateAdvancedSetting('optimizeForPerformance', checked)}
             disabled={isProcessing}
           />
         </div>
-        
+
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <Label>Preserve Existing Styles</Label>
-            <p className="text-xs text-gray-500">
-              Maintain current styling where possible
-            </p>
+            <p className="text-xs text-gray-500">Maintain current styling where possible</p>
           </div>
           <Switch
             checked={config.advancedSettings.preserveExistingStyles}
-            onCheckedChange={(checked) => updateAdvancedSetting('preserveExistingStyles', checked)}
+            onCheckedChange={checked => updateAdvancedSetting('preserveExistingStyles', checked)}
             disabled={isProcessing}
           />
         </div>
       </div>
     </div>
   );
-}; 
+};

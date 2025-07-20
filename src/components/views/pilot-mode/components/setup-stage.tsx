@@ -1,11 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Play } from 'lucide-react';
-import { ReferenceImageManager } from './reference-image-manager';
-import { AdvancedSettings } from './advanced-settings';
+import { Upload, Sparkles, Image } from 'lucide-react';
 import type { SetupStageProps } from '../types';
 
 export const SetupStage: React.FC<SetupStageProps> = ({
@@ -16,116 +12,128 @@ export const SetupStage: React.FC<SetupStageProps> = ({
   onAddImage,
   onRemoveImage,
 }) => {
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleStart = () => {
     setError(null);
-
-    // Validation
     if (config.referenceImages.length === 0) {
       setError('Please add at least one reference image');
       return;
     }
-
-    if (!config.designDescription.trim()) {
-      setError('Please provide a design description');
-      return;
-    }
-
     onStart();
   };
 
-  const isValid = config.referenceImages.length > 0 && config.designDescription.trim().length > 0;
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    for (const file of files) {
+      if (config.referenceImages.length < 5) {
+        try {
+          await onAddImage(file);
+        } catch (error) {
+          console.error('Failed to add image:', error);
+        }
+      }
+    }
+    event.target.value = '';
+  };
+
+  const isValid = config.referenceImages.length > 0;
 
   return (
-    <div className="flex flex-col items-center justify-center w-full h-full p-6">
-      <div className="w-full max-w-xl bg-[color:var(--card)] border border-[color:var(--border)] rounded-xl shadow-md p-6 space-y-8">
-        <ReferenceImageManager
-          images={config.referenceImages}
-          onAdd={onAddImage}
-          onRemove={onRemoveImage}
-          maxImages={5}
-          isProcessing={isProcessing}
-        />
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="w-full max-w-md space-y-8">
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-muted/50 rounded-2xl mb-4">
+            <Sparkles className="w-8 h-8 text-primary" />
+          </div>
+          <h1 className="text-3xl font-light text-foreground">Transform Your Portal</h1>
+          <p className="text-muted-foreground text-sm">
+            Upload a design you love, and AI will adapt it to your portal
+          </p>
+        </div>
 
+        {/* Image Upload */}
         <div className="space-y-4">
-          <div>
-            <div className="font-semibold text-lg text-[color:var(--foreground)] mb-2">
-              Design Configuration
+          {config.referenceImages.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3">
+              {config.referenceImages.map(image => (
+                <div
+                  key={image.id}
+                  className="relative group aspect-square rounded-xl overflow-hidden bg-muted border border-border"
+                >
+                  <img src={image.url} alt={image.name} className="w-full h-full object-cover" />
+                  <button
+                    onClick={() => onRemoveImage(image.id)}
+                    className="absolute top-2 right-2 w-6 h-6 bg-destructive/90 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    disabled={isProcessing}
+                  >
+                    <span className="text-destructive-foreground text-xs">×</span>
+                  </button>
+                </div>
+              ))}
+              {config.referenceImages.length < 5 && (
+                <label className="aspect-square border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center cursor-pointer bg-muted/20 hover:bg-muted/30 transition-colors group">
+                  <Upload className="w-6 h-6 text-muted-foreground group-hover:text-foreground transition-colors" />
+                  <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors mt-1">
+                    Add More
+                  </span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileChange}
+                    disabled={isProcessing}
+                  />
+                </label>
+              )}
             </div>
-            <Label htmlFor="description">
-              Design Description <span className="text-red-500">*</span>
-            </Label>
-            <Textarea
-              id="description"
-              placeholder="Describe the design you want to achieve... (e.g., 'Modern dark theme with blue accents', 'Clean minimal design with rounded corners')"
-              value={config.designDescription}
-              onChange={e => onConfigUpdate({ designDescription: e.target.value })}
-              className="mt-1 bg-[color:var(--muted)] border-[color:var(--border)] text-[color:var(--foreground)]"
-              disabled={isProcessing}
-              rows={3}
-            />
-            <p className="text-xs text-[color:var(--muted-foreground)] mt-1">
-              Be specific about colors, layout, style preferences, etc.
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label className="text-[color:var(--foreground)]">Show Advanced Settings</Label>
-              <p className="text-xs text-[color:var(--muted-foreground)]">
-                Configure iterations, quality threshold, and CSS options
-              </p>
-            </div>
-            <Switch
-              checked={showAdvanced}
-              onCheckedChange={setShowAdvanced}
-              disabled={isProcessing}
-            />
-          </div>
-
-          {showAdvanced && (
-            <div className="border-t pt-4 border-[color:var(--border)]">
-              <AdvancedSettings
-                config={config}
-                onChange={onConfigUpdate}
-                isProcessing={isProcessing}
+          ) : (
+            <label className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer bg-muted/20 hover:bg-muted/30 transition-colors group">
+              <Image className="w-10 h-10 text-muted-foreground group-hover:text-foreground transition-colors mb-3" />
+              <span className="text-foreground font-medium mb-1">Upload Reference Image</span>
+              <span className="text-muted-foreground text-sm text-center">
+                Drop an image here or click to browse
+              </span>
+              <input
+                type="file"
+                className="hidden"
+                accept="image/*"
+                multiple
+                onChange={handleFileChange}
+                disabled={isProcessing}
               />
-            </div>
+            </label>
           )}
         </div>
 
-        {error && (
-          <div className="w-full bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
-            {error}
+        {/* Optional Description */}
+        {config.referenceImages.length > 0 && (
+          <div className="space-y-2">
+            <Textarea
+              placeholder="Optional: Describe specific aspects to focus on..."
+              value={config.designDescription}
+              onChange={e => onConfigUpdate({ designDescription: e.target.value })}
+              className="bg-background border-border text-foreground placeholder:text-muted-foreground rounded-xl resize-none"
+              disabled={isProcessing}
+              rows={2}
+            />
           </div>
         )}
 
-        <div className="space-y-4">
-          <div className="text-sm text-[color:var(--muted-foreground)]">
-            <h4 className="font-medium mb-2 text-[color:var(--foreground)]">How it works:</h4>
-            <ol className="list-decimal list-inside space-y-1">
-              <li>Upload reference images showing your desired design</li>
-              <li>Describe the design goals and preferences</li>
-              <li>AI analyzes your page and generates CSS to match the references</li>
-              <li>Iterative refinement until the design matches your vision</li>
-            </ol>
-          </div>
+        {/* Action Button */}
+        <div className="space-y-3">
           <Button
             onClick={handleStart}
             disabled={isProcessing || !isValid}
-            className="w-full text-base py-3"
+            className="w-full h-12 text-base font-medium"
             size="lg"
           >
-            <Play className="w-5 h-5 mr-2" />
-            {isProcessing ? 'Processing...' : 'Start Pilot Mode'}
+            {isProcessing ? 'Generating Style...' : 'Transform My Portal'}
           </Button>
-          {!isValid && (
-            <p className="text-xs text-[color:var(--muted-foreground)] text-center">
-              Add reference images and provide a design description to continue
-            </p>
-          )}
+
+          {error && <p className="text-destructive text-sm text-center">{error}</p>}
         </div>
       </div>
     </div>

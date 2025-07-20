@@ -6,17 +6,11 @@ interface RadioGroupProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
 }
 
-interface RadioGroupItemProps
-  extends React.InputHTMLAttributes<HTMLInputElement> {
+interface RadioGroupItemProps extends React.InputHTMLAttributes<HTMLInputElement> {
   value: string;
 }
 
-export function RadioGroup({
-  value,
-  onValueChange,
-  children,
-  ...props
-}: RadioGroupProps) {
+export function RadioGroup({ value, onValueChange, children, ...props }: RadioGroupProps) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (onValueChange) {
       onValueChange(e.target.value);
@@ -25,7 +19,7 @@ export function RadioGroup({
 
   return (
     <div role="radiogroup" {...props}>
-      {React.Children.map(children, (child) => {
+      {React.Children.map(children, child => {
         // Skip non-element children (like strings, numbers, null, etc.)
         if (!React.isValidElement(child)) return child;
 

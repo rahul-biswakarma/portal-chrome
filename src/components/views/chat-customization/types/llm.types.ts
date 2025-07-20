@@ -137,4 +137,4 @@ export interface ValidationWarning {
   field: string;
   message: string;
   impact: 'low' | 'medium' | 'high';
-} 
+}

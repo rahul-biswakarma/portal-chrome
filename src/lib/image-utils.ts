@@ -8,7 +8,7 @@ export const convertFileToBase64 = (file: File): Promise<string> => {
         reject(new Error('Failed to read file as base64 string.'));
       }
     };
-    reader.onerror = (error) => {
+    reader.onerror = error => {
       reject(error);
     };
     reader.readAsDataURL(file);

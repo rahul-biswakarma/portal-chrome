@@ -43,12 +43,7 @@ export interface ThemeSuggestion {
   };
 }
 
-export type ThemeCategory = 
-  | 'modern'
-  | 'classic'
-  | 'minimalist'
-  | 'corporate'
-  | 'creative';
+export type ThemeCategory = 'modern' | 'classic' | 'minimalist' | 'corporate' | 'creative';
 
 // Component Props
 export interface ThemeEditorProps {
@@ -104,4 +99,4 @@ export interface ThemeChangeEvent {
   timestamp: number;
 }
 
-export type ThemeEventHandler = (event: ThemeChangeEvent) => void; 
+export type ThemeEventHandler = (event: ThemeChangeEvent) => void;

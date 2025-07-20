@@ -9,11 +9,11 @@ interface MessageInputProps {
   placeholder?: string;
 }
 
-export function MessageInput({ 
-  onSendMessage, 
-  suggestions = [], 
+export function MessageInput({
+  onSendMessage,
+  suggestions = [],
   isLoading = false,
-  placeholder = "Describe your styling changes..."
+  placeholder = 'Describe your styling changes...',
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -78,7 +78,7 @@ export function MessageInput({
           <textarea
             ref={textareaRef}
             value={message}
-            onChange={(e) => {
+            onChange={e => {
               setMessage(e.target.value);
               adjustTextareaHeight();
             }}
@@ -94,7 +94,7 @@ export function MessageInput({
             "
             rows={1}
           />
-          
+
           {/* Character count */}
           {message.length > 0 && (
             <div className="absolute -bottom-5 right-2 text-xs text-muted-foreground">
@@ -124,9 +124,9 @@ export function MessageInput({
 
       {/* Input hints */}
       <div className="mt-2 text-xs text-muted-foreground">
-        Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Enter</kbd> to send, 
+        Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Enter</kbd> to send,
         <kbd className="px-1 py-0.5 bg-muted rounded text-xs ml-1">Shift+Enter</kbd> for new line
       </div>
     </div>
   );
-} 
+}

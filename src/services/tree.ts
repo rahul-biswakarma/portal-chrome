@@ -69,7 +69,7 @@ export const simplifyTree = (node: TreeNode): SimplifiedTreeNode => {
  */
 export const extractPortalClasses = (node: TreeNode): string[] => {
   let classes = [...node.portalClasses];
-  node.children.forEach((child) => {
+  node.children.forEach(child => {
     classes = classes.concat(extractPortalClasses(child));
   });
   // Remove duplicates
@@ -80,9 +80,7 @@ export const extractPortalClasses = (node: TreeNode): string[] => {
  * Collect tailwind classes from the current tab
  * @returns Promise resolving to the tailwind class data
  */
-export const collectTailwindClasses = async (): Promise<
-  Record<string, string[]>
-> => {
+export const collectTailwindClasses = async (): Promise<Record<string, string[]>> => {
   try {
     const tab = await getActiveTab();
 

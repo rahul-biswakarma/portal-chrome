@@ -46,9 +46,7 @@ export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
     : [];
 
   // Determine if this node should be highlighted based on hovered class
-  const shouldHighlight = hoveredClass
-    ? portalClasses.includes(hoveredClass)
-    : false;
+  const shouldHighlight = hoveredClass ? portalClasses.includes(hoveredClass) : false;
 
   // Handle mouse events
   const handleMouseEnter = () => {
@@ -64,8 +62,7 @@ export const TreeNodeComponent: React.FC<TreeNodeProps> = ({
   };
 
   // Generate a unique hover class based on the first portal class (if any)
-  const hoverClass =
-    portalClasses.length > 0 ? `hover-${portalClasses[0]}` : '';
+  const hoverClass = portalClasses.length > 0 ? `hover-${portalClasses[0]}` : '';
 
   return (
     <div className={`tree-node ${isRootNode ? 'root-node' : ''}`}>

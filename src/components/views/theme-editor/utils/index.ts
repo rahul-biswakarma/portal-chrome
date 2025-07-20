@@ -44,8 +44,7 @@ export const hslToHex = (h: number, s: number, l: number): string => {
   l /= 100;
   const k = (n: number) => (n + h / 30) % 12;
   const a = s * Math.min(l, 1 - l);
-  const f = (n: number) =>
-    l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
   const toHex = (x: number) =>
     Math.round(x * 255)
       .toString(16)
@@ -174,13 +173,13 @@ export const generateCSSVariables = (config: ThemeConfig): Record<string, string
 
   return {
     // Theme colors
-    'primary': `oklch(${accentHsl.l}% ${accentHsl.s / 100} ${accentHsl.h})`,
+    primary: `oklch(${accentHsl.l}% ${accentHsl.s / 100} ${accentHsl.h})`,
     'primary-foreground': `oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h})`,
-    'background': `hsl(${neutralHsl.h}, ${neutralHsl.s}%, ${neutralHsl.l}%)`,
-    'foreground': `oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h})`,
-    'card': `hsl(${neutralHsl.h}, ${neutralHsl.s}%, ${neutralHsl.l}%)`,
+    background: `hsl(${neutralHsl.h}, ${neutralHsl.s}%, ${neutralHsl.l}%)`,
+    foreground: `oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h})`,
+    card: `hsl(${neutralHsl.h}, ${neutralHsl.s}%, ${neutralHsl.l}%)`,
     'card-foreground': `oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h})`,
-    'accent': `oklch(${accentHsl.l}% ${accentHsl.s / 100} ${accentHsl.h})`,
+    accent: `oklch(${accentHsl.l}% ${accentHsl.s / 100} ${accentHsl.h})`,
     'accent-foreground': `oklch(${accentLabelHsl.l}% ${accentLabelHsl.s / 100} ${accentLabelHsl.h})`,
 
     // Legacy HSL variables for compatibility
@@ -215,7 +214,7 @@ export const generateCSSVariables = (config: ThemeConfig): Record<string, string
     'spacing-unit': `${config.layout.spacingUnit}rem`,
     'radius-unit': `${config.layout.radiusUnit}rem`,
     'border-width-unit': `${config.layout.borderWidthUnit}rem`,
-    'radius': `${config.layout.radiusUnit}rem`,
+    radius: `${config.layout.radiusUnit}rem`,
   };
 };
 
@@ -229,4 +228,4 @@ export const debounce = <T extends unknown[]>(
     clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
   };
-}; 
+};

@@ -1,8 +1,5 @@
 // Pilot mode stages
-export type PilotStage = 
-  | 'setup'
-  | 'processing'
-  | 'complete';
+export type PilotStage = 'setup' | 'processing' | 'complete';
 
 export type ProcessingStage =
   | 'idle'
@@ -129,7 +126,7 @@ export interface ProgressInfo {
 }
 
 // Error types
-export type PilotError = 
+export type PilotError =
   | 'API_KEY_MISSING'
   | 'NO_PORTAL_CLASSES'
   | 'SCREENSHOT_FAILED'
@@ -184,31 +181,31 @@ export interface UsePilotModeReturn {
   error: PilotErrorInfo | null;
 
   // Actions
-  updateConfig: (updates: Partial<PilotConfig>) => void;
+  updateConfig: (_updates: Partial<PilotConfig>) => void;
   startProcessing: () => Promise<void>;
   stopProcessing: () => void;
   resetSession: () => void;
-  addReferenceImage: (file: File) => Promise<void>;
-  removeReferenceImage: (id: string) => void;
-  retryFromStage: (stage: ProcessingStage) => Promise<void>;
+  addReferenceImage: (_file: File) => Promise<void>;
+  removeReferenceImage: (_id: string) => void;
+  retryFromStage: (_stage: ProcessingStage) => Promise<void>;
 }
 
 // Service interfaces
 export interface DataCollectionService {
   collectPageData(): Promise<DataCollectionResult>;
-  extractPortalElements(tabId: number): Promise<PortalElement[]>;
-  getCurrentPageCSS(tabId: number): Promise<string>;
-  getComputedStyles(tabId: number): Promise<Record<string, Record<string, string>>>;
-  capturePageScreenshot(): Promise<string>;
+  extractPortalElements(_tabId: number): Promise<PortalElement[]>;
+  getCurrentPageCSS(_tabId: number): Promise<string>;
+  getComputedStyles(_tabId: number): Promise<Record<string, Record<string, string>>>;
+  capturePageScreenshot(_tabId: number): Promise<string>;
 }
 
 export interface CSSGenerationService {
   generateCSS(
-    pageData: PageData,
-    config: PilotConfig,
-    options: CSSGenerationOptions
+    _pageData: PageData,
+    _config: PilotConfig,
+    _options: CSSGenerationOptions
   ): Promise<string>;
-  validateCSS(css: string): Promise<{
+  validateCSS(_css: string): Promise<{
     isValid: boolean;
     errors: string[];
     warnings: string[];
@@ -218,28 +215,28 @@ export interface CSSGenerationService {
 export interface CSSApplicationService {
   applyCSS(css: string): Promise<CSSApplicationResult>;
   removeCSS(): Promise<boolean>;
-  validateApplication(css: string): Promise<boolean>;
+  validateApplication(_css: string): Promise<boolean>;
 }
 
 export interface EvaluationService {
   evaluateResults(
-    referenceImages: ReferenceImage[],
-    currentScreenshot: string,
-    appliedCSS: string,
-    config: PilotConfig,
-    iteration: number
+    _referenceImages: ReferenceImage[],
+    _currentScreenshot: string,
+    _appliedCSS: string,
+    _config: PilotConfig,
+    _iteration: number
   ): Promise<EvaluationResult>;
-  compareScreenshots(reference: string, current: string): Promise<number>;
+  compareScreenshots(_reference: string, _current: string): Promise<number>;
 }
 
 // Component props interfaces
 export interface SetupStageProps {
   config: PilotConfig;
-  onConfigUpdate: (updates: Partial<PilotConfig>) => void;
+  onConfigUpdate: (_updates: Partial<PilotConfig>) => void;
   onStart: () => void;
   isProcessing: boolean;
-  onAddImage: (file: File) => Promise<void>;
-  onRemoveImage: (imageId: string) => void;
+  onAddImage: (_file: File) => Promise<void>;
+  onRemoveImage: (_imageId: string) => void;
 }
 
 // Processing result for completed sessions
@@ -286,4 +283,4 @@ export interface ProcessingLogProps {
   logs: LogEntry[];
   maxEntries?: number;
   showTimestamps?: boolean;
-} 
+}

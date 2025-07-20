@@ -61,16 +61,14 @@ export const extractClassHierarchy = async (tabId: number): Promise<string> => {
 /**
  * Extracts Tailwind classes used with portal classes in the document
  */
-export const extractTailwindClasses = async (
-  tabId: number,
-): Promise<Record<string, string[]>> => {
+export const extractTailwindClasses = async (tabId: number): Promise<Record<string, string[]>> => {
   try {
     // Use the content script's getTailwindClasses function
     const response = await chrome.tabs
       .sendMessage(tabId, {
         action: 'getTailwindClasses',
       })
-      .catch((err) => {
+      .catch(err => {
         console.error('Error getting Tailwind classes:', err);
         return { success: false, error: 'Failed to get Tailwind classes' };
       });
@@ -80,7 +78,7 @@ export const extractTailwindClasses = async (
     }
 
     console.warn(
-      'Failed to get Tailwind classes from content script, falling back to direct extraction',
+      'Failed to get Tailwind classes from content script, falling back to direct extraction'
     );
 
     // Fall back to direct extraction if content script is not available
@@ -90,30 +88,27 @@ export const extractTailwindClasses = async (
         const tailwindByPortalClass: Record<string, string[]> = {};
 
         // Find all elements with portal classes
-        const elementsWithPortalClass =
-          document.querySelectorAll('[class*="portal-"]');
+        const elementsWithPortalClass = document.querySelectorAll('[class*="portal-"]');
 
         // Extract classes from each element
-        elementsWithPortalClass.forEach((el) => {
+        elementsWithPortalClass.forEach(el => {
           if (el.classList && el.classList.length > 0) {
             // Find portal classes on this element
-            const portalClasses = Array.from(el.classList).filter((cls) =>
-              cls.startsWith('portal-'),
-            );
+            const portalClasses = Array.from(el.classList).filter(cls => cls.startsWith('portal-'));
 
             // Find non-portal classes (potential Tailwind classes)
             const nonPortalClasses = Array.from(el.classList).filter(
-              (cls) => !cls.startsWith('portal-'),
+              cls => !cls.startsWith('portal-')
             );
 
             // Associate Tailwind classes with each portal class
-            portalClasses.forEach((portalClass) => {
+            portalClasses.forEach(portalClass => {
               if (!tailwindByPortalClass[portalClass]) {
                 tailwindByPortalClass[portalClass] = [];
               }
 
               // Add non-duplicate classes
-              nonPortalClasses.forEach((cls) => {
+              nonPortalClasses.forEach(cls => {
                 if (!tailwindByPortalClass[portalClass].includes(cls)) {
                   tailwindByPortalClass[portalClass].push(cls);
                 }
@@ -175,7 +170,7 @@ ${tailwindClassesStr}
  * @returns Promise resolving to portal class to computed styles mapping
  */
 export const extractComputedStyles = async (
-  tabId: number,
+  tabId: number
 ): Promise<Record<string, Record<string, string>>> => {
   try {
     const result = await chrome.scripting.executeScript({
@@ -253,18 +248,16 @@ export const extractComputedStyles = async (
           ':last-child',
         ];
 
-        portalElements.forEach((element) => {
+        portalElements.forEach(element => {
           const classes = element.className.split(' ');
-          const portalClasses = classes.filter((cls) =>
-            cls.startsWith('portal-'),
-          );
+          const portalClasses = classes.filter(cls => cls.startsWith('portal-'));
           const computedStyle = window.getComputedStyle(element);
 
-          portalClasses.forEach((portalClass) => {
+          portalClasses.forEach(portalClass => {
             const styles: Record<string, string> = {};
 
             // Extract base element styles
-            importantProperties.forEach((prop) => {
+            importantProperties.forEach(prop => {
               const value = computedStyle.getPropertyValue(prop);
               if (value && value !== '') {
                 styles[prop] = value;
@@ -279,7 +272,7 @@ export const extractComputedStyles = async (
             if (parentElement && parentElement.className) {
               const parentPortalClasses = parentElement.className
                 .split(' ')
-                .filter((cls) => cls.startsWith('portal-'));
+                .filter(cls => cls.startsWith('portal-'));
               if (parentPortalClasses.length > 0) {
                 styles['parent-classes'] = parentPortalClasses.join(' ');
               }
@@ -288,17 +281,14 @@ export const extractComputedStyles = async (
             // Add child context if it has children
             if (element.children.length > 0) {
               const childPortalElements = Array.from(element.children).filter(
-                (child) =>
+                child =>
                   child.className &&
-                  child.className
-                    .split(' ')
-                    .some((cls) => cls.startsWith('portal-')),
+                  child.className.split(' ').some(cls => cls.startsWith('portal-'))
               );
 
               if (childPortalElements.length > 0) {
                 styles['has-portal-children'] = 'true';
-                styles['child-elements'] =
-                  childPortalElements.length.toString();
+                styles['child-elements'] = childPortalElements.length.toString();
               }
             }
 
@@ -347,7 +337,7 @@ export const extractComputedStyles = async (
                       }
                     }
                   }
-                } catch (e) {
+                } catch {
                   // Silent fail for cross-origin stylesheets
                   continue;
                 }

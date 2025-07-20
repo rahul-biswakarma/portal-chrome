@@ -125,4 +125,4 @@ export interface ResponsiveIssue {
 }
 
 // Export PageContext for compatibility
-export type { PageContext, PortalElement, DOMSnapshot }; 
+export type { PageContext, PortalElement, DOMSnapshot };

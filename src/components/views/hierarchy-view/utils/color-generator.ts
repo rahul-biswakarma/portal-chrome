@@ -1,9 +1,7 @@
 import type { TreeNode } from '@/types';
 
 // Function to generate a unique color for each portal class with good contrast
-export const generateUniqueColors = (
-  tree: TreeNode | null,
-): Record<string, string> => {
+export const generateUniqueColors = (tree: TreeNode | null): Record<string, string> => {
   if (!tree) return {};
 
   const colors: Record<string, string> = {};
@@ -14,8 +12,8 @@ export const generateUniqueColors = (
     const classes = [...node.portalClasses];
 
     if (node.children && node.children.length > 0) {
-      node.children.forEach((child) => {
-        collectClasses(child).forEach((cls) => {
+      node.children.forEach(child => {
+        collectClasses(child).forEach(cls => {
           if (!classes.includes(cls)) {
             classes.push(cls);
           }

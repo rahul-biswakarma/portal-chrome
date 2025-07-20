@@ -8,13 +8,9 @@
  */
 export function getActiveTab(): Promise<chrome.tabs.Tab> {
   return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
       if (chrome.runtime.lastError) {
-        return reject(
-          new Error(
-            `Error getting active tab: ${chrome.runtime.lastError.message}`,
-          ),
-        );
+        return reject(new Error(`Error getting active tab: ${chrome.runtime.lastError.message}`));
       }
 
       if (!tabs || tabs.length === 0) {
@@ -34,17 +30,13 @@ export function getActiveTab(): Promise<chrome.tabs.Tab> {
  */
 export function safeSendMessage<T = unknown>(
   tabId: number,
-  message: Record<string, unknown>,
+  message: Record<string, unknown>
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     try {
-      chrome.tabs.sendMessage(tabId, message, (response) => {
+      chrome.tabs.sendMessage(tabId, message, response => {
         if (chrome.runtime.lastError) {
-          return reject(
-            new Error(
-              `Error sending message: ${chrome.runtime.lastError.message}`,
-            ),
-          );
+          return reject(new Error(`Error sending message: ${chrome.runtime.lastError.message}`));
         }
         resolve(response as T);
       });
@@ -60,23 +52,16 @@ export function safeSendMessage<T = unknown>(
  * @param func The function to execute
  * @returns Promise resolving to the result of the script execution
  */
-export function executeScript<T = unknown>(
-  tabId: number,
-  func: () => T,
-): Promise<T> {
+export function executeScript<T = unknown>(tabId: number, func: () => T): Promise<T> {
   return new Promise((resolve, reject) => {
     chrome.scripting.executeScript(
       {
         target: { tabId },
         func,
       },
-      (results) => {
+      results => {
         if (chrome.runtime.lastError) {
-          return reject(
-            new Error(
-              `Error executing script: ${chrome.runtime.lastError.message}`,
-            ),
-          );
+          return reject(new Error(`Error executing script: ${chrome.runtime.lastError.message}`));
         }
 
         if (!results || results.length === 0) {
@@ -84,7 +69,7 @@ export function executeScript<T = unknown>(
         }
 
         resolve(results[0].result as T);
-      },
+      }
     );
   });
 }

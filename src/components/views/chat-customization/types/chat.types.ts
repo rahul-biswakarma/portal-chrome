@@ -86,4 +86,4 @@ export interface PageContext {
   computedStyles: Record<string, CSSStyleDeclaration>;
   tailwindClasses: Record<string, string[]>;
   domStructure?: DOMSnapshot;
-} 
+}

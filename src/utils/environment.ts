@@ -14,9 +14,7 @@ export const getEnvVariables = async (): Promise<Record<string, string>> => {
 };
 
 // Set environment variables to storage
-export const setEnvVariables = async (
-  variables: Record<string, string>,
-): Promise<void> => {
+export const setEnvVariables = async (variables: Record<string, string>): Promise<void> => {
   try {
     await chrome.storage.local.set({ env: variables });
   } catch (error) {
@@ -25,18 +23,13 @@ export const setEnvVariables = async (
 };
 
 // Get a specific environment variable
-export const getEnvVariable = async (
-  key: string,
-): Promise<string | undefined> => {
+export const getEnvVariable = async (key: string): Promise<string | undefined> => {
   const env = await getEnvVariables();
   return env[key];
 };
 
 // Set a specific environment variable
-export const setEnvVariable = async (
-  key: string,
-  value: string,
-): Promise<void> => {
+export const setEnvVariable = async (key: string, value: string): Promise<void> => {
   const env = await getEnvVariables();
   env[key] = value;
   await setEnvVariables(env);

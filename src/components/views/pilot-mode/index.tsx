@@ -1,9 +1,11 @@
 import React from 'react';
 import { usePilotMode } from './hooks/use-pilot-mode';
 import { SetupStage, ProcessingStage, CompleteStage } from './components';
+import { useAppContext } from '@/contexts';
 import type { ProcessingResult } from './types';
 
 export const PilotModeView: React.FC = () => {
+  const { setCssContent } = useAppContext();
   const {
     pilotStage,
     config,
@@ -19,7 +21,7 @@ export const PilotModeView: React.FC = () => {
     resetSession,
     addReferenceImage,
     removeReferenceImage,
-  } = usePilotMode();
+  } = usePilotMode(setCssContent);
 
   const handleDownloadCSS = () => {
     if (processingContext?.previousCSS) {
@@ -37,9 +39,10 @@ export const PilotModeView: React.FC = () => {
 
   // Create processing result for complete stage
   const createProcessingResult = (): ProcessingResult => {
-    const lastEvaluation = processingContext?.feedbackHistory[processingContext.feedbackHistory.length - 1];
+    const lastEvaluation =
+      processingContext?.feedbackHistory[processingContext.feedbackHistory.length - 1];
     const processingTime = processingContext ? Date.now() - processingContext.startTime : 0;
-    
+
     return {
       success: lastEvaluation?.isDone || false,
       finalQualityScore: lastEvaluation?.qualityScore || 0,
@@ -47,7 +50,7 @@ export const PilotModeView: React.FC = () => {
       processingTime,
       generatedCSS: processingContext?.previousCSS || '',
       finalMessage: lastEvaluation?.feedback,
-      elementsAnalyzed: pageData?.portalElements.length
+      elementsAnalyzed: pageData?.portalElements.length,
     };
   };
 
@@ -55,9 +58,7 @@ export const PilotModeView: React.FC = () => {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center space-y-4">
-          <div className="text-red-500 text-lg font-semibold">
-            Error: {error.message}
-          </div>
+          <div className="text-red-500 text-lg font-semibold">Error: {error.message}</div>
           {error.suggestions && error.suggestions.length > 0 && (
             <div className="text-sm text-gray-600 dark:text-gray-400">
               <p className="font-medium mb-2">Suggestions:</p>
@@ -124,4 +125,4 @@ export const PilotModeView: React.FC = () => {
         </div>
       );
   }
-}; 
+};

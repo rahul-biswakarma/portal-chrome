@@ -59,10 +59,10 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       input: {
+        index: 'index.html', // Main side panel
         popup: 'src/popup.html',
         background: 'src/background.ts',
         content: 'src/content.ts',
-        index: 'index.html',
       },
       output: {
         entryFileNames: '[name].js',

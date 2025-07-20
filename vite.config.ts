@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { copyFileSync, mkdirSync, existsSync, readdirSync, statSync, cpSync } from 'fs';
+import { copyFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
 import tailwindcss from '@tailwindcss/vite';
 
 // Function to recursively copy directory
@@ -64,6 +64,7 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       input: {
+        index: 'index.html', // Main side panel
         popup: 'src/popup.html',
         background: 'src/background.ts',
         content: 'src/content.ts',

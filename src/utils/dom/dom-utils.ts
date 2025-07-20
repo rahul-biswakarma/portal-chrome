@@ -29,10 +29,7 @@ export function hasPortalClasses(): boolean {
   try {
     // First check if we're on a restricted page
     if (isRestrictedUrl(window.location.href)) {
-      console.warn(
-        'Cannot check for portal classes on restricted URL:',
-        window.location.href,
-      );
+      console.warn('Cannot check for portal classes on restricted URL:', window.location.href);
       return false;
     }
 
@@ -55,10 +52,7 @@ export function countPortalElements(): number {
   try {
     // First check if we're on a restricted page
     if (isRestrictedUrl(window.location.href)) {
-      console.warn(
-        'Cannot count portal elements on restricted URL:',
-        window.location.href,
-      );
+      console.warn('Cannot count portal elements on restricted URL:', window.location.href);
       return 0;
     }
 

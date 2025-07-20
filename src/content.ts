@@ -63,9 +63,7 @@ function hasPortalClasses(): boolean {
     }
 
     // Try alternative specific selectors
-    const withExactClass = document.querySelectorAll(
-      '.portal-public, .portal-home-page',
-    );
+    const withExactClass = document.querySelectorAll('.portal-public, .portal-home-page');
 
     if (withExactClass.length > 0) {
       portalClassesFound = true;
@@ -127,7 +125,7 @@ function setupPortalClassObserver() {
   }
 
   // Create a observer to watch for DOM changes
-  const observer = new MutationObserver((_mutations) => {
+  const observer = new MutationObserver(_mutations => {
     // Skip check if we already found portal classes
     if (portalClassesFound) {
       observer.disconnect();
@@ -142,7 +140,7 @@ function setupPortalClassObserver() {
           action: 'checkCompatibility',
           data: { compatible: true, restricted: false },
         })
-        .catch((error) => {
+        .catch(error => {
           console.error('Error sending compatibility status:', error);
         });
 
@@ -181,7 +179,7 @@ function checkPageCompatibility() {
         action: 'checkCompatibility',
         data: { compatible: false, restricted: true },
       })
-      .catch((error) => {
+      .catch(error => {
         console.error('Error sending compatibility status:', error);
       });
     return;
@@ -196,7 +194,7 @@ function checkPageCompatibility() {
       action: 'checkCompatibility',
       data: { compatible, restricted: false },
     })
-    .catch((error) => {
+    .catch(error => {
       console.error('Error sending compatibility status:', error);
     });
 }
@@ -224,9 +222,7 @@ function getPortalTreeData(): TreeNode {
     portalElements = Array.from(directMatches);
   } else {
     // Try with exact class selectors
-    const exactMatches = document.querySelectorAll(
-      '.portal-public, .portal-home-page',
-    );
+    const exactMatches = document.querySelectorAll('.portal-public, .portal-home-page');
 
     if (exactMatches.length > 0) {
       portalElements = Array.from(exactMatches);
@@ -270,10 +266,7 @@ function getPortalTreeData(): TreeNode {
   });
 
   // Build a tree of portal-class elements
-  buildTreeFromElements(
-    rootNode,
-    portalElements as unknown as NodeListOf<Element>,
-  );
+  buildTreeFromElements(rootNode, portalElements as unknown as NodeListOf<Element>);
 
   return rootNode;
 }
@@ -283,17 +276,12 @@ function getPortalTreeData(): TreeNode {
  * @param root The root node
  * @param elements All elements with portal-* classes
  */
-function buildTreeFromElements(
-  root: TreeNode,
-  elements: NodeListOf<Element> | Element[],
-): void {
+function buildTreeFromElements(root: TreeNode, elements: NodeListOf<Element> | Element[]): void {
   // Special handling for body element - add portal classes directly
   if (root.element === 'body') {
     // Check if body has portal classes
     const bodyClasses = Array.from(document.body.classList);
-    const bodyPortalClasses = bodyClasses.filter((cls) =>
-      cls.startsWith('portal-'),
-    );
+    const bodyPortalClasses = bodyClasses.filter(cls => cls.startsWith('portal-'));
     if (bodyPortalClasses.length > 0) {
       root.portalClasses = bodyPortalClasses;
     }
@@ -313,16 +301,13 @@ function buildTreeFromElements(
     const elementMap = new Map<Element, TreeNode>();
 
     // First, create nodes for all elements but don't set up the hierarchy yet
-    elementsArray.forEach((el) => {
+    elementsArray.forEach(el => {
       const allClasses = Array.from(el.classList);
-      const portalClasses = allClasses.filter((cls) =>
-        cls.startsWith('portal-'),
-      );
+      const portalClasses = allClasses.filter(cls => cls.startsWith('portal-'));
 
       if (portalClasses.length > 0) {
         const portalId =
-          el.getAttribute('data-portal-id') ||
-          `el-${Math.random().toString(36).substr(2, 9)}`;
+          el.getAttribute('data-portal-id') || `el-${Math.random().toString(36).substr(2, 9)}`;
         const node: TreeNode = {
           element: el.tagName.toLowerCase(),
           portalClasses,
@@ -334,7 +319,7 @@ function buildTreeFromElements(
     });
 
     // Now, establish parent-child relationships based on DOM structure
-    elementsArray.forEach((el) => {
+    elementsArray.forEach(el => {
       if (!elementMap.has(el)) return;
 
       // Get current element's node
@@ -367,7 +352,7 @@ function buildTreeFromElements(
 
   // For non-body nodes, use the existing approach
   // Find direct children of the current node
-  const childElements = elementsArray.filter((el) => {
+  const childElements = elementsArray.filter(el => {
     if (!el.parentElement) return false;
 
     // For non-body elements, we need a different approach since we don't have a direct reference to the element
@@ -380,9 +365,7 @@ function buildTreeFromElements(
     // For other nodes, check if parent has the same class as root node
     if (root.portalClasses && root.portalClasses.length > 0) {
       const parentClasses = Array.from(el.parentElement.classList);
-      const isChild = root.portalClasses.some((cls) =>
-        parentClasses.includes(cls),
-      );
+      const isChild = root.portalClasses.some(cls => parentClasses.includes(cls));
       return isChild;
     }
 
@@ -390,13 +373,12 @@ function buildTreeFromElements(
   });
 
   // Create nodes for direct children
-  childElements.forEach((el) => {
+  childElements.forEach(el => {
     // Extract portal-* classes
     const allClasses = Array.from(el.classList);
-    const portalClasses = allClasses.filter((cls) => cls.startsWith('portal-'));
+    const portalClasses = allClasses.filter(cls => cls.startsWith('portal-'));
     const portalId =
-      el.getAttribute('data-portal-id') ||
-      `el-${Math.random().toString(36).substr(2, 9)}`;
+      el.getAttribute('data-portal-id') || `el-${Math.random().toString(36).substr(2, 9)}`;
 
     // Create child node
     const childNode: TreeNode = {
@@ -416,10 +398,7 @@ function buildTreeFromElements(
     }
 
     // Recursively build tree for this child
-    buildTreeFromElements(
-      childNode,
-      elementsArray as unknown as NodeListOf<Element>,
-    );
+    buildTreeFromElements(childNode, elementsArray as unknown as NodeListOf<Element>);
   });
 }
 
@@ -434,13 +413,11 @@ function getTailwindClasses() {
   const allElements = document.querySelectorAll('[class]');
 
   // Process each element to find portal classes and associated non-portal classes
-  allElements.forEach((el) => {
+  allElements.forEach(el => {
     const classList = Array.from(el.classList);
 
-    const portalClasses = classList.filter((cls) => cls.startsWith('portal-'));
-    const nonPortalClasses = classList.filter(
-      (cls) => !cls.startsWith('portal-'),
-    );
+    const portalClasses = classList.filter(cls => cls.startsWith('portal-'));
+    const nonPortalClasses = classList.filter(cls => !cls.startsWith('portal-'));
 
     // Skip if no portal classes found on this element
     if (portalClasses.length === 0) {
@@ -448,13 +425,13 @@ function getTailwindClasses() {
     }
 
     // Add each portal class with its associated non-portal classes
-    portalClasses.forEach((portalClass) => {
+    portalClasses.forEach(portalClass => {
       if (!result[portalClass]) {
         result[portalClass] = [];
       }
 
       // Add all non-portal classes to the result
-      nonPortalClasses.forEach((cls) => {
+      nonPortalClasses.forEach(cls => {
         if (!result[portalClass].includes(cls)) {
           result[portalClass].push(cls);
         }
@@ -465,13 +442,13 @@ function getTailwindClasses() {
   // Add a test value if everything is empty
   if (Object.keys(result).length > 0) {
     let hasAnyClasses = false;
-    Object.values(result).forEach((classes) => {
+    Object.values(result).forEach(classes => {
       if (classes.length > 0) hasAnyClasses = true;
     });
 
     if (!hasAnyClasses) {
       // Add test data to diagnose rendering issue
-      Object.keys(result).forEach((portalClass) => {
+      Object.keys(result).forEach(portalClass => {
         result[portalClass] = ['test-class-1', 'test-class-2'];
       });
     }
@@ -527,10 +504,10 @@ function highlightElements(classes: string[]): void {
   removeHighlight();
 
   // Find all elements with the specified classes
-  classes.forEach((className) => {
+  classes.forEach(className => {
     const elements = document.querySelectorAll('.' + className);
 
-    elements.forEach((el) => {
+    elements.forEach(el => {
       const element = el as HTMLElementWithStyles;
 
       // Store original styles
@@ -562,7 +539,7 @@ function highlightElements(classes: string[]): void {
  */
 function removeHighlight(): void {
   // Restore original styles
-  activeHighlights.forEach((element) => {
+  activeHighlights.forEach(element => {
     const originalStyles = element._originalStyles;
     if (originalStyles) {
       element.style.outline = originalStyles.outline;

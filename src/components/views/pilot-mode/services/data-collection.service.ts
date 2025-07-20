@@ -22,7 +22,7 @@ export class DataCollectionServiceImpl implements DataCollectionService {
       // Collect all data in parallel where possible
       const [screenshot, portalElements, currentCSS, computedStyles, pageMetadata] =
         await Promise.all([
-          this.capturePageScreenshot(),
+          this.capturePageScreenshot(tab.id),
           this.extractPortalElements(tab.id),
           this.getCurrentPageCSS(tab.id),
           this.getComputedStyles(tab.id),
@@ -299,7 +299,7 @@ export class DataCollectionServiceImpl implements DataCollectionService {
                   });
               }
             });
-          } catch (error) {
+          } catch (_error) {
             // Ignore errors from accessing stylesheets
           }
 
@@ -468,13 +468,9 @@ export class DataCollectionServiceImpl implements DataCollectionService {
     }
   }
 
-  async capturePageScreenshot(): Promise<string> {
+  async capturePageScreenshot(tabId: number): Promise<string> {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab.id) {
-        throw new Error('No active tab found');
-      }
-      const screenshot = await captureScreenshot(tab.id);
+      const screenshot = await captureScreenshot(tabId);
       return screenshot || '';
     } catch (error) {
       console.error('Error capturing screenshot:', error);

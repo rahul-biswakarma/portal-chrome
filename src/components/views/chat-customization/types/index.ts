@@ -4,15 +4,15 @@ export * from './context.types';
 export * from './llm.types';
 
 // Re-export commonly used types
-export type { 
-  ChatMessage, 
-  ChatSession, 
-  CSSChange, 
-  UserPreferences, 
+export type {
+  ChatMessage,
+  ChatSession,
+  CSSChange,
+  UserPreferences,
   StyleTemplate,
   PageContext,
   PortalElement,
-  DOMSnapshot
+  DOMSnapshot,
 } from './chat.types';
 export type { EnhancedPortalElement, StyleModificationRequest } from './context.types';
-export type { LLMResponse, LLMRequest } from './llm.types'; 
+export type { LLMResponse, LLMRequest } from './llm.types';

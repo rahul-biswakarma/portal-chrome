@@ -9,7 +9,7 @@ interface ProgressState {
   showProgress: () => void;
 }
 
-export const useProgressStore = create<ProgressState>((set) => ({
+export const useProgressStore = create<ProgressState>(set => ({
   progress: 0,
   isVisible: false,
   setProgress: (value: number) =>

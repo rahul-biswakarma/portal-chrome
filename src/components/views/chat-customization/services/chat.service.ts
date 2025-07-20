@@ -1,10 +1,10 @@
 // Chat management service for the Chat Customization System
-import type { 
-  ChatMessage, 
-  ChatSession, 
+import type {
+  ChatMessage,
+  ChatSession,
   UserPreferences,
   StyleTemplate,
-  PageContext 
+  PageContext,
 } from '../types';
 
 export class ChatService {
@@ -24,16 +24,19 @@ export class ChatService {
     const session: ChatSession = {
       id,
       title: title || `Chat ${new Date().toLocaleDateString()}`,
-      messages: [{
-        id: this.generateId(),
-        type: 'system',
-        content: 'Welcome! I can help modify your website styles. Describe what you\'d like to change.',
-        timestamp: Date.now()
-      }],
+      messages: [
+        {
+          id: this.generateId(),
+          type: 'system',
+          content:
+            "Welcome! I can help modify your website styles. Describe what you'd like to change.",
+          timestamp: Date.now(),
+        },
+      ],
       context: context || this.createDefaultContext(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      isActive: true
+      isActive: true,
     };
 
     this.sessions.set(id, session);
@@ -77,7 +80,7 @@ export class ChatService {
     const newMessage: ChatMessage = {
       ...message,
       id: this.generateId(),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     session.messages.push(newMessage);
@@ -150,7 +153,7 @@ export class ChatService {
       cssChanges,
       tags: [],
       createdAt: Date.now(),
-      usageCount: 0
+      usageCount: 0,
     };
 
     return template;
@@ -158,7 +161,9 @@ export class ChatService {
 
   // Search and filter
   searchMessages(query: string, sessionId?: string): ChatMessage[] {
-    const sessions = sessionId ? [this.sessions.get(sessionId)] : Array.from(this.sessions.values());
+    const sessions = sessionId
+      ? [this.sessions.get(sessionId)]
+      : Array.from(this.sessions.values());
     const results: ChatMessage[] = [];
 
     sessions.forEach(session => {
@@ -184,7 +189,7 @@ export class ChatService {
   importSession(data: string): ChatSession | null {
     try {
       const session: ChatSession = JSON.parse(data);
-      
+
       // Validate session structure
       if (!session.id || !session.messages || !Array.isArray(session.messages)) {
         throw new Error('Invalid session format');
@@ -213,12 +218,12 @@ export class ChatService {
       title: document.title,
       viewport: {
         width: window.innerWidth,
-        height: window.innerHeight
+        height: window.innerHeight,
       },
       portalElements: [],
       currentCSS: '',
       computedStyles: {},
-      tailwindClasses: {}
+      tailwindClasses: {},
     };
   }
 
@@ -229,15 +234,17 @@ export class ChatService {
 
     const messageCount = session.messages.length;
     const userMessages = session.messages.filter(m => m.type === 'user').length;
-    const cssChanges = session.messages.reduce((acc, m) => 
-      acc + (m.metadata?.cssChanges?.length || 0), 0);
-    
+    const cssChanges = session.messages.reduce(
+      (acc, m) => acc + (m.metadata?.cssChanges?.length || 0),
+      0
+    );
+
     return {
       messageCount,
       userMessages,
       cssChanges,
       duration: Date.now() - session.createdAt,
-      lastActivity: session.updatedAt
+      lastActivity: session.updatedAt,
     };
   }
-} 
+}

@@ -7,7 +7,7 @@ import type { ProcessingLogProps } from '../types';
 export const ProcessingLog: React.FC<ProcessingLogProps> = ({
   logs,
   maxEntries = 20,
-  showTimestamps = true
+  showTimestamps = true,
 }) => {
   const displayLogs = logs.slice(-maxEntries);
 
@@ -29,7 +29,7 @@ export const ProcessingLog: React.FC<ProcessingLogProps> = ({
       hour12: false,
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
     });
   };
 
@@ -46,37 +46,34 @@ export const ProcessingLog: React.FC<ProcessingLogProps> = ({
                 No logs yet. Start processing to see activity.
               </p>
             ) : (
-              displayLogs.map((log) => (
-                <div 
-                  key={log.id} 
+              displayLogs.map(log => (
+                <div
+                  key={log.id}
                   className="flex items-start gap-2 text-sm border-b border-gray-100 dark:border-gray-800 pb-2 last:border-b-0"
                 >
-                  <Badge 
-                    variant={getBadgeVariant(log.level)}
-                    className="mt-0.5 text-xs min-w-fit"
-                  >
+                  <Badge variant={getBadgeVariant(log.level)} className="mt-0.5 text-xs min-w-fit">
                     {log.level}
                   </Badge>
-                  
+
                   {showTimestamps && (
                     <span className="text-gray-500 dark:text-gray-400 text-xs mt-0.5 min-w-fit">
                       {formatTime(log.timestamp)}
                     </span>
                   )}
-                  
+
                   {log.iteration && (
                     <Badge variant="outline" className="mt-0.5 text-xs min-w-fit">
                       #{log.iteration}
                     </Badge>
                   )}
-                  
+
                   <span className="flex-1 leading-5">{log.message}</span>
                 </div>
               ))
             )}
           </div>
         </ScrollArea>
-        
+
         {logs.length > maxEntries && (
           <p className="text-xs text-gray-500 mt-2 text-center">
             Showing last {maxEntries} of {logs.length} entries
@@ -85,4 +82,4 @@ export const ProcessingLog: React.FC<ProcessingLogProps> = ({
       </CardContent>
     </Card>
   );
-}; 
+};

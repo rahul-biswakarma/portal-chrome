@@ -3,10 +3,7 @@ import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import type { LayoutSettingsProps } from '../types';
 
-export const LayoutSettings: React.FC<LayoutSettingsProps> = ({
-  layout,
-  onLayoutChange,
-}) => {
+export const LayoutSettings: React.FC<LayoutSettingsProps> = ({ layout, onLayoutChange }) => {
   const SliderControl = ({
     label,
     value,
@@ -30,32 +27,33 @@ export const LayoutSettings: React.FC<LayoutSettingsProps> = ({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <Label className="text-sm font-medium text-foreground">
-              {label}
-            </Label>
-            {description && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {description}
-              </p>
-            )}
+            <Label className="text-sm font-medium text-foreground">{label}</Label>
+            {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
           </div>
           <span className="text-sm font-mono bg-muted px-2 py-1 rounded">
-            {value.toFixed(4)}{unit}
+            {value.toFixed(4)}
+            {unit}
           </span>
         </div>
-        
+
         <Slider
           value={[value]}
-          onValueChange={(values) => onChange(values[0])}
+          onValueChange={values => onChange(values[0])}
           min={min}
           max={max}
           step={step}
           className="w-full"
         />
-        
+
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>{min}{unit}</span>
-          <span>{max}{unit}</span>
+          <span>
+            {min}
+            {unit}
+          </span>
+          <span>
+            {max}
+            {unit}
+          </span>
         </div>
       </div>
     );
@@ -122,11 +120,11 @@ export const LayoutSettings: React.FC<LayoutSettingsProps> = ({
         <div className="space-y-3">
           {/* Spacing preview */}
           <div className="flex items-center gap-2">
-            <div 
+            <div
               className="w-4 h-4 bg-primary rounded"
               style={{ marginRight: `${layout.spacingUnit}rem` }}
             />
-            <div 
+            <div
               className="w-4 h-4 bg-primary rounded"
               style={{ marginRight: `${layout.spacingUnit}rem` }}
             />
@@ -135,25 +133,23 @@ export const LayoutSettings: React.FC<LayoutSettingsProps> = ({
               Spacing: {layout.spacingUnit}rem
             </span>
           </div>
-          
+
           {/* Radius preview */}
           <div className="flex items-center gap-2">
-            <div 
+            <div
               className="w-8 h-8 bg-primary"
               style={{ borderRadius: `${layout.radiusUnit}rem` }}
             />
-            <span className="text-xs text-muted-foreground">
-              Radius: {layout.radiusUnit}rem
-            </span>
+            <span className="text-xs text-muted-foreground">Radius: {layout.radiusUnit}rem</span>
           </div>
-          
+
           {/* Border preview */}
           <div className="flex items-center gap-2">
-            <div 
+            <div
               className="w-8 h-8 bg-background border-primary"
-              style={{ 
+              style={{
                 borderWidth: `${layout.borderWidthUnit}rem`,
-                borderRadius: `${layout.radiusUnit}rem`
+                borderRadius: `${layout.radiusUnit}rem`,
               }}
             />
             <span className="text-xs text-muted-foreground">

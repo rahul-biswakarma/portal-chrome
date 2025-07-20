@@ -27,7 +27,7 @@ export const saveStyle = async (
   name: string,
   css: string,
   imageUrl?: string,
-  description?: string,
+  description?: string
 ): Promise<SavedStyle> => {
   try {
     const styles = await getSavedStyles();
@@ -50,21 +50,19 @@ export const saveStyle = async (
 };
 
 // Get a style by ID
-export const getStyleById = async (
-  id: string,
-): Promise<SavedStyle | undefined> => {
+export const getStyleById = async (id: string): Promise<SavedStyle | undefined> => {
   const styles = await getSavedStyles();
-  return styles.find((style) => style.id === id);
+  return styles.find(style => style.id === id);
 };
 
 // Update a style
 export const updateStyle = async (
   id: string,
-  updates: Partial<Omit<SavedStyle, 'id' | 'createdAt'>>,
+  updates: Partial<Omit<SavedStyle, 'id' | 'createdAt'>>
 ): Promise<SavedStyle | null> => {
   try {
     const styles = await getSavedStyles();
-    const styleIndex = styles.findIndex((style) => style.id === id);
+    const styleIndex = styles.findIndex(style => style.id === id);
 
     if (styleIndex === -1) {
       return null;
@@ -89,7 +87,7 @@ export const updateStyle = async (
 export const deleteStyle = async (id: string): Promise<boolean> => {
   try {
     const styles = await getSavedStyles();
-    const newStyles = styles.filter((style) => style.id !== id);
+    const newStyles = styles.filter(style => style.id !== id);
 
     if (newStyles.length === styles.length) {
       return false; // Style not found
@@ -109,12 +107,9 @@ export const deleteStyle = async (id: string): Promise<boolean> => {
  * @param css CSS content to save
  * @returns Name of the saved style
  */
-export const saveCssToStorage = async (
-  siteName: string,
-  css: string,
-): Promise<string> => {
+export const saveCssToStorage = async (siteName: string, css: string): Promise<string> => {
   try {
-    const timestamp = new Date().toLocaleString().replace(/[\/\s:,]/g, '-');
+    const timestamp = new Date().toLocaleString().replace(/[/\s:,]/g, '-');
     const name = `${siteName}-${timestamp}`;
 
     // Save using the existing saveStyle function

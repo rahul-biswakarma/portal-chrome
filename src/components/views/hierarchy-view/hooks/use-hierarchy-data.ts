@@ -1,10 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { TreeNode, TailwindClassData } from '@/types';
 
-import {
-  canAccessPage,
-  convertToArboristFormat,
-} from '../utils/tree-data-utils';
+import { canAccessPage, convertToArboristFormat } from '../utils/tree-data-utils';
 import { generateUniqueColors } from '../utils/color-generator';
 import type { ArboristNode } from '../types';
 
@@ -25,7 +22,7 @@ export function useHierarchyData() {
         .sendMessage(tabId, {
           action: 'getPortalClassTree',
         })
-        .catch((err) => {
+        .catch(err => {
           console.error('Message send error:', err);
           return { success: false, error: 'Failed to get response from page' };
         });
@@ -41,7 +38,7 @@ export function useHierarchyData() {
         .sendMessage(tabId, {
           action: 'getTailwindClasses',
         })
-        .catch((err) => {
+        .catch(err => {
           console.error('Message send error for Tailwind classes:', err);
           return { success: false, error: 'Failed to get Tailwind classes' };
         });
@@ -49,10 +46,7 @@ export function useHierarchyData() {
       if (tailwindResponse?.success) {
         setTailwindClasses(tailwindResponse.data);
       } else {
-        console.warn(
-          'DEBUG: Failed to get Tailwind classes:',
-          tailwindResponse?.error,
-        );
+        console.warn('DEBUG: Failed to get Tailwind classes:', tailwindResponse?.error);
       }
     } catch (err) {
       console.error('Error fetching class tree:', err);
@@ -79,9 +73,7 @@ export function useHierarchyData() {
 
       // Check if the URL is restricted
       if (!canAccessPage(tab.url)) {
-        setError(
-          "Cannot access this page. Extension can't run on browser system pages.",
-        );
+        setError("Cannot access this page. Extension can't run on browser system pages.");
         setLoading(false);
         return;
       }
@@ -94,15 +86,13 @@ export function useHierarchyData() {
         });
       } catch (injectionError) {
         console.error('Script injection error:', injectionError);
-        setError(
-          'Failed to inject content script. This page may not allow script injection.',
-        );
+        setError('Failed to inject content script. This page may not allow script injection.');
         setLoading(false);
         return;
       }
 
       // Wait a moment to let the script initialize
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Now try to ping the content script
       const response = await chrome.tabs
@@ -119,7 +109,7 @@ export function useHierarchyData() {
         fetchTreeData(tab.id);
       } else {
         setError(
-          'Cannot establish connection with the page content. The page might not be compatible.',
+          'Cannot establish connection with the page content. The page might not be compatible.'
         );
         setLoading(false);
       }
@@ -172,14 +162,14 @@ export function useHierarchyData() {
             action: 'highlightElements',
             data: { classes: [className] },
           })
-          .catch((err) => console.error('Highlight error:', err));
+          .catch(err => console.error('Highlight error:', err));
       } else {
         // Remove highlight when not hovering
         await chrome.tabs
           .sendMessage(tab.id, {
             action: 'removeHighlight',
           })
-          .catch((err) => console.error('Remove highlight error:', err));
+          .catch(err => console.error('Remove highlight error:', err));
       }
     } catch (err) {
       console.error('Error highlighting elements:', err);

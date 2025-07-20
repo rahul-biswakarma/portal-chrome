@@ -28,10 +28,7 @@ const POPULAR_FONTS = [
   'Space Grotesk',
 ] as const;
 
-export const FontSettings: React.FC<FontSettingsProps> = ({
-  fonts,
-  onFontsChange,
-}) => {
+export const FontSettings: React.FC<FontSettingsProps> = ({ fonts, onFontsChange }) => {
   const FontSelector = ({
     label,
     value,
@@ -48,21 +45,15 @@ export const FontSettings: React.FC<FontSettingsProps> = ({
     return (
       <div className="space-y-3">
         <div>
-          <Label className="text-sm font-medium text-foreground">
-            {label}
-          </Label>
-          {description && (
-            <p className="text-xs text-muted-foreground mt-1">
-              {description}
-            </p>
-          )}
+          <Label className="text-sm font-medium text-foreground">{label}</Label>
+          {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-          {POPULAR_FONTS.slice(0, 12).map((font) => (
+          {POPULAR_FONTS.slice(0, 12).map(font => (
             <Button
               key={font}
-              variant={value === font ? "default" : "outline"}
+              variant={value === font ? 'default' : 'outline'}
               size="sm"
               onClick={() => onChange(font)}
               className="justify-start text-left h-auto py-2 px-3"
@@ -78,10 +69,7 @@ export const FontSettings: React.FC<FontSettingsProps> = ({
 
         {previewText && (
           <div className="p-3 bg-muted rounded-md">
-            <p
-              style={{ fontFamily: `'${value}', system-ui, sans-serif` }}
-              className="text-sm"
-            >
+            <p style={{ fontFamily: `'${value}', system-ui, sans-serif` }} className="text-sm">
               {previewText}
             </p>
           </div>
@@ -129,17 +117,18 @@ export const FontSettings: React.FC<FontSettingsProps> = ({
         <div className="p-4 bg-muted rounded-lg">
           <h4 className="text-sm font-medium mb-3">Font Combination Preview</h4>
           <div className="space-y-2">
-            <h5 
+            <h5
               style={{ fontFamily: `'${fonts.heading}', system-ui, sans-serif` }}
               className="text-lg font-semibold"
             >
               Sample Heading ({fonts.heading})
             </h5>
-            <p 
+            <p
               style={{ fontFamily: `'${fonts.paragraph}', system-ui, sans-serif` }}
               className="text-sm text-muted-foreground"
             >
-              Sample paragraph text using {fonts.paragraph}. This gives you a preview of how your chosen fonts work together.
+              Sample paragraph text using {fonts.paragraph}. This gives you a preview of how your
+              chosen fonts work together.
             </p>
           </div>
         </div>
@@ -156,7 +145,8 @@ export const FontSettings: React.FC<FontSettingsProps> = ({
                 Same font for headings and body
               </p>
               <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                Using the same font creates a unified, minimalist look. Consider using different font weights to create hierarchy.
+                Using the same font creates a unified, minimalist look. Consider using different
+                font weights to create hierarchy.
               </p>
             </div>
           </div>
@@ -164,4 +154,4 @@ export const FontSettings: React.FC<FontSettingsProps> = ({
       )}
     </div>
   );
-}; 
+};

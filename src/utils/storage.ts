@@ -10,10 +10,10 @@
  */
 export async function getFromStorage<T>(
   key: string,
-  defaultValue: T = null as unknown as T,
+  defaultValue: T = null as unknown as T
 ): Promise<T> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([key], (result) => {
+  return new Promise(resolve => {
+    chrome.storage.local.get([key], result => {
       resolve(result[key] !== undefined ? result[key] : defaultValue);
     });
   });
@@ -26,7 +26,7 @@ export async function getFromStorage<T>(
  * @returns Promise resolving when the operation is complete
  */
 export async function saveToStorage<T>(key: string, value: T): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     chrome.storage.local.set({ [key]: value }, () => {
       resolve();
     });
@@ -39,7 +39,7 @@ export async function saveToStorage<T>(key: string, value: T): Promise<void> {
  * @returns Promise resolving when the operation is complete
  */
 export async function removeFromStorage(key: string): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     chrome.storage.local.remove(key, () => {
       resolve();
     });

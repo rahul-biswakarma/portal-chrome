@@ -27,7 +27,7 @@ export const getAllVersions = async (): Promise<CSSVersion[]> => {
 export const saveCSSVersion = async (
   css: string,
   description: string = 'CSS Version',
-  prompt?: string,
+  prompt?: string
 ): Promise<CSSVersion> => {
   try {
     const versions = await getAllVersions();
@@ -58,7 +58,7 @@ export const saveCSSVersion = async (
 export const deleteCSSVersion = async (versionId: string): Promise<void> => {
   try {
     const versions = await getAllVersions();
-    const filteredVersions = versions.filter((v) => v.id !== versionId);
+    const filteredVersions = versions.filter(v => v.id !== versionId);
 
     if (versions.length === filteredVersions.length) {
       throw new Error(`Version with ID ${versionId} not found`);
@@ -79,7 +79,7 @@ export const deleteCSSVersion = async (versionId: string): Promise<void> => {
 export const applyVersion = async (versionId: string): Promise<void> => {
   try {
     const versions = await getAllVersions();
-    const version = versions.find((v) => v.id === versionId);
+    const version = versions.find(v => v.id === versionId);
 
     if (!version) {
       throw new Error(`Version with ID ${versionId} not found`);

@@ -1,9 +1,12 @@
 import { useState, useCallback, useRef } from 'react';
 import { dataCollectionService } from '../services/data-collection.service';
 import { cssApplicationService } from '../services/css-application.service';
-import { evaluationService } from '../services/evaluation.service';
 import { generateCSSWithGemini } from '@/utils/gemini';
 import { getEnvVariable } from '@/utils/environment';
+import {
+  CSS_GENERATION_RULES,
+  ADDITIONAL_CSS_REQUIREMENTS,
+} from '@/constants/css-generation-rules';
 import type {
   UsePilotModeReturn,
   PilotStage,
@@ -14,7 +17,6 @@ import type {
   ProcessingContext,
   LogEntry,
   PilotErrorInfo,
-  EvaluationResult,
   PortalElement,
 } from '../types';
 import {
@@ -41,7 +43,7 @@ interface TreeNode {
 const defaultConfig: PilotConfig = {
   referenceImages: [],
   designDescription: '',
-  maxIterations: 5,
+  maxIterations: 1, // Simplified to single-shot generation
   evaluationThreshold: 0.8,
   advancedSettings: {
     preserveExistingStyles: false,
@@ -51,7 +53,7 @@ const defaultConfig: PilotConfig = {
   },
 };
 
-export const usePilotMode = (): UsePilotModeReturn => {
+export const usePilotMode = (setCssContent?: (_css: string) => void): UsePilotModeReturn => {
   // State management
   const [pilotStage, setPilotStage] = useState<PilotStage>('setup');
   const [processingStage, setProcessingStage] = useState<ProcessingStage>('idle');
@@ -251,57 +253,16 @@ export const usePilotMode = (): UsePilotModeReturn => {
       throw new Error(result.error || 'Failed to apply CSS');
     }
 
+    // Update CSS editor content if available (like chat customization does)
+    if (setCssContent) {
+      setCssContent(css);
+      addLog('CSS editor updated with generated styles', 'info');
+    }
+
     addLog('CSS applied successfully', 'success');
 
     // Return the screenshot after CSS application
     return result.screenshotAfter || '';
-  };
-
-  const evaluateResults = async (
-    css: string,
-    screenshot: string,
-    iteration: number
-  ): Promise<EvaluationResult> => {
-    setProcessingStage('evaluating');
-    addLog('Evaluating results...', 'info');
-
-    try {
-      const apiKey = await getEnvVariable('GEMINI_API_KEY');
-      if (!apiKey) {
-        throw new Error('Gemini API key not found');
-      }
-
-      // Use the evaluation service
-      const result = await evaluationService.evaluateResults(
-        config.referenceImages,
-        screenshot,
-        css,
-        config,
-        iteration
-      );
-
-      addLog(
-        `Evaluation complete: ${result.isDone ? 'Design matches!' : 'Needs improvement'}`,
-        result.isDone ? 'success' : 'info'
-      );
-
-      return result;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      addLog(`Evaluation failed: ${message}`, 'error');
-
-      // Return a failed evaluation result
-      return {
-        iteration,
-        isDone: false,
-        feedback: `Evaluation failed: ${message}`,
-        improvementsSuggested: ['Check your internet connection', 'Try again'],
-        qualityScore: 0,
-        timestamp: Date.now(),
-        screenshotAfter: screenshot,
-        cssApplied: css,
-      };
-    }
   };
 
   // Main processing workflow
@@ -340,58 +301,28 @@ export const usePilotMode = (): UsePilotModeReturn => {
       const collectedPageData = await collectPageData();
       setPageData(collectedPageData);
 
-      let currentScreenshot = collectedPageData.screenshot;
-      const feedbackHistory: EvaluationResult[] = [];
+      // Step 2: Generate and apply CSS (single-shot like chat customization)
+      addLog('Generating CSS from reference image...', 'info');
+      const css = await generateCSS(collectedPageData, 1);
 
-      // Step 2: Iterative CSS generation and evaluation
-      for (let iteration = 1; iteration <= config.maxIterations; iteration++) {
-        if (abortControllerRef.current?.signal.aborted) {
-          addLog('Processing aborted by user', 'warning');
-          break;
-        }
+      // Apply CSS and get screenshot
+      addLog('Applying CSS to page...', 'info');
+      const screenshotAfter = await applyCSS(css);
 
-        currentIterationRef.current = iteration;
-        addLog(`Starting iteration ${iteration}/${config.maxIterations}`, 'info');
+      // Update processing context with results
+      setProcessingContext(prev =>
+        prev
+          ? {
+              ...prev,
+              iteration: 1,
+              previousCSS: css,
+              previousScreenshot: screenshotAfter || collectedPageData.screenshot,
+              feedbackHistory: [],
+            }
+          : null
+      );
 
-        // Generate CSS
-        const previousFeedback = feedbackHistory[feedbackHistory.length - 1]?.feedback;
-        const css = await generateCSS(collectedPageData, iteration, previousFeedback);
-
-        // Apply CSS
-        const screenshotAfter = await applyCSS(css);
-        currentScreenshot = screenshotAfter || currentScreenshot;
-
-        // Update page data with new CSS for next iteration
-        collectedPageData.currentCSS = css;
-
-        // Evaluate results
-        const evaluation = await evaluateResults(css, currentScreenshot, iteration);
-        feedbackHistory.push(evaluation);
-
-        // Update processing context
-        setProcessingContext(prev =>
-          prev
-            ? {
-                ...prev,
-                iteration,
-                previousCSS: css,
-                previousScreenshot: currentScreenshot,
-                feedbackHistory,
-              }
-            : null
-        );
-
-        // Check if we're done
-        if (evaluation.isDone || (evaluation.qualityScore ?? 0) >= config.evaluationThreshold) {
-          addLog(`Design goal achieved in ${iteration} iterations!`, 'success');
-          break;
-        }
-
-        addLog(
-          `Iteration ${iteration} complete. Quality score: ${evaluation.qualityScore}`,
-          'info'
-        );
-      }
+      addLog('Style transformation complete!', 'success');
 
       // Complete
       setProcessingStage('complete');
@@ -405,7 +336,7 @@ export const usePilotMode = (): UsePilotModeReturn => {
       setIsProcessing(false);
       abortControllerRef.current = null;
     }
-  }, [config, addLog, setErrorState, clearError]);
+  }, [config, addLog, setErrorState, clearError, applyCSS, collectPageData, generateCSS]);
 
   const stopProcessing = useCallback(() => {
     if (abortControllerRef.current) {
@@ -454,31 +385,41 @@ export const usePilotMode = (): UsePilotModeReturn => {
     const portalTree = formatPortalTree(pageData.portalElements);
 
     if (iteration === 1) {
-      return `Create CSS to transform this page to match the reference design.
+      return `You are an expert CSS designer. Your task is to intelligently adapt a reference design to transform the current portal page while respecting its existing structure and content.
 
-DESIGN GOAL: ${config.designDescription || 'Transform the page to match the reference design aesthetics'}
+${config.designDescription ? `SPECIFIC FOCUS: ${config.designDescription}` : 'GOAL: Match the overall aesthetic and visual style of the reference design'}
 
-PORTAL ELEMENTS:
+IMPORTANT - INTELLIGENT ADAPTATION STRATEGY:
+• ANALYZE the current portal's structure and identify what elements exist (buttons, cards, headers, etc.)
+• STUDY the reference design for visual styles (colors, typography, spacing, shadows, effects)
+• ADAPT the reference design's visual language to the portal's actual elements
+• DO NOT try to create elements that don't exist in the portal
+• DO NOT replicate exact layouts that don't match the portal structure
+• FOCUS on visual transformation: colors, fonts, spacing, borders, shadows, hover effects
+
+CURRENT PORTAL STRUCTURE:
 ${portalTree}
 
-AVAILABLE CLASSES:
+AVAILABLE PORTAL CLASSES TO STYLE:
 ${portalClasses.map(cls => `- .${cls}`).join('\n')}
 
-CURRENT CSS:
+EXISTING CSS (to build upon):
 ${pageData.currentCSS || '/* No existing CSS */'}
 
-REQUIREMENTS:
-1. Use ONLY the portal classes listed above
-2. Generate complete CSS that matches the reference design
-3. Focus on colors, typography, spacing, layout, and visual effects
-4. Make it modern and visually appealing
-5. Ensure good contrast and accessibility
+${CSS_GENERATION_RULES}
 
-${config.advancedSettings.generateResponsiveCSS ? 'Include responsive breakpoints for mobile and tablet.' : ''}
-${config.advancedSettings.useImportantDeclarations ? 'Use !important declarations where necessary to override existing styles.' : ''}
-${config.advancedSettings.optimizeForPerformance ? 'Optimize CSS for performance with efficient selectors.' : ''}
+${ADDITIONAL_CSS_REQUIREMENTS}
+6. Intelligently map visual elements from reference to available portal classes
+7. Preserve the portal's functional layout while transforming its visual appearance
+8. Extract color schemes, typography choices, and design patterns from reference
+9. Apply cohesive visual styling that makes the portal feel like the reference design
+10. Use gradients, shadows, borders, and effects inspired by the reference
 
-Generate clean, modern CSS that transforms the page to match the reference design.`;
+${config.advancedSettings.generateResponsiveCSS ? 'Include responsive design considerations.' : ''}
+${config.advancedSettings.useImportantDeclarations ? 'Use !important declarations strategically to override existing styles.' : ''}
+${config.advancedSettings.optimizeForPerformance ? 'Optimize for performance with efficient selectors.' : ''}
+
+Create CSS that transforms the portal's visual appearance to match the reference design's aesthetic while being smart about what elements exist and what styling is actually possible.`;
     } else {
       return `Improve the CSS based on feedback to better match the reference design.
 
@@ -493,12 +434,14 @@ ${pageData.currentCSS || '/* No existing CSS */'}
 AVAILABLE CLASSES:
 ${portalClasses.map(cls => `- .${cls}`).join('\n')}
 
-REQUIREMENTS:
-1. Address the specific feedback provided
-2. Improve visual accuracy to match the reference design
-3. Build upon the existing CSS rather than starting over
-4. Focus on the areas mentioned in the feedback
-5. Maintain any working elements from the previous iteration
+${CSS_GENERATION_RULES}
+
+${ADDITIONAL_CSS_REQUIREMENTS}
+6. Address the specific feedback provided
+7. Improve visual accuracy to match the reference design
+8. Build upon the existing CSS rather than starting over
+9. Focus on the areas mentioned in the feedback
+10. Maintain any working elements from the previous iteration
 
 ${config.advancedSettings.generateResponsiveCSS ? 'Ensure responsive design is maintained.' : ''}
 ${config.advancedSettings.useImportantDeclarations ? 'Use !important where needed to override existing styles.' : ''}
