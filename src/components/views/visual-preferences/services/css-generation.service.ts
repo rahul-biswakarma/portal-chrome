@@ -44,14 +44,6 @@ export class CSSGenerationService {
     const preference = element.availablePreferences.find(p => p.id === preferenceId);
     if (!preference || !preference.metadata) return currentCSSContent;
 
-    // Generate CSS for this specific preference
-    const css = this.generateCSSForPreference(preference, userValue, {
-      minify: false,
-      addComments: false,
-      useImportant: false,
-      respectExistingStyles: true,
-    });
-
     // Create unique identifier for this preference
     const prefId = `${elementId}:${preferenceId}`;
     const startComment = `/* PREF:${prefId}:START */`;
@@ -61,25 +53,57 @@ export class CSSGenerationService {
     const startIndex = currentCSSContent.indexOf(startComment);
     const endIndex = currentCSSContent.indexOf(endComment);
 
-    if (startIndex !== -1 && endIndex !== -1) {
-      // Replace existing preference CSS
-      const beforeCSS = currentCSSContent.substring(0, startIndex);
-      const afterCSS = currentCSSContent.substring(endIndex + endComment.length);
+    // If user value equals default value, remove the CSS block entirely
+    const defaultValue = preference.currentValue;
 
-      if (css.trim()) {
-        // Update with new CSS
-        return `${beforeCSS}${startComment}\n${css}\n${endComment}${afterCSS}`;
-      } else {
-        // Remove the preference (user reset to default)
+    // Debug: Show exact comparison values and types
+    console.log(`🔍 Default comparison for ${prefId}:`);
+    console.log('  userValue:', userValue, '(type:', typeof userValue, ')');
+    console.log('  defaultValue:', defaultValue, '(type:', typeof defaultValue, ')');
+    console.log('  are equal?', userValue === defaultValue);
+
+    if (userValue === defaultValue) {
+      if (startIndex !== -1 && endIndex !== -1) {
+        // Remove existing CSS block - return to default styling
+        console.log(`✅ Removing CSS block for ${prefId} (returned to default:`, defaultValue, ')');
+        const beforeCSS = currentCSSContent.substring(0, startIndex);
+        const afterCSS = currentCSSContent.substring(endIndex + endComment.length);
         return `${beforeCSS}${afterCSS}`.replace(/\n\n\n+/g, '\n\n').trim();
       }
-    } else {
-      // Add new preference CSS
-      if (css.trim()) {
-        const newSection = `\n\n${startComment}\n${css}\n${endComment}`;
-        return currentCSSContent + newSection;
+      // No existing block and user is at default - nothing to do
+      console.log(`✅ No CSS needed for ${prefId} (already at default:`, defaultValue, ')');
+      return currentCSSContent;
+    }
+
+    // Generate CSS for non-default value
+    const css = this.generateCSSForPreference(preference, userValue, {
+      minify: false,
+      addComments: false,
+      useImportant: false,
+      respectExistingStyles: true,
+    });
+
+    if (!css.trim()) {
+      // If no CSS generated, treat as default and remove block
+      if (startIndex !== -1 && endIndex !== -1) {
+        const beforeCSS = currentCSSContent.substring(0, startIndex);
+        const afterCSS = currentCSSContent.substring(endIndex + endComment.length);
+        return `${beforeCSS}${afterCSS}`.replace(/\n\n\n+/g, '\n\n').trim();
       }
       return currentCSSContent;
+    }
+
+    if (startIndex !== -1 && endIndex !== -1) {
+      // Replace existing preference CSS
+      console.log(`Updating CSS block for ${prefId} (${defaultValue} → ${userValue})`);
+      const beforeCSS = currentCSSContent.substring(0, startIndex);
+      const afterCSS = currentCSSContent.substring(endIndex + endComment.length);
+      return `${beforeCSS}${startComment}\n${css}\n${endComment}${afterCSS}`;
+    } else {
+      // Add new preference CSS
+      console.log(`Adding new CSS block for ${prefId} (${defaultValue} → ${userValue})`);
+      const newSection = `\n\n${startComment}\n${css}\n${endComment}`;
+      return currentCSSContent + newSection;
     }
   }
 
@@ -167,15 +191,24 @@ export class CSSGenerationService {
         css.includes(`.${className}`)
       );
 
+      console.log(`🎯 CSS validation for ${preference.id}:`);
+      console.log('  targetClasses:', metadata.targetClasses);
+      console.log('  generated CSS:', css);
+      console.log('  contains target class?', containsTargetClass);
+
       if (!containsTargetClass) {
         console.warn(`Visual Preferences: CSS template missing target classes, auto-fixing...`);
 
         // Try to extract CSS properties and apply them to actual target classes
         const cssDeclarations = this.extractCSSDeclarations(css);
+        console.log('  extracted declarations:', cssDeclarations);
+
         if (cssDeclarations) {
-          css = metadata.targetClasses
+          const fixedCSS = metadata.targetClasses
             .map(className => `.${className} { ${cssDeclarations} }`)
             .join('\n');
+          console.log('  fixed CSS:', fixedCSS);
+          css = fixedCSS;
         }
       }
     }

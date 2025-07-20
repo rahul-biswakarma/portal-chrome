@@ -122,21 +122,21 @@ export const CssEditor = () => {
 
   // Auto-apply and auto-save CSS when editor content changes
   useEffect(() => {
-    // Skip initial empty content
-    if (
-      currentEditorContent &&
-      currentEditorContent.trim() !== '' &&
-      currentEditorContent.trim() !== '/* CSS will appear here when generated */'
-    ) {
-      // Apply the CSS and save to context automatically with debounce
+    // Always apply CSS content changes, including empty content
+    if (currentEditorContent !== '/* CSS will appear here when generated */') {
       const timer = setTimeout(() => {
-        // Apply CSS to the page
-        applyCSS(currentEditorContent);
+        // Apply CSS to the page (including empty CSS to remove styles)
+        applyCSS(currentEditorContent || '');
 
         // Auto-save to context (same as clicking Save button)
-        setCssContent(currentEditorContent);
+        setCssContent(currentEditorContent || '');
 
-        addLog('CSS auto-applied and auto-saved', 'success');
+        // Log different messages for empty vs non-empty CSS
+        if (currentEditorContent && currentEditorContent.trim() !== '') {
+          addLog('CSS auto-applied and auto-saved', 'success');
+        } else {
+          addLog('CSS cleared from page and auto-saved', 'success');
+        }
       }, 500); // Delay to avoid excessive updates while typing
 
       return () => clearTimeout(timer);
@@ -366,12 +366,16 @@ export const CssEditor = () => {
 
   // Update editor content when cssContent changes
   useEffect(() => {
-    if (viewRef.current && cssContent) {
-      // Clean the CSS before updating the editor
-      const cleanedContent = cleanCSSResponse(cssContent);
+    if (viewRef.current) {
+      // Handle both empty and non-empty CSS content
+      const cleanedContent = cssContent ? cleanCSSResponse(cssContent) : '';
       const currentContent = viewRef.current.state.doc.toString();
 
-      if (currentContent !== cleanedContent) {
+      // Skip if it's just the initial placeholder text
+      const isInitialPlaceholder = currentContent === '/* CSS will appear here when generated */';
+      const shouldUpdate = isInitialPlaceholder || currentContent !== cleanedContent;
+
+      if (shouldUpdate) {
         viewRef.current.dispatch({
           changes: {
             from: 0,
