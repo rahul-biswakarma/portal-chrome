@@ -46,7 +46,7 @@ const views: ViewTabsSchema[] = [
           <path d="M8 20a2 2 0 104 0" />
           <circle cx="12" cy="8" r="2" />
         </svg>
-        Visual Prefs
+        UI Editor
       </div>
     ),
     content: <VisualPreferencesView />,

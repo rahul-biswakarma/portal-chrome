@@ -1,43 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Loader2, Eye, Layout, Palette, Move, Zap } from 'lucide-react';
-import { PreferenceToggle } from './components/preference-toggle';
-import { PreferenceDropdown } from './components/preference-dropdown';
-import { LayoutSelector } from './components/layout-selector';
+import { Loader2, RefreshCw, Wand2, Search, CheckCircle2 } from 'lucide-react';
 import { domAnalysisService } from './services/dom-analysis.service';
+import { uiGeneratorService } from './services/ui-generator.service';
 import { cssGenerationService } from './services/css-generation.service';
-import { cssApplicationService } from '../pilot-mode/services/css-application.service';
-import type {
-  DetectedElement,
-  UserPreferences,
-  PreferenceGroup,
-  PreferenceValue,
-  PreferenceOption,
-  PreferenceCategory,
-} from './types';
+import type { DetectedElement, UserPreferences, PreferenceValue } from './types';
 import { useAppContext } from '@/contexts';
 
 export const VisualPreferencesView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [elements, setElements] = useState<DetectedElement[]>([]);
   const [preferences, setPreferences] = useState<UserPreferences>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const { addLog } = useAppContext();
-
-  useEffect(() => {
-    analyzeCurrentPage();
-  }, []);
+  const { addLog, setCssContent } = useAppContext();
 
   const analyzeCurrentPage = async () => {
+    setIsAnalyzing(true);
     setIsLoading(true);
     try {
-      addLog('Analyzing page structure...', 'info');
+      addLog('🔍 Scanning page for UI elements...', 'info');
+      addLog('🤖 Asking AI to generate custom UI controls...', 'info');
+
+      // Use the new LLM-based analysis
       const analysis = await domAnalysisService.analyzeDOM();
       setElements(analysis.elements);
 
+      // Initialize preferences from LLM-generated controls
       const initialPreferences: UserPreferences = {};
       analysis.elements.forEach(element => {
         initialPreferences[element.id] = {};
@@ -47,45 +37,73 @@ export const VisualPreferencesView: React.FC = () => {
       });
 
       setPreferences(initialPreferences);
-      addLog(`Found ${analysis.elements.length} customizable elements`, 'success');
+
+      if (analysis.elements.length > 0) {
+        addLog(`✨ Generated ${analysis.elements.length} UI controls`, 'success');
+      } else {
+        addLog('⚠️ No UI controls could be generated for this page', 'warning');
+      }
     } catch (error) {
       console.error('Error analyzing page:', error);
-      addLog('Failed to analyze page structure', 'error');
+      addLog('❌ Failed to generate UI controls', 'error');
     } finally {
       setIsLoading(false);
+      setIsAnalyzing(false);
     }
   };
 
-  const updatePreference = (elementId: string, preferenceId: string, value: PreferenceValue) => {
-    setPreferences(prev => ({
-      ...prev,
+  const updatePreference = async (
+    elementId: string,
+    preferenceId: string,
+    value: PreferenceValue
+  ) => {
+    // Update state immediately
+    const newPreferences = {
+      ...preferences,
       [elementId]: {
-        ...prev[elementId],
+        ...preferences[elementId],
         [preferenceId]: value,
       },
-    }));
+    };
+
+    setPreferences(newPreferences);
     setHasUnsavedChanges(true);
+
+    // Generate CSS and set it in CSS editor (which auto-applies)
+    try {
+      const css = await cssGenerationService.generateCSS(newPreferences, elements, {
+        minify: false,
+        addComments: true,
+        useImportant: true,
+        respectExistingStyles: true,
+      });
+
+      // Set CSS in editor (the editor has auto-apply functionality)
+      setCssContent(css);
+    } catch (error) {
+      console.error('Error generating preview CSS:', error);
+    }
   };
 
   const applyChanges = async () => {
     setIsLoading(true);
     try {
-      addLog('Generating CSS from preferences...', 'info');
-      const css = await cssGenerationService.generateCSS(preferences, elements);
+      addLog('💾 Saving preferences to CSS editor...', 'info');
 
-      addLog('Applying CSS to page...', 'info');
-      const result = await cssApplicationService.applyCSS(css);
+      // Generate final CSS and set in CSS editor
+      const css = await cssGenerationService.generateCSS(preferences, elements, {
+        minify: false,
+        addComments: true,
+        useImportant: true,
+        respectExistingStyles: true,
+      });
 
-      if (result.success) {
-        await cssGenerationService.applyTextReplacements(preferences, elements);
-        addLog('Visual preferences applied successfully!', 'success');
-        setHasUnsavedChanges(false);
-      } else {
-        addLog(`Failed to apply preferences: ${result.error}`, 'error');
-      }
+      setCssContent(css);
+      setHasUnsavedChanges(false);
+      addLog('🎉 Preferences saved to CSS editor! CSS will auto-apply.', 'success');
     } catch (error) {
-      console.error('Error applying preferences:', error);
-      addLog('Failed to apply visual preferences', 'error');
+      console.error('Error saving preferences:', error);
+      addLog('❌ Failed to save preferences', 'error');
     } finally {
       setIsLoading(false);
     }
@@ -101,172 +119,149 @@ export const VisualPreferencesView: React.FC = () => {
     });
     setPreferences(initialPreferences);
     setHasUnsavedChanges(false);
+    addLog('🔄 Preferences reset to defaults', 'info');
   };
 
-  const groupElementsByCategory = (): PreferenceGroup[] => {
-    const groups: { [key: string]: DetectedElement[] } = {};
-
-    elements.forEach(element => {
-      const primaryCategory = element.availablePreferences[0]?.category || 'other';
-      if (!groups[primaryCategory]) {
-        groups[primaryCategory] = [];
-      }
-      groups[primaryCategory].push(element);
-    });
-
-    return Object.entries(groups).map(([category, categoryElements]) => ({
-      id: category,
-      title: getCategoryTitle(category),
-      elements: categoryElements,
-      category: category as PreferenceCategory,
-    }));
-  };
-
-  const getCategoryTitle = (category: string): string => {
-    switch (category) {
-      case 'visibility':
-        return 'Visibility';
-      case 'layout':
-        return 'Layout';
-      case 'styling':
-        return 'Styling';
-      case 'position':
-        return 'Position';
-      case 'behavior':
-        return 'Behavior';
-      default:
-        return 'Other';
-    }
-  };
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'visibility':
-        return <Eye className="h-4 w-4" />;
-      case 'layout':
-        return <Layout className="h-4 w-4" />;
-      case 'styling':
-        return <Palette className="h-4 w-4" />;
-      case 'position':
-        return <Move className="h-4 w-4" />;
-      case 'behavior':
-        return <Zap className="h-4 w-4" />;
-      default:
-        return null;
-    }
-  };
-
-  const renderPreferenceControl = (element: DetectedElement, option: PreferenceOption) => {
+  const renderPreferenceControl = (
+    element: DetectedElement,
+    option: DetectedElement['availablePreferences'][0]
+  ) => {
     const currentValue = preferences[element.id]?.[option.id];
 
-    switch (option.type) {
-      case 'toggle':
-        return (
-          <PreferenceToggle
-            key={option.id}
-            option={option}
-            value={currentValue as boolean}
-            onChange={value => updatePreference(element.id, option.id, value)}
-          />
-        );
-      case 'dropdown':
-        return (
-          <PreferenceDropdown
-            key={option.id}
-            option={option}
-            value={String(currentValue)}
-            onChange={value => updatePreference(element.id, option.id, value)}
-          />
-        );
-      case 'layout-selector':
-        return (
-          <LayoutSelector
-            key={option.id}
-            option={option}
-            value={String(currentValue)}
-            onChange={value => updatePreference(element.id, option.id, value)}
-          />
-        );
-      default:
-        return null;
-    }
+    // Use the dynamic UI generator service
+    return uiGeneratorService.renderDynamicControl(element, option, currentValue, value =>
+      updatePreference(element.id, option.id, value)
+    );
   };
 
   if (isLoading && elements.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center space-y-2">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground">Analyzing page structure...</p>
+      <div className="flex items-center justify-center min-h-[600px]">
+        <div className="text-center space-y-4">
+          <div className="relative">
+            <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+            <Search className="h-6 w-6 text-primary/60 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold">
+              {isAnalyzing ? 'Analyzing Your Page' : 'Scanning Your Page'}
+            </h3>
+            <p className="text-muted-foreground max-w-sm mx-auto">
+              {isAnalyzing
+                ? 'Analyzing your page structure and generating UI controls...'
+                : 'Preparing analysis tools...'}
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
-  const preferenceGroups = groupElementsByCategory();
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Visual Preferences</h2>
-          <p className="text-muted-foreground">Customize UI elements with visual controls</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={resetPreferences} disabled={isLoading}>
-            Reset
-          </Button>
-          <Button onClick={applyChanges} disabled={isLoading || !hasUnsavedChanges}>
-            {isLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Apply Changes
-          </Button>
-        </div>
-      </div>
+    <div className="min-h-full">
+      <div className="max-w-4xl mx-auto p-6 space-y-8">
+        {/* Header Section */}
+        <div className="text-center space-y-4">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold">UI Editor</h1>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Click below to analyze your page and generate customization options.
+            </p>
+          </div>
 
-      {elements.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">No customizable elements found on this page.</p>
-            <Button variant="outline" onClick={analyzeCurrentPage} className="mt-4">
-              Re-analyze Page
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-6">
-          {preferenceGroups.map(group => (
-            <Card key={group.id}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  {getCategoryIcon(group.category)}
-                  {group.title}
-                  <Badge variant="secondary">{group.elements.length}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {group.elements.map((element, elementIndex) => (
-                  <div key={element.id}>
-                    {elementIndex > 0 && <Separator />}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium">{element.description}</h4>
-                        <Badge variant="outline" className="text-xs">
-                          {element.type}
-                        </Badge>
-                      </div>
-                      <div className="grid gap-4">
-                        {element.availablePreferences.map(option =>
-                          renderPreferenceControl(element, option)
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
+          {elements.length > 0 && (
+            <>
+              {/* Action Buttons */}
+              <div className="flex items-center justify-center gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={resetPreferences}
+                  disabled={isLoading || !hasUnsavedChanges}
+                  className="shadow-sm"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Reset
+                </Button>
+                <Button
+                  onClick={applyChanges}
+                  disabled={isLoading || !hasUnsavedChanges}
+                  className="shadow-sm"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                  )}
+                  {isLoading ? 'Saving...' : 'Save to CSS Editor'}
+                </Button>
+              </div>
+
+              {/* Status Indicator */}
+              {hasUnsavedChanges && (
+                <div className="inline-flex items-center gap-2 bg-orange-50 text-orange-700 px-3 py-1 rounded-full text-sm">
+                  <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
+                  Unsaved changes
+                </div>
+              )}
+            </>
+          )}
         </div>
-      )}
+
+        {/* Content */}
+        {elements.length === 0 ? (
+          <Card className="mx-auto max-w-lg">
+            <CardContent className="py-16 text-center space-y-6">
+              <div className="space-y-4">
+                <div className="mx-auto w-20 h-20 bg-muted rounded-full flex items-center justify-center">
+                  <Wand2 className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-semibold">Ready to Analyze</h3>
+                  <p className="text-muted-foreground">
+                    Click the button below to analyze your page and generate customization options.
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                variant="default"
+                onClick={analyzeCurrentPage}
+                className="shadow-sm"
+                disabled={isAnalyzing}
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Analyzing Page...
+                  </>
+                ) : (
+                  <>
+                    <Search className="h-4 w-4 mr-2" />
+                    Analyze Page
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {elements.map(element => (
+              <Card key={element.id} className="shadow-sm">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-lg">{element.description}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {element.availablePreferences.map(option =>
+                      renderPreferenceControl(element, option)
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

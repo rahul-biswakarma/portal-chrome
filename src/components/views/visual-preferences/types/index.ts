@@ -36,6 +36,12 @@ export interface PreferenceOption {
   currentValue: PreferenceValue;
   availableValues?: PreferenceValue[];
   category: PreferenceCategory;
+  metadata?: {
+    cssOnTrue?: string;
+    cssOnFalse?: string;
+    cssOptions?: Record<string, string>;
+    targetClasses?: string[];
+  };
 }
 
 export type PreferenceType =

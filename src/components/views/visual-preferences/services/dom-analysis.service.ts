@@ -1,5 +1,43 @@
 import { getActiveTab } from '@/utils/chrome-utils';
-import type { DetectedElement, DOMAnalysisResult, PreferenceOption } from '../types';
+import { generateCSSWithGemini } from '@/utils/gemini';
+import { getEnvVariable } from '@/utils/environment';
+import { captureScreenshot } from '@/utils/screenshot';
+import type { DetectedElement, DOMAnalysisResult, PreferenceOption, ElementType } from '../types';
+
+// Types for LLM-generated UI preferences
+interface UIPreference {
+  id: string;
+  type: 'toggle' | 'dropdown' | 'slider' | 'color-picker';
+  label: string;
+  description: string;
+  category: 'visibility' | 'layout' | 'styling' | 'position' | 'behavior';
+  defaultValue: string | number | boolean;
+  options?: string[]; // For dropdowns
+  range?: { min: number; max: number; step: number }; // For sliders
+  cssOnTrue?: string; // For toggles - CSS when toggled ON
+  cssOnFalse?: string; // For toggles - CSS when toggled OFF
+  cssOptions?: Record<string, string>; // For dropdowns - CSS for each option
+  targetClasses: string[]; // Which portal classes this affects
+}
+
+interface LLMUIPreferencesResponse {
+  elements: Array<{
+    id: string;
+    name: string;
+    description: string;
+    portalClasses: string[];
+    preferences: UIPreference[];
+  }>;
+  globalPreferences?: UIPreference[];
+}
+
+interface PortalElement {
+  tagName: string;
+  portalClasses: string[];
+  tailwindClasses: string[];
+  text?: string;
+  children: PortalElement[];
+}
 
 export class DOMAnalysisService {
   async analyzeDOM(): Promise<DOMAnalysisResult> {
@@ -9,17 +47,27 @@ export class DOMAnalysisService {
         throw new Error('No active tab found');
       }
 
-      const result = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: this.analyzeDOMStructure,
-      });
+      // Get portal elements and styles (same as chat customization)
+      const [portalElements, , computedStyles] = await Promise.all([
+        this.extractPortalElements(tab.id),
+        this.getCurrentCSS(tab.id),
+        this.getComputedStyles(tab.id),
+      ]);
 
-      const elements = result[0]?.result || [];
+      if (portalElements.length === 0) {
+        throw new Error('No portal elements found on this page');
+      }
+
+      // Generate UI preferences using LLM
+      const llmPreferences = await this.generateUIPreferences(portalElements, computedStyles);
+
+      // Convert LLM response to our DetectedElement format
+      const elements = this.convertLLMResponseToElements(llmPreferences);
 
       return {
         elements,
-        pageType: this.detectPageType(elements),
-        confidence: this.calculateConfidence(elements),
+        pageType: 'portal-page',
+        confidence: elements.length > 0 ? 0.9 : 0,
         timestamp: Date.now(),
       };
     } catch (error) {
@@ -28,249 +76,458 @@ export class DOMAnalysisService {
     }
   }
 
-  private analyzeDOMStructure(): DetectedElement[] {
+  private async extractPortalElements(tabId: number): Promise<PortalElement[]> {
+    try {
+      const result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const extractElementData = (element: Element): PortalElement | null => {
+            const classList = Array.from(element.classList);
+            const portalClasses = classList.filter(cls => cls.startsWith('portal-'));
+            const tailwindClasses = classList.filter(
+              cls =>
+                !cls.startsWith('portal-') &&
+                (cls.startsWith('flex') ||
+                  cls.startsWith('grid') ||
+                  cls.startsWith('block') ||
+                  cls.startsWith('p-') ||
+                  cls.startsWith('m-') ||
+                  cls.startsWith('bg-') ||
+                  cls.startsWith('text-') ||
+                  cls.startsWith('w-') ||
+                  cls.startsWith('h-') ||
+                  cls.startsWith('border') ||
+                  cls.startsWith('rounded'))
+            );
+
+            if (portalClasses.length === 0) {
+              const hasPortalDescendants = element.querySelector('[class*="portal-"]');
+              if (!hasPortalDescendants) return null;
+            }
+
+            const children: PortalElement[] = [];
+            Array.from(element.children).forEach(child => {
+              const childData = extractElementData(child);
+              if (childData) children.push(childData);
+            });
+
+            const textContent = Array.from(element.childNodes)
+              .filter(node => node.nodeType === Node.TEXT_NODE)
+              .map(node => node.textContent?.trim())
+              .filter(Boolean)
+              .join(' ')
+              .slice(0, 100);
+
+            return {
+              tagName: element.tagName.toLowerCase(),
+              portalClasses,
+              tailwindClasses,
+              text: textContent || undefined,
+              children,
+            };
+          };
+
+          const elements: PortalElement[] = [];
+          const portalElements = document.querySelectorAll('[class*="portal-"]');
+
+          portalElements.forEach(element => {
+            const data = extractElementData(element);
+            if (data) elements.push(data);
+          });
+
+          return elements;
+        },
+      });
+
+      return result[0]?.result || [];
+    } catch (error) {
+      console.error('Error extracting portal elements:', error);
+      return [];
+    }
+  }
+
+  private async getCurrentCSS(tabId: number): Promise<string> {
+    try {
+      const result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          let css = '';
+          const styleSheets = Array.from(document.styleSheets);
+
+          styleSheets.forEach(sheet => {
+            try {
+              if (sheet.href && !sheet.href.includes(window.location.origin)) return;
+              const rules = Array.from(sheet.cssRules || []);
+              rules.forEach(rule => {
+                if (rule.cssText.includes('portal-')) {
+                  css += rule.cssText + '\n';
+                }
+              });
+            } catch (e) {
+              // Skip cross-origin stylesheets
+            }
+          });
+
+          return css;
+        },
+      });
+
+      return result[0]?.result || '';
+    } catch (error) {
+      console.error('Error getting current CSS:', error);
+      return '';
+    }
+  }
+
+  private async getComputedStyles(tabId: number): Promise<Record<string, Record<string, string>>> {
+    try {
+      const result = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const portalElements = document.querySelectorAll('[class*="portal-"]');
+          const styles: Record<string, Record<string, string>> = {};
+
+          portalElements.forEach(element => {
+            const classes = Array.from(element.classList);
+            const portalClasses = classes.filter(cls => cls.startsWith('portal-'));
+            const computedStyle = window.getComputedStyle(element);
+
+            portalClasses.forEach(portalClass => {
+              if (!styles[portalClass]) {
+                const styleProps: Record<string, string> = {};
+                const props = [
+                  'display',
+                  'position',
+                  'width',
+                  'height',
+                  'margin',
+                  'padding',
+                  'background-color',
+                  'color',
+                  'font-size',
+                  'font-weight',
+                  'border',
+                  'border-radius',
+                  'box-shadow',
+                  'opacity',
+                  'flex-direction',
+                  'justify-content',
+                  'align-items',
+                ];
+
+                props.forEach(prop => {
+                  const value = computedStyle.getPropertyValue(prop);
+                  if (value && value !== 'none' && value !== 'auto') {
+                    styleProps[prop] = value;
+                  }
+                });
+
+                styles[portalClass] = styleProps;
+              }
+            });
+          });
+
+          return styles;
+        },
+      });
+
+      return result[0]?.result || {};
+    } catch (error) {
+      console.error('Error getting computed styles:', error);
+      return {};
+    }
+  }
+
+  private async generateUIPreferences(
+    portalElements: PortalElement[],
+    computedStyles: Record<string, Record<string, string>>
+  ): Promise<LLMUIPreferencesResponse> {
+    try {
+      const apiKey = await getEnvVariable('GEMINI_API_KEY');
+      if (!apiKey) {
+        console.warn('Gemini API key not found, using fallback response');
+        return this.generateFallbackUIPreferences(portalElements);
+      }
+
+      const prompt = this.createUIPreferencesPrompt(portalElements, computedStyles);
+
+      // Get tab for screenshot
+      const tab = await getActiveTab();
+      const screenshot = tab?.id ? await captureScreenshot(tab.id) : undefined;
+
+      // Use Gemini to generate UI preferences JSON
+      const sessionId = `ui_prefs_${Date.now()}`;
+      const response = await generateCSSWithGemini(
+        apiKey,
+        prompt,
+        this.createTreeFromElements(portalElements),
+        this.createTailwindData(portalElements),
+        '', // No existing CSS needed
+        undefined, // No reference image
+        screenshot,
+        computedStyles,
+        sessionId
+      );
+
+      // Parse JSON from response
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]) as LLMUIPreferencesResponse;
+      }
+
+      throw new Error('No valid JSON found in LLM response');
+    } catch (error) {
+      console.error('Error generating UI preferences with LLM:', error);
+      return this.generateFallbackUIPreferences(portalElements);
+    }
+  }
+
+  private createUIPreferencesPrompt(
+    portalElements: PortalElement[],
+    _computedStyles: Record<string, Record<string, string>>
+  ): string {
+    const portalClasses = this.getAllPortalClasses(portalElements);
+    const portalTree = this.formatPortalTree(portalElements);
+
+    return `You are creating a Salesforce-style user preferences page. The user should feel like they're configuring real application settings, NOT editing CSS.
+
+AVAILABLE ELEMENTS:
+${portalClasses.map(cls => `- .${cls}`).join('\n')}
+
+PAGE STRUCTURE:
+${portalTree}
+
+TASK: Generate user-friendly preferences that look like real software settings but are secretly handled with CSS.
+
+EXAMPLES OF GOOD PREFERENCES:
+- "Show company logo" (toggle visibility)
+- "Navigation layout" (dropdown: Compact, Standard, Expanded) 
+- "Display user avatar" (toggle)
+- "Header style" (dropdown: Fixed, Sticky, Static)
+- "Show sidebar" (toggle)
+- "Content density" (dropdown: Comfortable, Compact, Cozy)
+- "Show notifications panel" (toggle)
+- "Tab arrangement" (dropdown: Top, Side, Bottom)
+
+AVOID TECHNICAL TERMS:
+❌ "Background color", "CSS display", "Border radius"  
+✅ "Show element", "Layout style", "Display mode"
+
+For dropdowns, provide 2-4 realistic options as an array of strings.
+
+Generate ONLY valid JSON:
+{
+  "elements": [
+    {
+      "id": "interface-settings",
+      "name": "Interface Preferences", 
+      "description": "Customize how your interface appears",
+      "portalClasses": ["portal-header", "portal-nav"],
+      "preferences": [
+        {
+          "id": "show-logo",
+          "type": "toggle",
+          "label": "Show Company Logo",
+          "description": "Display the company logo in the header",
+          "category": "visibility",
+          "defaultValue": true,
+          "cssOnTrue": ".portal-header .logo { display: block; }",
+          "cssOnFalse": ".portal-header .logo { display: none; }",
+          "targetClasses": ["portal-header"]
+        },
+        {
+          "id": "nav-layout",
+          "type": "dropdown",
+          "label": "Navigation Layout",
+          "description": "Choose how navigation items are arranged",
+          "category": "layout",
+          "defaultValue": "horizontal",
+          "options": ["horizontal", "vertical", "compact"],
+          "cssOptions": {
+            "horizontal": ".portal-nav { flex-direction: row; }",
+            "vertical": ".portal-nav { flex-direction: column; }",
+            "compact": ".portal-nav { flex-direction: row; padding: 4px; }"
+          },
+          "targetClasses": ["portal-nav"]
+        }
+      ]
+    }
+  ]
+}
+
+Return ONLY the JSON.`;
+  }
+
+  private generateFallbackUIPreferences(portalElements: PortalElement[]): LLMUIPreferencesResponse {
+    const allClasses = this.getAllPortalClasses(portalElements);
+
+    if (allClasses.length === 0) {
+      return { elements: [] };
+    }
+
+    // Create user-friendly fallback preferences that look like real app settings
+    return {
+      elements: [
+        {
+          id: 'interface-preferences',
+          name: 'Interface Preferences',
+          description: 'Customize your interface appearance and behavior',
+          portalClasses: allClasses,
+          preferences: [
+            {
+              id: 'show-interface-elements',
+              type: 'toggle',
+              label: 'Show Interface Elements',
+              description: 'Display all interface components',
+              category: 'visibility',
+              defaultValue: true,
+              cssOnTrue: allClasses.map(cls => `.${cls} { display: block; }`).join('\n'),
+              cssOnFalse: allClasses.map(cls => `.${cls} { display: none; }`).join('\n'),
+              targetClasses: allClasses,
+            },
+            {
+              id: 'interface-density',
+              type: 'dropdown',
+              label: 'Interface Density',
+              description: 'Choose how compact or spacious the interface appears',
+              category: 'layout',
+              defaultValue: 'comfortable',
+              options: ['compact', 'comfortable', 'spacious'],
+              cssOptions: {
+                compact: allClasses.map(cls => `.${cls} { padding: 2px; margin: 1px; }`).join('\n'),
+                comfortable: allClasses
+                  .map(cls => `.${cls} { padding: 8px; margin: 4px; }`)
+                  .join('\n'),
+                spacious: allClasses
+                  .map(cls => `.${cls} { padding: 16px; margin: 8px; }`)
+                  .join('\n'),
+              },
+              targetClasses: allClasses,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  private convertLLMResponseToElements(llmResponse: LLMUIPreferencesResponse): DetectedElement[] {
     const elements: DetectedElement[] = [];
 
-    this.detectButtons(elements);
-    this.detectNavigation(elements);
-    this.detectCardContainers(elements);
-    this.detectTabGroups(elements);
-
-    return elements.filter(el => el.availablePreferences.length > 0);
-  }
-
-  private detectButtons(elements: DetectedElement[]): void {
-    const buttons = document.querySelectorAll(
-      'button, [role="button"], .btn, input[type="button"]'
-    );
-    buttons.forEach((button, index) => {
-      if (!this.isVisible(button)) return;
-
-      const text = this.getElementText(button);
-      const isLoginButton = this.isLoginButton(text);
+    llmResponse.elements.forEach(elementGroup => {
+      const preferences: PreferenceOption[] = elementGroup.preferences.map(pref => ({
+        id: pref.id,
+        type: pref.type as PreferenceOption['type'],
+        label: pref.label,
+        description: pref.description,
+        currentValue: pref.defaultValue,
+        availableValues: pref.options || [], // Fix: map options to availableValues
+        category: pref.category,
+        // Store CSS data for later use
+        metadata: {
+          cssOnTrue: pref.cssOnTrue,
+          cssOnFalse: pref.cssOnFalse,
+          cssOptions: pref.cssOptions,
+          targetClasses: pref.targetClasses,
+        },
+      }));
 
       elements.push({
-        id: `button-${index}`,
-        selector: this.generateUniqueSelector(button),
-        type: 'button',
-        description: `${text || 'Button'} ${isLoginButton ? '(Login)' : ''}`,
+        id: elementGroup.id,
+        selector: `.${elementGroup.portalClasses[0]}`,
+        type: this.inferElementType(elementGroup.name),
+        description: elementGroup.description,
         currentState: {
           visible: true,
-          display: window.getComputedStyle(button).display,
+          display: 'block',
+          layout: 'column',
         },
-        availablePreferences: this.getButtonPreferences(isLoginButton),
+        availablePreferences: preferences,
       });
     });
+
+    return elements;
   }
 
-  private detectNavigation(elements: DetectedElement[]): void {
-    const navs = document.querySelectorAll('nav, [role="navigation"], .navbar, .menu');
-    navs.forEach((nav, index) => {
-      if (!this.isVisible(nav)) return;
+  private inferElementType(name: string): ElementType {
+    const nameLower = name.toLowerCase();
+    if (nameLower.includes('header')) return 'header';
+    if (nameLower.includes('nav') || nameLower.includes('menu')) return 'navigation';
+    if (nameLower.includes('button')) return 'button';
+    if (nameLower.includes('tab')) return 'tab-group';
+    if (nameLower.includes('card') || nameLower.includes('grid')) return 'card-container';
+    if (nameLower.includes('form')) return 'form';
+    if (nameLower.includes('list')) return 'list';
+    return 'other';
+  }
 
-      elements.push({
-        id: `nav-${index}`,
-        selector: this.generateUniqueSelector(nav),
-        type: 'navigation',
-        description: 'Navigation Menu',
-        currentState: {
-          visible: true,
-          display: window.getComputedStyle(nav).display,
-          layout: this.getLayoutType(nav),
-        },
-        availablePreferences: this.getNavigationPreferences(),
+  private createTreeFromElements(elements: PortalElement[]) {
+    return {
+      element: 'div',
+      portalClasses: [],
+      children: elements.map(el => ({
+        element: el.tagName,
+        portalClasses: el.portalClasses,
+        text: el.text,
+        children: el.children.map(child => ({
+          element: child.tagName,
+          portalClasses: child.portalClasses,
+          text: child.text,
+          children: [],
+        })),
+      })),
+    };
+  }
+
+  private createTailwindData(elements: PortalElement[]): Record<string, string[]> {
+    const tailwindData: Record<string, string[]> = {};
+    const processElement = (element: PortalElement) => {
+      element.portalClasses.forEach(cls => {
+        if (!tailwindData[cls]) {
+          tailwindData[cls] = element.tailwindClasses;
+        }
       });
-    });
+      element.children.forEach(processElement);
+    };
+    elements.forEach(processElement);
+    return tailwindData;
   }
 
-  private detectCardContainers(elements: DetectedElement[]): void {
-    const containers = document.querySelectorAll(
-      '.card, .cards, .grid, .directory, [class*="card"]'
-    );
-    containers.forEach((container, index) => {
-      if (!this.isVisible(container)) return;
-
-      const childItems = container.querySelectorAll('.card, [class*="card"], .item');
-      if (childItems.length < 2) return;
-
-      elements.push({
-        id: `cards-${index}`,
-        selector: this.generateUniqueSelector(container),
-        type: 'card-container',
-        description: `Card Grid (${childItems.length} items)`,
-        currentState: {
-          visible: true,
-          display: window.getComputedStyle(container).display,
-          layout: this.getLayoutType(container),
-        },
-        availablePreferences: this.getCardContainerPreferences(),
-      });
-    });
+  private getAllPortalClasses(elements: PortalElement[]): string[] {
+    const classes: string[] = [];
+    const extractClasses = (element: PortalElement) => {
+      classes.push(...element.portalClasses);
+      element.children.forEach(extractClasses);
+    };
+    elements.forEach(extractClasses);
+    return [...new Set(classes)];
   }
 
-  private detectTabGroups(elements: DetectedElement[]): void {
-    const tabGroups = document.querySelectorAll('[role="tablist"], .tabs, .tab-group');
-    tabGroups.forEach((tabGroup, index) => {
-      if (!this.isVisible(tabGroup)) return;
+  private formatPortalTree(elements: PortalElement[], indent = 0): string {
+    return elements
+      .map(element => {
+        const indentation = '  '.repeat(indent);
+        let result = `${indentation}<${element.tagName}`;
 
-      elements.push({
-        id: `tabs-${index}`,
-        selector: this.generateUniqueSelector(tabGroup),
-        type: 'tab-group',
-        description: 'Tab Group',
-        currentState: {
-          visible: true,
-          display: window.getComputedStyle(tabGroup).display,
-          layout: this.getLayoutType(tabGroup),
-        },
-        availablePreferences: this.getTabGroupPreferences(),
-      });
-    });
-  }
+        if (element.portalClasses.length > 0) {
+          result += ` portal-classes="${element.portalClasses.join(' ')}"`;
+        }
 
-  private getButtonPreferences(isLoginButton: boolean): PreferenceOption[] {
-    const preferences: PreferenceOption[] = [
-      {
-        id: 'visibility',
-        type: 'toggle',
-        label: 'Show Button',
-        currentValue: true,
-        category: 'visibility',
-      },
-    ];
+        if (element.tailwindClasses.length > 0) {
+          result += ` tailwind-classes="${element.tailwindClasses.join(' ')}"`;
+        }
 
-    if (isLoginButton) {
-      preferences.push({
-        id: 'replace-text',
-        type: 'dropdown',
-        label: 'Button Text',
-        currentValue: 'Login',
-        availableValues: ['Login', 'Sign In', 'Log In', 'Enter', 'Access'],
-        category: 'styling',
-      });
-    }
+        result += `>${element.text ? ` ${element.text.slice(0, 50)}${element.text.length > 50 ? '...' : ''}` : ''}`;
 
-    return preferences;
-  }
+        if (element.children.length > 0) {
+          result += '\n' + this.formatPortalTree(element.children, indent + 1);
+          result += `\n${indentation}</${element.tagName}>`;
+        } else {
+          result += ` </${element.tagName}>`;
+        }
 
-  private getNavigationPreferences(): PreferenceOption[] {
-    return [
-      {
-        id: 'visibility',
-        type: 'toggle',
-        label: 'Show Navigation',
-        currentValue: true,
-        category: 'visibility',
-      },
-      {
-        id: 'layout',
-        type: 'layout-selector',
-        label: 'Layout',
-        currentValue: 'row',
-        availableValues: ['row', 'column'],
-        category: 'layout',
-      },
-    ];
-  }
-
-  private getCardContainerPreferences(): PreferenceOption[] {
-    return [
-      {
-        id: 'layout',
-        type: 'layout-selector',
-        label: 'Card Layout',
-        currentValue: 'grid',
-        availableValues: ['row', 'column', 'grid'],
-        category: 'layout',
-      },
-      {
-        id: 'columns',
-        type: 'dropdown',
-        label: 'Columns',
-        currentValue: 'auto',
-        availableValues: ['1', '2', '3', '4', 'auto'],
-        category: 'layout',
-      },
-    ];
-  }
-
-  private getTabGroupPreferences(): PreferenceOption[] {
-    return [
-      {
-        id: 'visibility',
-        type: 'toggle',
-        label: 'Show Tabs',
-        currentValue: true,
-        category: 'visibility',
-      },
-      {
-        id: 'layout',
-        type: 'layout-selector',
-        label: 'Tab Layout',
-        currentValue: 'row',
-        availableValues: ['row', 'column'],
-        category: 'layout',
-      },
-    ];
-  }
-
-  private isVisible(element: Element): boolean {
-    const rect = element.getBoundingClientRect();
-    const style = window.getComputedStyle(element);
-    return (
-      rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
-    );
-  }
-
-  private generateUniqueSelector(element: Element): string {
-    if (element.id) return `#${element.id}`;
-
-    const classes = Array.from(element.classList).filter(
-      cls => cls.length < 20 && !cls.startsWith('_')
-    );
-
-    if (classes.length > 0) {
-      return `.${classes.join('.')}`;
-    }
-
-    return element.tagName.toLowerCase();
-  }
-
-  private getElementText(element: Element): string {
-    return element.textContent?.trim().slice(0, 50) || '';
-  }
-
-  private isLoginButton(text: string): boolean {
-    const loginKeywords = ['login', 'sign in', 'log in', 'enter', 'access'];
-    return loginKeywords.some(keyword => text.toLowerCase().includes(keyword));
-  }
-
-  private getLayoutType(element: Element): 'row' | 'column' | 'grid' {
-    const style = window.getComputedStyle(element);
-
-    if (style.display === 'grid') return 'grid';
-    if (style.display === 'flex') {
-      return style.flexDirection === 'column' ? 'column' : 'row';
-    }
-
-    return 'column';
-  }
-
-  private detectPageType(elements: DetectedElement[]): string {
-    const elementTypes = elements.map(el => el.type);
-
-    if (elementTypes.includes('card-container')) return 'dashboard';
-    if (elementTypes.includes('form') && elementTypes.includes('button')) return 'form-page';
-    if (elementTypes.filter(type => type === 'navigation').length > 1) return 'complex-app';
-
-    return 'general';
-  }
-
-  private calculateConfidence(elements: DetectedElement[]): number {
-    if (elements.length === 0) return 0;
-    if (elements.length < 3) return 0.3;
-    if (elements.length < 6) return 0.7;
-    return 0.9;
+        return result;
+      })
+      .join('\n');
   }
 }
 
