@@ -48,7 +48,7 @@ const defaultConfig: PilotConfig = {
   evaluationThreshold: 0.8,
   advancedSettings: {
     preserveExistingStyles: false,
-    useImportantDeclarations: true,
+    useImportantDeclarations: false,
     generateResponsiveCSS: true,
     optimizeForPerformance: false,
   },

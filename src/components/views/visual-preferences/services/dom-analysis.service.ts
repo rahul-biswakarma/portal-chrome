@@ -289,91 +289,61 @@ export class DOMAnalysisService {
     const portalClasses = this.getAllPortalClasses(portalElements);
     const portalTree = this.formatPortalTree(portalElements);
 
-    return `You are creating a Salesforce-style user preferences page. Generate ONLY the most useful and commonly needed preferences that users would actually want to change.
+    return `You are creating a user preferences interface for a portal website. Your goal is to analyze the available portal elements and generate intuitive customization options that users would actually want to change.
 
-AVAILABLE ELEMENTS:
+USE CASE: Users visit a portal website and want to customize how it looks and behaves. They should be able to:
+- Show/hide interface elements they don't need
+- Adjust spacing and layout density for their preference  
+- Change visual styles to match their workflow
+- Toggle features on/off based on their usage patterns
+
+AVAILABLE PORTAL ELEMENTS:
 ${portalClasses.map(cls => `- .${cls}`).join('\n')}
 
 PAGE STRUCTURE:
 ${portalTree}
 
-FOCUS ON WHAT USERS ACTUALLY WANT TO CUSTOMIZE:
-- Show/hide major interface elements (navigation, sidebars, headers)
-- Change layout density (compact vs comfortable)
-- Toggle key features on/off
-- Basic layout arrangements (horizontal/vertical for navigation)
+ANALYSIS APPROACH:
+1. Look at the portal element names and infer what they represent (headers, navigation, cards, buttons, etc.)
+2. For each element type, think: "What would users want to customize about this?"
+3. Group related elements together logically
+4. Create user-friendly controls that make intuitive sense
 
-AVOID:
-- Too many options per element
-- Obscure settings users won't understand
-- Technical preferences
-- Redundant or similar options
+PREFERENCE GUIDELINES:
+- Use "toggle" for binary choices (show/hide, on/off)
+- Use "dropdown" for multiple style/layout options (typically 2-4 choices)
+- Focus on high-impact changes (visibility, spacing, layout, basic styling)
+- Avoid technical jargon - use simple, clear labels
+- Each preference should solve a real user need
 
-Focus on high-impact, commonly used settings only.
-
-PREFERENCE TYPES:
-- "toggle" for simple on/off, show/hide
-- "dropdown" for 2-3 clear layout/style choices
-
-USER-FRIENDLY LABELS:
-❌ Technical: "CSS", "display: none", "flex-direction"
-✅ Simple: "Show Navigation", "Compact Layout", "Display Sidebar"
-
-Generate focused JSON with essential preferences:
+JSON STRUCTURE REQUIRED:
 {
   "elements": [
     {
-      "id": "header-preferences",
-      "name": "Header Configuration",
-      "description": "Customize your header appearance and behavior",
-      "portalClasses": ["portal-header", "portal-nav"],
+      "id": "unique-group-id",
+      "name": "User-Friendly Group Name", 
+      "description": "Brief description of what this controls",
+      "portalClasses": ["list", "of", "portal-classes", "this", "group", "affects"],
       "preferences": [
         {
-          "id": "show-company-branding",
-          "type": "toggle",
-          "label": "Show Company Branding",
-          "description": "Display company logo and branding elements",
-          "category": "visibility",
-          "defaultValue": true,
-          "cssOnTrue": ".portal-header .branding { display: flex; }",
-          "cssOnFalse": ".portal-header .branding { display: none; }",
-          "targetClasses": ["portal-header"]
-        },
-        {
-          "id": "navigation-layout",
-          "type": "dropdown",
-          "label": "Navigation Layout",
-          "description": "Choose how navigation items are arranged",
-          "category": "layout", 
-          "defaultValue": "horizontal",
-          "options": ["horizontal", "vertical", "compact", "expanded"],
-          "cssOptions": {
-            "horizontal": ".portal-nav { flex-direction: row; justify-content: space-between; }",
-            "vertical": ".portal-nav { flex-direction: column; align-items: flex-start; }",
-            "compact": ".portal-nav { flex-direction: row; gap: 4px; padding: 4px; }",
-            "expanded": ".portal-nav { flex-direction: row; gap: 16px; padding: 12px; }"
-          },
-          "targetClasses": ["portal-nav"]
-        },
-        {
-          "id": "show-search-bar",
-          "type": "toggle", 
-          "label": "Show Search Bar",
-          "description": "Display the search functionality in header",
-          "category": "visibility",
-          "defaultValue": true,
-          "cssOnTrue": ".portal-header .search { display: block; }",
-          "cssOnFalse": ".portal-header .search { display: none; }",
-          "targetClasses": ["portal-header"]
+          "id": "unique-pref-id",
+          "type": "toggle" | "dropdown",
+          "label": "Simple User Label",
+          "description": "What this preference does",
+          "category": "visibility" | "layout" | "styling",
+          "defaultValue": true | "option-name",
+          "cssOnTrue": "CSS for toggle ON" (toggle only),
+          "cssOnFalse": "CSS for toggle OFF" (toggle only),
+          "options": ["option1", "option2", "option3"] (dropdown only),
+          "cssOptions": {"option1": "CSS", "option2": "CSS"} (dropdown only),
+          "targetClasses": ["portal-classes", "to", "apply", "css", "to"]
         }
       ]
     }
   ]
 }
 
-BE COMPREHENSIVE - Generate preferences for ALL portal elements found, with multiple options per component type.
-
-Return ONLY the JSON.`;
+Create logical groupings based on what you see in the available elements. Return ONLY the JSON.`;
   }
 
   private generateFallbackUIPreferences(portalElements: PortalElement[]): LLMUIPreferencesResponse {
@@ -383,44 +353,155 @@ Return ONLY the JSON.`;
       return { elements: [] };
     }
 
-    // Create simple fallback with essential preferences only
-    return {
-      elements: [
-        {
-          id: 'interface-settings',
-          name: 'Interface Settings',
-          description: 'Essential interface customizations',
-          portalClasses: allClasses,
-          preferences: [
-            {
-              id: 'show-elements',
-              type: 'toggle',
-              label: 'Show Interface',
-              description: 'Toggle interface visibility',
-              category: 'visibility',
-              defaultValue: true,
-              cssOnTrue: allClasses.map(cls => `.${cls} { display: block; }`).join('\n'),
-              cssOnFalse: allClasses.map(cls => `.${cls} { display: none; }`).join('\n'),
-              targetClasses: allClasses,
+    // Group classes by type for better fallback organization
+    const headerClasses = allClasses.filter(cls => cls.includes('header') || cls.includes('nav'));
+    const cardClasses = allClasses.filter(cls => cls.includes('card') || cls.includes('item'));
+    const buttonClasses = allClasses.filter(cls => cls.includes('button') || cls.includes('btn'));
+    const otherClasses = allClasses.filter(
+      cls =>
+        !headerClasses.includes(cls) && !cardClasses.includes(cls) && !buttonClasses.includes(cls)
+    );
+
+    const elements: LLMUIPreferencesResponse['elements'] = [];
+
+    // Header/Navigation preferences
+    if (headerClasses.length > 0) {
+      elements.push({
+        id: 'header-settings',
+        name: 'Header & Navigation',
+        description: 'Customize header and navigation appearance',
+        portalClasses: headerClasses,
+        preferences: [
+          {
+            id: 'header-visibility',
+            type: 'toggle',
+            label: 'Show Header',
+            description: 'Display or hide header elements',
+            category: 'visibility',
+            defaultValue: true,
+            cssOnTrue: headerClasses.map(cls => `.${cls} { display: flex; }`).join('\n'),
+            cssOnFalse: headerClasses.map(cls => `.${cls} { display: none; }`).join('\n'),
+            targetClasses: headerClasses,
+          },
+          {
+            id: 'header-style',
+            type: 'dropdown',
+            label: 'Header Style',
+            description: 'Choose header appearance',
+            category: 'styling',
+            defaultValue: 'standard',
+            options: ['standard', 'compact'],
+            cssOptions: {
+              standard: headerClasses.map(cls => `.${cls} { padding: 12px; }`).join('\n'),
+              compact: headerClasses.map(cls => `.${cls} { padding: 6px; }`).join('\n'),
             },
-            {
-              id: 'layout-density',
-              type: 'dropdown',
-              label: 'Layout Density',
-              description: 'Adjust spacing and size',
-              category: 'layout',
-              defaultValue: 'normal',
-              options: ['compact', 'normal'],
-              cssOptions: {
-                compact: allClasses.map(cls => `.${cls} { padding: 4px; }`).join('\n'),
-                normal: allClasses.map(cls => `.${cls} { padding: 8px; }`).join('\n'),
-              },
-              targetClasses: allClasses,
+            targetClasses: headerClasses,
+          },
+        ],
+      });
+    }
+
+    // Card/Content preferences
+    if (cardClasses.length > 0) {
+      elements.push({
+        id: 'content-settings',
+        name: 'Cards & Content',
+        description: 'Customize card and content appearance',
+        portalClasses: cardClasses,
+        preferences: [
+          {
+            id: 'card-spacing',
+            type: 'dropdown',
+            label: 'Card Spacing',
+            description: 'Adjust spacing between cards',
+            category: 'layout',
+            defaultValue: 'normal',
+            options: ['tight', 'normal', 'loose'],
+            cssOptions: {
+              tight: cardClasses.map(cls => `.${cls} { margin: 4px; padding: 8px; }`).join('\n'),
+              normal: cardClasses.map(cls => `.${cls} { margin: 8px; padding: 12px; }`).join('\n'),
+              loose: cardClasses.map(cls => `.${cls} { margin: 16px; padding: 20px; }`).join('\n'),
             },
-          ],
-        },
-      ],
-    };
+            targetClasses: cardClasses,
+          },
+          {
+            id: 'card-borders',
+            type: 'toggle',
+            label: 'Show Borders',
+            description: 'Display borders around cards',
+            category: 'styling',
+            defaultValue: true,
+            cssOnTrue: cardClasses.map(cls => `.${cls} { border: 1px solid #e2e8f0; }`).join('\n'),
+            cssOnFalse: cardClasses.map(cls => `.${cls} { border: none; }`).join('\n'),
+            targetClasses: cardClasses,
+          },
+        ],
+      });
+    }
+
+    // Button preferences
+    if (buttonClasses.length > 0) {
+      elements.push({
+        id: 'button-settings',
+        name: 'Buttons',
+        description: 'Customize button appearance',
+        portalClasses: buttonClasses,
+        preferences: [
+          {
+            id: 'button-size',
+            type: 'dropdown',
+            label: 'Button Size',
+            description: 'Choose button size',
+            category: 'styling',
+            defaultValue: 'medium',
+            options: ['small', 'medium', 'large'],
+            cssOptions: {
+              small: buttonClasses
+                .map(cls => `.${cls} { padding: 4px 8px; font-size: 12px; }`)
+                .join('\n'),
+              medium: buttonClasses
+                .map(cls => `.${cls} { padding: 8px 16px; font-size: 14px; }`)
+                .join('\n'),
+              large: buttonClasses
+                .map(cls => `.${cls} { padding: 12px 24px; font-size: 16px; }`)
+                .join('\n'),
+            },
+            targetClasses: buttonClasses,
+          },
+        ],
+      });
+    }
+
+    // Other elements
+    if (otherClasses.length > 0) {
+      elements.push({
+        id: 'general-settings',
+        name: 'General Interface',
+        description: 'General interface settings',
+        portalClasses: otherClasses,
+        preferences: [
+          {
+            id: 'interface-density',
+            type: 'dropdown',
+            label: 'Interface Density',
+            description: 'Adjust overall interface density',
+            category: 'layout',
+            defaultValue: 'normal',
+            options: ['compact', 'normal', 'comfortable'],
+            cssOptions: {
+              compact: otherClasses.map(cls => `.${cls} { padding: 4px; margin: 2px; }`).join('\n'),
+              normal: otherClasses.map(cls => `.${cls} { padding: 8px; margin: 4px; }`).join('\n'),
+              comfortable: otherClasses
+                .map(cls => `.${cls} { padding: 16px; margin: 8px; }`)
+                .join('\n'),
+            },
+            targetClasses: otherClasses,
+          },
+        ],
+      });
+    }
+
+    return { elements };
   }
 
   private convertLLMResponseToElements(llmResponse: LLMUIPreferencesResponse): DetectedElement[] {

@@ -195,7 +195,7 @@ export class CSSGenerationService {
     return this.generateCSSForPreference(preference, newValue, {
       minify: false,
       addComments: false,
-      useImportant: true,
+      useImportant: false,
       respectExistingStyles: false,
     });
   }

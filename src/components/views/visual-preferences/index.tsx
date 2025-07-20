@@ -79,7 +79,7 @@ export const VisualPreferencesView: React.FC = () => {
       const css = await cssGenerationService.generateCSS(newPreferences, elements, {
         minify: false,
         addComments: false,
-        useImportant: true,
+        useImportant: false,
         respectExistingStyles: true,
       });
 
@@ -99,7 +99,7 @@ export const VisualPreferencesView: React.FC = () => {
       const css = await cssGenerationService.generateCSS(preferences, elements, {
         minify: false,
         addComments: false,
-        useImportant: true,
+        useImportant: false,
         respectExistingStyles: true,
       });
 

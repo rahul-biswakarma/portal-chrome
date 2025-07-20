@@ -265,12 +265,8 @@ export class UIGeneratorService {
             currentValue: true,
             category: 'visibility',
             metadata: {
-              cssOnTrue: portalClasses
-                .map(cls => `.${cls} { display: block !important; }`)
-                .join('\n'),
-              cssOnFalse: portalClasses
-                .map(cls => `.${cls} { display: none !important; }`)
-                .join('\n'),
+              cssOnTrue: portalClasses.map(cls => `.${cls} { display: block; }`).join('\n'),
+              cssOnFalse: portalClasses.map(cls => `.${cls} { display: none; }`).join('\n'),
               targetClasses: portalClasses,
             },
           },

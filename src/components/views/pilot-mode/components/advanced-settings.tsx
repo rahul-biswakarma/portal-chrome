@@ -68,7 +68,7 @@ export const AdvancedSettings: React.FC<AdvancedSettingsProps> = ({
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <Label>Use !important Declarations</Label>
-            <p className="text-xs text-gray-500">Override existing styles with !important</p>
+            <p className="text-xs text-gray-500">Force override styles (usually not needed)</p>
           </div>
           <Switch
             checked={config.advancedSettings.useImportantDeclarations}
