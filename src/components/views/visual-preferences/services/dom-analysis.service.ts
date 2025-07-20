@@ -284,10 +284,13 @@ export class DOMAnalysisService {
 
   private createUIPreferencesPrompt(
     portalElements: PortalElement[],
-    _computedStyles: Record<string, Record<string, string>>
+    computedStyles: Record<string, Record<string, string>>
   ): string {
     const portalClasses = this.getAllPortalClasses(portalElements);
     const portalTree = this.formatPortalTree(portalElements);
+
+    // Format existing styles for LLM context
+    const existingStylesSection = this.formatExistingStyles(portalClasses, computedStyles);
 
     return `You are creating a user preferences interface for a portal website. Your goal is to analyze the available portal elements and generate intuitive customization options that users would actually want to change.
 
@@ -303,11 +306,24 @@ ${portalClasses.map(cls => `- .${cls}`).join('\n')}
 PAGE STRUCTURE:
 ${portalTree}
 
+EXISTING COMPUTED STYLES:
+${existingStylesSection}
+
+CRITICAL CSS GENERATION RULES:
+- ALWAYS base CSS changes on the existing computed styles above
+- If an element uses "display: block", don't generate flexbox CSS for it
+- If an element uses "display: flex", you can modify flex properties
+- For layout changes, work WITH the existing display type, not against it
+- For visibility toggles, use the current display value vs "none"
+- For spacing, adjust existing margin/padding values proportionally
+
 ANALYSIS APPROACH:
 1. Look at the portal element names and infer what they represent (headers, navigation, cards, buttons, etc.)
-2. For each element type, think: "What would users want to customize about this?"
-3. Group related elements together logically
-4. Create user-friendly controls that make intuitive sense
+2. Check the EXISTING COMPUTED STYLES to understand current layout methods
+3. For each element type, think: "What would users want to customize about this?"
+4. Group related elements together logically
+5. Create user-friendly controls that make intuitive sense
+6. Generate CSS that works with the existing styling approach
 
 PREFERENCE GUIDELINES:
 - Use "toggle" for binary choices (show/hide, on/off)
@@ -315,6 +331,7 @@ PREFERENCE GUIDELINES:
 - Focus on high-impact changes (visibility, spacing, layout, basic styling)
 - Avoid technical jargon - use simple, clear labels
 - Each preference should solve a real user need
+- CSS must be compatible with existing computed styles
 
 JSON STRUCTURE REQUIRED:
 {
@@ -622,6 +639,76 @@ Create logical groupings based on what you see in the available elements. Return
         return result;
       })
       .join('\n');
+  }
+
+  private formatExistingStyles(
+    portalClasses: string[],
+    computedStyles: Record<string, Record<string, string>>
+  ): string {
+    const styles: string[] = [];
+
+    // Define which properties are most relevant for UI customization
+    const relevantProps = [
+      'display',
+      'position',
+      'flex-direction',
+      'justify-content',
+      'align-items',
+      'grid-template-columns',
+      'margin',
+      'padding',
+      'width',
+      'height',
+      'background-color',
+      'border',
+      'border-radius',
+      'font-size',
+      'font-weight',
+      'color',
+    ];
+
+    // Define values to skip (defaults/empty)
+    const skipValues = new Set([
+      '',
+      'none',
+      'auto',
+      '0px',
+      '0',
+      'normal',
+      'static',
+      'visible',
+      'rgba(0, 0, 0, 0)',
+      'transparent',
+      'initial',
+      'inherit',
+    ]);
+
+    portalClasses.forEach(portalClass => {
+      const computedStyle = computedStyles[portalClass];
+      if (!computedStyle) return;
+
+      const relevantStyles: string[] = [];
+
+      relevantProps.forEach(prop => {
+        const value = computedStyle[prop];
+        if (value && !skipValues.has(value) && value.trim() !== '') {
+          // Skip default text colors and backgrounds that aren't meaningful
+          if (prop === 'color' && (value === 'rgb(0, 0, 0)' || value === 'rgb(255, 255, 255)'))
+            return;
+          if (prop === 'background-color' && value === 'rgb(255, 255, 255)') return;
+
+          relevantStyles.push(`  ${prop}: ${value}`);
+        }
+      });
+
+      // Only include classes that have meaningful styles
+      if (relevantStyles.length > 0) {
+        styles.push(`- .${portalClass}:`);
+        styles.push(...relevantStyles);
+      }
+    });
+
+    return styles.length > 0 ? styles.join('\n') : 'No significant computed styles detected.';
   }
 }
 
