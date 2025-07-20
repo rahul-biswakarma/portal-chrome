@@ -71,31 +71,29 @@ export const CssEditor = () => {
       chrome.scripting.executeScript(
         {
           target: { tabId: tab.id as number },
-          func: cssContent => {
-            // Remove existing style if it exists
-            const existingStyle = document.getElementById('portal-generated-css');
-            if (existingStyle) {
-              existingStyle.remove();
+          func: (cssCode: string) => {
+            let styleEl = document.getElementById('portal-generated-css');
+
+            if (cssCode.trim() === '') {
+              if (styleEl) {
+                styleEl.remove();
+              }
+              return;
             }
 
-            // Create and add new style element to simulate server CSS loading behavior
-            const styleEl = document.createElement('style');
-            styleEl.id = 'portal-generated-css';
-            styleEl.textContent = cssContent;
+            if (!styleEl) {
+              styleEl = document.createElement('style');
+              styleEl.id = 'portal-generated-css';
 
-            // Try to insert CSS in a position that better simulates server behavior
-            // Find the last <link> or <style> tag and insert after it
-            const lastStyleElement =
-              document.head.querySelector('link[rel="stylesheet"]:last-of-type') ||
-              document.head.querySelector('style:last-of-type');
-
-            if (lastStyleElement && lastStyleElement.parentNode) {
-              // Insert after the last stylesheet, similar to server behavior
-              lastStyleElement.parentNode.insertBefore(styleEl, lastStyleElement.nextSibling);
-            } else {
-              // Fallback: append to end of head
-              document.head.appendChild(styleEl);
+              // Insert at the top of head for lower specificity (like main portal)
+              if (document.head.firstChild) {
+                document.head.insertBefore(styleEl, document.head.firstChild);
+              } else {
+                document.head.appendChild(styleEl);
+              }
             }
+
+            styleEl.textContent = cssCode;
           },
           args: [cleanedCSS],
         },

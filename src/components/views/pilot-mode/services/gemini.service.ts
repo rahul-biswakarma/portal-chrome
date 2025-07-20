@@ -4,34 +4,57 @@ import type { GeminiMessage } from '@/utils/gemini';
 export async function generateEvaluationWithGemini(
   apiKey: string,
   prompt: string,
-  _currentCSS: string,
-  _referenceImageUrl: string | undefined,
+  currentCSS: string,
+  referenceImageUrl: string | undefined,
   currentScreenshot: string,
-  _computedStyles: Record<string, Record<string, string>>
+  computedStyles: Record<string, Record<string, string>>
 ): Promise<string | null> {
   try {
-    // Create the message parts
-    const parts: GeminiMessage['parts'] = [{ text: prompt }];
+    const parts: GeminiMessage['parts'] = [
+      {
+        text: `${prompt}
 
-    // Add current screenshot
-    parts.push({
-      inline_data: {
-        mime_type: 'image/png',
-        data: currentScreenshot.split(',')[1],
+CURRENT CSS:
+${currentCSS}
+
+COMPUTED STYLES:
+${JSON.stringify(computedStyles, null, 2)}`,
       },
-    });
+    ];
 
-    // Create the message
+    if (referenceImageUrl) {
+      const referenceImageData = referenceImageUrl.split(',')[1];
+      if (referenceImageData) {
+        parts.push({
+          inline_data: {
+            mime_type: 'image/png',
+            data: referenceImageData,
+          },
+        });
+      }
+    }
+
+    if (currentScreenshot) {
+      const currentImageData = currentScreenshot.split(',')[1];
+      if (currentImageData) {
+        parts.push({
+          inline_data: {
+            mime_type: 'image/png',
+            data: currentImageData,
+          },
+        });
+      }
+    }
+
     const message: GeminiMessage = {
       role: 'user',
       parts,
     };
 
-    // Make the request
     const response = await makeGeminiRequest({
       apiKey,
       messages: [message],
-      modelName: 'gemini-pro-vision',
+      modelName: 'gemini-1.5-pro',
       temperature: 0.2,
     });
 

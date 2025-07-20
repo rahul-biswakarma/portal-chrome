@@ -6,6 +6,7 @@ import { HierarchyView } from './components/views/hierarchy-view/hierarchy-view'
 import { Settings } from './components/views/settings/settings';
 import { CssEditorView } from './components/views/css-editor-view/css-editor-view';
 import { ChatCustomizationView } from './components/views/chat-customization';
+import { VisualPreferencesView } from './components/views/visual-preferences';
 
 import type { ViewTabsSchema } from './types';
 import { AppProvider } from './contexts/app-context';
@@ -21,6 +22,34 @@ const views: ViewTabsSchema[] = [
     id: 'css-editor',
     trigger: 'CSS Editor',
     content: <CssEditorView />,
+  },
+  {
+    id: 'visual-preferences',
+    trigger: (
+      <div className="flex items-center gap-2">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 2v6.5" />
+          <path d="M12 8.5V22" />
+          <path d="M8 8a4 4 0 108 0" />
+          <path d="M3 12h3.5" />
+          <path d="M17.5 12H21" />
+          <path d="M8 20a2 2 0 104 0" />
+          <circle cx="12" cy="8" r="2" />
+        </svg>
+        Visual Prefs
+      </div>
+    ),
+    content: <VisualPreferencesView />,
   },
   {
     id: 'chat-customization',

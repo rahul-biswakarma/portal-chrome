@@ -106,25 +106,52 @@ export class CSSApplicationService {
         {
           target: { tabId },
           func: (cssContent: string) => {
-            // Remove existing style if it exists
-            const existingStyle = document.getElementById('portal-generated-css');
-            if (existingStyle) {
-              existingStyle.remove();
-            }
+            try {
+              let styleEl = document.getElementById('portal-generated-css') as HTMLStyleElement;
 
-            // Create and add new style element
-            const styleEl = document.createElement('style');
-            styleEl.id = 'portal-generated-css';
-            styleEl.textContent = cssContent;
-            document.head.appendChild(styleEl);
+              if (cssContent.trim() === '') {
+                if (styleEl) {
+                  styleEl.remove();
+                }
+                return { success: true };
+              }
+
+              if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'portal-generated-css';
+                styleEl.type = 'text/css';
+
+                // Insert at the top of head for lower specificity (like main portal)
+                if (document.head.firstChild) {
+                  document.head.insertBefore(styleEl, document.head.firstChild);
+                } else {
+                  document.head.appendChild(styleEl);
+                }
+              }
+
+              styleEl.textContent = cssContent;
+
+              return { success: true };
+            } catch (error) {
+              console.error('Error applying CSS:', error);
+              return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Unknown error',
+              };
+            }
           },
           args: [css],
         },
-        () => {
+        results => {
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
           } else {
-            resolve();
+            const result = results[0].result;
+            if (result && result.success) {
+              resolve();
+            } else {
+              reject(new Error(result?.error || 'Unknown error'));
+            }
           }
         }
       );

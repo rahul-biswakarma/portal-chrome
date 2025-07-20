@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { dataCollectionService } from '../services/data-collection.service';
 import { cssApplicationService } from '../services/css-application.service';
 import { generateCSSWithGemini } from '@/utils/gemini';
+import { generateEvaluationWithGemini } from '../services/gemini.service';
 import { getEnvVariable } from '@/utils/environment';
 import {
   CSS_GENERATION_RULES,
@@ -43,7 +44,7 @@ interface TreeNode {
 const defaultConfig: PilotConfig = {
   referenceImages: [],
   designDescription: '',
-  maxIterations: 1, // Simplified to single-shot generation
+  maxIterations: 3,
   evaluationThreshold: 0.8,
   advancedSettings: {
     preserveExistingStyles: false,
@@ -197,6 +198,10 @@ export const usePilotMode = (setCssContent?: (_css: string) => void): UsePilotMo
     iteration: number,
     previousFeedback?: string
   ): Promise<string> => {
+    if (abortControllerRef.current?.signal.aborted) {
+      throw new Error('Processing was aborted');
+    }
+
     setProcessingStage('generating-css');
     addLog(`Generating CSS (iteration ${iteration})...`, 'info');
 
@@ -206,13 +211,12 @@ export const usePilotMode = (setCssContent?: (_css: string) => void): UsePilotMo
         throw new Error('Gemini API key not found. Please set it in Settings.');
       }
 
-      // Generate fresh session ID for each CSS generation (no chat history)
+      if (abortControllerRef.current?.signal.aborted) {
+        throw new Error('Processing was aborted');
+      }
+
       const sessionId = generateFreshSessionId('css-gen');
-
-      // Create prompt based on iteration
       const prompt = createCSSPrompt(pageData, config, iteration, previousFeedback);
-
-      // Convert to the format expected by generateCSSWithGemini
       const tree = createTreeFromElements(pageData.portalElements);
       const tailwindData = createTailwindData(pageData.portalElements);
 
@@ -227,6 +231,10 @@ export const usePilotMode = (setCssContent?: (_css: string) => void): UsePilotMo
         pageData.computedStyles,
         sessionId
       );
+
+      if (abortControllerRef.current?.signal.aborted) {
+        throw new Error('Processing was aborted');
+      }
 
       if (!css) {
         throw new Error('No CSS generated from Gemini');
@@ -244,47 +252,139 @@ export const usePilotMode = (setCssContent?: (_css: string) => void): UsePilotMo
   };
 
   const applyCSS = async (css: string): Promise<string> => {
+    if (abortControllerRef.current?.signal.aborted) {
+      throw new Error('Processing was aborted');
+    }
+
     setProcessingStage('applying-css');
     addLog('Applying CSS to page...', 'info');
 
     const result = await cssApplicationService.applyCSS(css);
 
+    if (abortControllerRef.current?.signal.aborted) {
+      throw new Error('Processing was aborted');
+    }
+
     if (!result.success) {
       throw new Error(result.error || 'Failed to apply CSS');
     }
 
-    // Update CSS editor content if available (like chat customization does)
     if (setCssContent) {
       setCssContent(css);
       addLog('CSS editor updated with generated styles', 'info');
     }
 
     addLog('CSS applied successfully', 'success');
-
-    // Return the screenshot after CSS application
     return result.screenshotAfter || '';
   };
 
-  // Main processing workflow
+  const evaluateResult = async (
+    pageData: PageData,
+    appliedCSS: string,
+    resultScreenshot: string,
+    iteration: number
+  ): Promise<{ isDone: boolean; feedback?: string; qualityScore?: number }> => {
+    if (abortControllerRef.current?.signal.aborted) {
+      throw new Error('Processing was aborted');
+    }
+
+    setProcessingStage('evaluating');
+    addLog(`Evaluating results (iteration ${iteration})...`, 'info');
+
+    try {
+      const apiKey = await getEnvVariable('GEMINI_API_KEY');
+      if (!apiKey) {
+        throw new Error('Gemini API key not found');
+      }
+
+      if (abortControllerRef.current?.signal.aborted) {
+        throw new Error('Processing was aborted');
+      }
+
+      const referenceImageUrl = config.referenceImages[0]?.url;
+      if (!referenceImageUrl) {
+        throw new Error('No reference image available');
+      }
+
+      const evaluationPrompt = `Compare the current portal design with the reference image and evaluate the transformation quality.
+
+DESIGN GOAL: ${config.designDescription || 'Match the reference design aesthetics'}
+
+EVALUATION CRITERIA:
+1. Visual similarity to reference design
+2. Color scheme accuracy
+3. Typography matching
+4. Layout and spacing consistency
+5. Overall aesthetic appeal
+
+CURRENT CSS APPLIED:
+${appliedCSS}
+
+Rate the quality from 0.0 to 1.0 and provide specific feedback for improvements.
+If quality is above ${config.evaluationThreshold}, respond with "DONE".
+Otherwise, provide specific suggestions for the next iteration.
+
+Format your response as:
+QUALITY_SCORE: 0.X
+FEEDBACK: [specific suggestions]`;
+
+      const response = await generateEvaluationWithGemini(
+        apiKey,
+        evaluationPrompt,
+        appliedCSS,
+        referenceImageUrl,
+        resultScreenshot,
+        pageData.computedStyles
+      );
+
+      if (abortControllerRef.current?.signal.aborted) {
+        throw new Error('Processing was aborted');
+      }
+
+      if (!response) {
+        return { isDone: false, feedback: 'Evaluation failed' };
+      }
+
+      if (response.trim() === 'DONE') {
+        addLog('Evaluation complete - quality threshold met!', 'success');
+        return { isDone: true };
+      }
+
+      const qualityMatch = response.match(/QUALITY_SCORE:\s*([\d.]+)/);
+      const feedbackMatch = response.match(/FEEDBACK:\s*(.+)/s);
+
+      const qualityScore = qualityMatch ? parseFloat(qualityMatch[1]) : 0;
+      const feedback = feedbackMatch ? feedbackMatch[1].trim() : response;
+
+      const isDone = qualityScore >= config.evaluationThreshold;
+
+      addLog(
+        `Quality score: ${qualityScore.toFixed(2)} (${isDone ? 'threshold met' : 'needs improvement'})`,
+        isDone ? 'success' : 'warning'
+      );
+
+      return { isDone, feedback, qualityScore };
+    } catch (error) {
+      console.error('Error in evaluation:', error);
+      return { isDone: false, feedback: 'Evaluation error occurred' };
+    }
+  };
+
   const startProcessing = useCallback(async () => {
     try {
-      // Validation
       if (config.referenceImages.length === 0) {
         setErrorState('NO_PORTAL_CLASSES', 'Please add at least one reference image');
         return;
       }
 
-      // Reset state
       clearError();
       setIsProcessing(true);
       setPilotStage('processing');
       setProcessingStage('collecting-data');
       currentIterationRef.current = 0;
 
-      // Create abort controller
       abortControllerRef.current = new AbortController();
 
-      // Initialize processing context with fresh session
       const sessionId = generateSessionId();
       setProcessingContext({
         iteration: 0,
@@ -297,41 +397,106 @@ export const usePilotMode = (setCssContent?: (_css: string) => void): UsePilotMo
 
       addLog('Starting pilot mode processing...', 'info');
 
-      // Step 1: Collect page data
       const collectedPageData = await collectPageData();
       setPageData(collectedPageData);
 
-      // Step 2: Generate and apply CSS (single-shot like chat customization)
-      addLog('Generating CSS from reference image...', 'info');
-      const css = await generateCSS(collectedPageData, 1);
+      let currentScreenshot = collectedPageData.screenshot;
+      let previousFeedback: string | undefined;
 
-      // Apply CSS and get screenshot
-      addLog('Applying CSS to page...', 'info');
-      const screenshotAfter = await applyCSS(css);
+      for (let iteration = 1; iteration <= config.maxIterations; iteration++) {
+        if (abortControllerRef.current?.signal.aborted) {
+          addLog('Processing interrupted', 'warning');
+          return;
+        }
 
-      // Update processing context with results
-      setProcessingContext(prev =>
-        prev
-          ? {
-              ...prev,
-              iteration: 1,
-              previousCSS: css,
-              previousScreenshot: screenshotAfter || collectedPageData.screenshot,
-              feedbackHistory: [],
-            }
-          : null
-      );
+        currentIterationRef.current = iteration;
+        addLog(`Starting iteration ${iteration}/${config.maxIterations}`, 'info');
+
+        const css = await generateCSS(collectedPageData, iteration, previousFeedback);
+
+        if (abortControllerRef.current?.signal.aborted) {
+          addLog('Processing interrupted', 'warning');
+          return;
+        }
+
+        const screenshotAfter = await applyCSS(css);
+        currentScreenshot = screenshotAfter || currentScreenshot;
+
+        setProcessingContext(prev =>
+          prev
+            ? {
+                ...prev,
+                iteration,
+                previousCSS: css,
+                previousScreenshot: currentScreenshot,
+              }
+            : null
+        );
+
+        if (iteration < config.maxIterations) {
+          if (abortControllerRef.current?.signal.aborted) {
+            addLog('Processing interrupted', 'warning');
+            return;
+          }
+
+          const evaluation = await evaluateResult(
+            collectedPageData,
+            css,
+            currentScreenshot,
+            iteration
+          );
+
+          if (abortControllerRef.current?.signal.aborted) {
+            addLog('Processing interrupted', 'warning');
+            return;
+          }
+
+          const evaluationResult = {
+            iteration,
+            isDone: evaluation.isDone,
+            feedback: evaluation.feedback,
+            qualityScore: evaluation.qualityScore,
+            timestamp: Date.now(),
+            screenshotAfter: currentScreenshot,
+            cssApplied: css,
+          };
+
+          setProcessingContext(prev =>
+            prev
+              ? {
+                  ...prev,
+                  feedbackHistory: [...prev.feedbackHistory, evaluationResult],
+                }
+              : null
+          );
+
+          if (evaluation.isDone) {
+            addLog(`Quality threshold met in ${iteration} iterations!`, 'success');
+            break;
+          }
+
+          if (iteration < config.maxIterations) {
+            previousFeedback = evaluation.feedback;
+            addLog(`Iteration ${iteration} complete, improving...`, 'info');
+          }
+        } else {
+          addLog(`Completed maximum iterations (${config.maxIterations})`, 'info');
+        }
+      }
 
       addLog('Style transformation complete!', 'success');
-
-      // Complete
       setProcessingStage('complete');
       setPilotStage('complete');
       addLog('Pilot mode processing completed!', 'success');
     } catch (error) {
       console.error('Error in pilot mode processing:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
-      setErrorState('UNKNOWN_ERROR', message);
+
+      if (message === 'Processing was aborted') {
+        addLog('Processing stopped by user', 'warning');
+      } else {
+        setErrorState('UNKNOWN_ERROR', message);
+      }
     } finally {
       setIsProcessing(false);
       abortControllerRef.current = null;
@@ -341,10 +506,15 @@ export const usePilotMode = (setCssContent?: (_css: string) => void): UsePilotMo
   const stopProcessing = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      addLog('Processing stopped by user', 'warning');
+      abortControllerRef.current = null;
     }
+
     setIsProcessing(false);
     setProcessingStage('idle');
+    setPilotStage('complete');
+
+    addLog('Processing stopped by user', 'warning');
+    addLog('Session terminated', 'info');
   }, [addLog]);
 
   const resetSession = useCallback(() => {

@@ -482,11 +482,22 @@ function applyCSS(css: string): boolean {
       existingStyle.remove();
     }
 
+    // Handle empty CSS - don't create style element
+    if (css.trim() === '') {
+      return true;
+    }
+
     // Create new style element
     const styleElement = document.createElement('style');
     styleElement.id = styleId;
     styleElement.textContent = css;
-    document.head.appendChild(styleElement);
+
+    // Insert at the top of head for lower specificity (like main portal)
+    if (document.head.firstChild) {
+      document.head.insertBefore(styleElement, document.head.firstChild);
+    } else {
+      document.head.appendChild(styleElement);
+    }
 
     return true;
   } catch (error) {

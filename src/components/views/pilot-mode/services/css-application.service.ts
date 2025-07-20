@@ -142,19 +142,31 @@ export class CSSApplicationServiceImpl implements CSSApplicationService {
         target: { tabId },
         func: (cssCode: string) => {
           try {
-            // Create or update the style element
             let styleEl = document.getElementById('portal-generated-css') as HTMLStyleElement;
+
+            if (cssCode.trim() === '') {
+              if (styleEl) {
+                styleEl.remove();
+              }
+              return { success: true };
+            }
+
             if (!styleEl) {
               styleEl = document.createElement('style');
               styleEl.id = 'portal-generated-css';
               styleEl.type = 'text/css';
-              document.head.appendChild(styleEl);
+
+              // Insert at the top of head for lower specificity (like main portal)
+              // This requires generated CSS to use !important to override page styles
+              if (document.head.firstChild) {
+                document.head.insertBefore(styleEl, document.head.firstChild);
+              } else {
+                document.head.appendChild(styleEl);
+              }
             }
 
-            // Apply the CSS
             styleEl.textContent = cssCode;
 
-            // Verify the CSS was applied by checking if the style element exists and has content
             const appliedStyleEl = document.getElementById('portal-generated-css');
             if (appliedStyleEl && appliedStyleEl.textContent === cssCode) {
               return { success: true };

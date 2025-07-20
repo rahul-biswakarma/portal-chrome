@@ -31,10 +31,23 @@ const applyCSS = async (tabId: number, css: string): Promise<void> => {
     target: { tabId },
     func: cssContent => {
       let styleEl = document.getElementById('portal-generated-css');
+
+      if (cssContent.trim() === '') {
+        if (styleEl) {
+          styleEl.remove();
+        }
+        return;
+      }
+
       if (!styleEl) {
         styleEl = document.createElement('style');
         styleEl.id = 'portal-generated-css';
-        document.head.appendChild(styleEl);
+
+        if (document.head.firstChild) {
+          document.head.insertBefore(styleEl, document.head.firstChild);
+        } else {
+          document.head.appendChild(styleEl);
+        }
       }
       styleEl.textContent = cssContent;
     },

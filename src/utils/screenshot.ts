@@ -1,4 +1,4 @@
-import html2canvas from 'html2canvas';
+// Screenshot utilities for Chrome extension
 
 /**
  * Convert a data URL to a Blob
@@ -37,26 +37,24 @@ export const captureScreenshot = async (tabId: number): Promise<string> => {
       throw new Error('No tab ID provided');
     }
 
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        return new Promise<string>(resolve => {
-          html2canvas(document.body, {
-            useCORS: true,
-            allowTaint: true,
-            logging: false,
-            background: '#ffffff',
-          }).then((canvas: HTMLCanvasElement) => {
-            resolve(canvas.toDataURL('image/png'));
-          });
-        });
-      },
+    // Use Chrome's native screenshot API
+    // First get the current window to ensure we're capturing from the right one
+    const windows = await chrome.windows.getCurrent();
+    const dataUrl = await chrome.tabs.captureVisibleTab(windows.id!, {
+      format: 'png',
+      quality: 90,
     });
 
-    return result[0]?.result || '';
+    if (!dataUrl) {
+      throw new Error('Failed to capture screenshot - no data returned');
+    }
+
+    return dataUrl;
   } catch (error) {
     console.error('Error capturing screenshot:', error);
-    throw error;
+    throw new Error(
+      `Screenshot capture failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 };
 

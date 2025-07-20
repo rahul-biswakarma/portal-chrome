@@ -1,12 +1,11 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Download, RotateCcw, Sparkles } from 'lucide-react';
+import { CheckCircle, RotateCcw, Sparkles } from 'lucide-react';
 import type { CompleteStageProps } from '../types';
 
 export const CompleteStage: React.FC<CompleteStageProps> = ({
   result,
   onRestart,
-  onDownloadCSS,
   isProcessing,
 }) => {
   const formatDuration = (ms: number): string => {
@@ -42,20 +41,19 @@ export const CompleteStage: React.FC<CompleteStageProps> = ({
             </div>
             <div>
               <div className="text-2xl font-light text-foreground">
-                {result.elementsAnalyzed || 0}
+                {result.finalQualityScore
+                  ? `${Math.round(result.finalQualityScore * 100)}%`
+                  : `${result.iterationsUsed}`}
               </div>
-              <div className="text-muted-foreground text-sm">Elements Styled</div>
+              <div className="text-muted-foreground text-sm">
+                {result.finalQualityScore ? 'Quality Match' : 'Iterations Used'}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Action Buttons */}
         <div className="space-y-3">
-          <Button onClick={onDownloadCSS} className="w-full h-12" disabled={isProcessing}>
-            <Download className="w-4 h-4 mr-2" />
-            Download CSS
-          </Button>
-
           <Button
             onClick={onRestart}
             variant="outline"

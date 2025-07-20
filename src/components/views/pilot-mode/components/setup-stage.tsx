@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Upload, Sparkles, Image } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { Upload, Sparkles, Image, RotateCcw } from 'lucide-react';
 import type { SetupStageProps } from '../types';
 
 export const SetupStage: React.FC<SetupStageProps> = ({
@@ -23,6 +25,10 @@ export const SetupStage: React.FC<SetupStageProps> = ({
     onStart();
   };
 
+  const handleIterationsChange = (value: number[]) => {
+    onConfigUpdate({ maxIterations: value[0] });
+  };
+
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     for (const file of files) {
@@ -35,6 +41,23 @@ export const SetupStage: React.FC<SetupStageProps> = ({
       }
     }
     event.target.value = '';
+  };
+
+  const getIterationsDescription = (iterations: number) => {
+    switch (iterations) {
+      case 1:
+        return 'Quick single attempt';
+      case 2:
+        return 'Basic refinement';
+      case 3:
+        return 'Balanced quality';
+      case 4:
+        return 'High quality';
+      case 5:
+        return 'Maximum refinement';
+      default:
+        return 'Balanced quality';
+    }
   };
 
   const isValid = config.referenceImages.length > 0;
@@ -119,6 +142,35 @@ export const SetupStage: React.FC<SetupStageProps> = ({
               disabled={isProcessing}
               rows={2}
             />
+          </div>
+        )}
+
+        {/* Iterations Control */}
+        {config.referenceImages.length > 0 && (
+          <div className="space-y-4 bg-muted/20 rounded-xl p-4 border border-border">
+            <div className="flex items-center gap-2">
+              <RotateCcw className="w-4 h-4 text-primary" />
+              <Label className="text-sm font-medium text-foreground">Refinement Iterations</Label>
+            </div>
+            <div className="space-y-3">
+              <Slider
+                value={[config.maxIterations]}
+                onValueChange={handleIterationsChange}
+                max={5}
+                min={1}
+                step={1}
+                disabled={isProcessing}
+                className="w-full"
+              />
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">
+                  {config.maxIterations} iteration{config.maxIterations > 1 ? 's' : ''}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {getIterationsDescription(config.maxIterations)}
+                </span>
+              </div>
+            </div>
           </div>
         )}
 

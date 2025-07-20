@@ -61,14 +61,14 @@ export const cleanCSSResponse = (response: string): string => {
 export const validateCSSStructure = (css: string): { valid: boolean; errors: string[] } => {
   const errors: string[] = [];
 
+  // Allow empty CSS for clearing styles
+  if (css.trim() === '') {
+    return { valid: true, errors: [] };
+  }
+
   // Check for basic CSS structure
   if (!css.includes('{') || !css.includes('}')) {
     errors.push('CSS appears to be malformed (missing braces)');
-  }
-
-  // Check for portal classes
-  if (!css.includes('.portal-')) {
-    errors.push('CSS does not contain any portal-* classes');
   }
 
   // Check for balanced braces
