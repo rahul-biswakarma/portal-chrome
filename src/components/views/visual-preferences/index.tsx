@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, Wand2, Search, CheckCircle2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Loader2, Wand2, Search, Settings, RotateCcw } from 'lucide-react';
 import { domAnalysisService } from './services/dom-analysis.service';
 import { uiGeneratorService } from './services/ui-generator.service';
 import { cssGenerationService } from './services/css-generation.service';
@@ -13,8 +21,20 @@ export const VisualPreferencesView: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [elements, setElements] = useState<DetectedElement[]>([]);
   const [preferences, setPreferences] = useState<UserPreferences>({});
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState<string>('');
+  const [isPromptDialogOpen, setIsPromptDialogOpen] = useState(false);
+  const [defaultPrompt, setDefaultPrompt] = useState<string>('');
   const { addLog, setCssContent, cssContent } = useAppContext();
+
+  // Load the default prompt when dialog opens
+  const handlePromptDialogOpen = (open: boolean) => {
+    if (open && !defaultPrompt) {
+      // Get the default prompt from the service
+      const prompt = domAnalysisService.getDefaultPrompt();
+      setDefaultPrompt(prompt);
+    }
+    setIsPromptDialogOpen(open);
+  };
 
   const analyzeCurrentPage = async () => {
     // Prevent multiple simultaneous API calls
@@ -28,7 +48,6 @@ export const VisualPreferencesView: React.FC = () => {
     // Clear existing state for re-analysis
     setElements([]);
     setPreferences({});
-    setHasUnsavedChanges(false);
     setCssContent(''); // Clear any existing CSS from previous analysis
 
     try {
@@ -36,15 +55,25 @@ export const VisualPreferencesView: React.FC = () => {
       addLog('🤖 Asking AI to generate custom UI controls...', 'info');
 
       // Use the new LLM-based analysis
-      const analysis = await domAnalysisService.analyzeDOM();
+      const analysis = await domAnalysisService.analyzeDOM(customPrompt || undefined);
       setElements(analysis.elements);
 
       // Initialize preferences as empty - only store values when explicitly changed
       const initialPreferences: UserPreferences = {};
       analysis.elements.forEach(element => {
         initialPreferences[element.id] = {};
-        // Don't set default values - only store when user explicitly changes them
+        // Initialize with current values to prevent resetting but ensure proper isolation
+        element.availablePreferences.forEach(pref => {
+          // Only initialize if we have valid IDs to prevent undefined keys
+          if (pref.id && pref.id !== 'undefined') {
+            initialPreferences[element.id][pref.id] = pref.currentValue;
+          } else {
+            console.warn(`⚠️ Skipping preference with invalid ID:`, pref);
+          }
+        });
       });
+
+      console.log('🏗️ Initialized preferences state:', initialPreferences);
 
       setPreferences(initialPreferences);
 
@@ -67,23 +96,58 @@ export const VisualPreferencesView: React.FC = () => {
     preferenceId: string,
     value: PreferenceValue
   ) => {
-    // Update state immediately
+    // Debug: Log the preference update
+    console.log(
+      `🔄 Updating preference: ${elementId}:${preferenceId}`,
+      '=',
+      value,
+      '(type:',
+      typeof value,
+      ')'
+    );
+
+    // Ensure the elementId exists in preferences with all its current values preserved
+    const currentElementPrefs = preferences[elementId] || {};
+
+    // Make sure we don't lose any existing preference values for this element
+    const element = elements.find(el => el.id === elementId);
+    if (element) {
+      // Initialize any missing preferences with their current values
+      element.availablePreferences.forEach(pref => {
+        if (!(pref.id in currentElementPrefs)) {
+          currentElementPrefs[pref.id] = pref.currentValue;
+        }
+      });
+    }
+
+    // Update state with the new value while preserving all other preferences
     const newPreferences = {
       ...preferences,
       [elementId]: {
-        ...preferences[elementId],
+        ...currentElementPrefs,
         [preferenceId]: value,
       },
     };
 
     setPreferences(newPreferences);
-    setHasUnsavedChanges(true);
 
     // Find the element for this preference
-    const element = elements.find(el => el.id === elementId);
     if (!element) {
       console.error('Element not found for preference update:', elementId);
       return;
+    }
+
+    // Find the specific preference to debug its metadata
+    const preference = element.availablePreferences.find(p => p.id === preferenceId);
+    if (preference && preference.type === 'toggle') {
+      console.log('🎚️ Toggle preference metadata:', {
+        id: preference.id,
+        currentValue: preference.currentValue,
+        newValue: value,
+        cssOnTrue: preference.metadata?.cssOnTrue,
+        cssOnFalse: preference.metadata?.cssOnFalse,
+        targetClasses: preference.metadata?.targetClasses,
+      });
     }
 
     // Use the new comment-based CSS update system
@@ -97,65 +161,122 @@ export const VisualPreferencesView: React.FC = () => {
       );
 
       // Debug: CSS update successful
-      console.log('Updated CSS with comment wrapper (length):', updatedCSS.length);
-      console.log('Preference:', `${elementId}:${preferenceId}`, '=', value);
+      console.log('✅ Updated CSS with comment wrapper (length):', updatedCSS.length);
+      console.log('📝 New CSS content preview:', updatedCSS.slice(-200)); // Last 200 chars
 
       // Set updated CSS in editor (the editor has auto-apply functionality)
       setCssContent(updatedCSS);
     } catch (error) {
-      console.error('Error updating preference CSS:', error);
+      console.error('❌ Error updating preference CSS:', error);
     }
   };
 
-  const applyChanges = async () => {
-    setIsLoading(true);
+  const resetPreference = async (elementId: string, preferenceId: string) => {
+    // Find the element and preference
+    const element = elements.find(el => el.id === elementId);
+    const preference = element?.availablePreferences.find(p => p.id === preferenceId);
+
+    if (!element || !preference) {
+      console.error('Element or preference not found for reset:', elementId, preferenceId);
+      return;
+    }
+
+    // Reset to default value in state
+    const defaultValue = preference.currentValue;
+    const newPreferences = {
+      ...preferences,
+      [elementId]: {
+        ...preferences[elementId],
+        [preferenceId]: defaultValue,
+      },
+    };
+
+    setPreferences(newPreferences);
+
+    // Remove the CSS block for this preference
     try {
-      addLog('💾 Saving preferences to CSS editor...', 'info');
+      const updatedCSS = await cssGenerationService.updatePreferenceCSS(
+        elementId,
+        preferenceId,
+        defaultValue, // This will trigger removal since it equals default
+        element,
+        cssContent || ''
+      );
 
-      // Generate final CSS and set in CSS editor
-      const css = await cssGenerationService.generateCSS(preferences, elements, {
-        minify: false,
-        addComments: false,
-        useImportant: false,
-        respectExistingStyles: true,
-      });
-
-      setCssContent(css);
-      setHasUnsavedChanges(false);
-      addLog('🎉 Preferences saved to CSS editor! CSS will auto-apply.', 'success');
+      setCssContent(updatedCSS);
     } catch (error) {
-      console.error('Error saving preferences:', error);
-      addLog('❌ Failed to save preferences', 'error');
-    } finally {
-      setIsLoading(false);
+      console.error('Error resetting preference CSS:', error);
     }
-  };
-
-  const resetPreferences = () => {
-    // Clear all preferences back to empty state (no CSS generation)
-    const initialPreferences: UserPreferences = {};
-    elements.forEach(element => {
-      initialPreferences[element.id] = {};
-      // Don't set any default values - keep empty
-    });
-    setPreferences(initialPreferences);
-    setHasUnsavedChanges(false);
-
-    // Clear the CSS editor
-    setCssContent('');
-
-    addLog('🔄 Preferences reset to defaults', 'info');
   };
 
   const renderPreferenceControl = (
     element: DetectedElement,
     option: DetectedElement['availablePreferences'][0]
   ) => {
-    const currentValue = preferences[element.id]?.[option.id];
+    // Get the current value from preferences, but ensure it's properly typed
+    let currentValue = preferences[element.id]?.[option.id];
 
-    // Use the dynamic UI generator service
-    return uiGeneratorService.renderDynamicControl(element, option, currentValue, value =>
-      updatePreference(element.id, option.id, value)
+    // Debug: Log the element and option details
+    console.log(`🎛️ Rendering control for ${element.id}:${option.id}:`, {
+      type: option.type,
+      currentValue,
+      defaultValue: option.currentValue,
+      valueType: typeof currentValue,
+      optionId: option.id,
+      elementId: element.id,
+      hasOptionId: option.id !== undefined,
+      hasElementId: element.id !== undefined,
+    });
+
+    // Validate that we have proper IDs
+    if (option.id === undefined || option.id === null) {
+      console.error(`❌ Option ID is undefined for element ${element.id}:`, option);
+      return null;
+    }
+
+    if (element.id === undefined || element.id === null) {
+      console.error(`❌ Element ID is undefined:`, element);
+      return null;
+    }
+
+    // If no value is set in preferences, use the option's current value (default)
+    if (currentValue === undefined || currentValue === null) {
+      currentValue = option.currentValue;
+    }
+
+    // Ensure proper type conversion based on the preference type
+    switch (option.type) {
+      case 'toggle':
+        currentValue = Boolean(currentValue);
+        break;
+      case 'slider':
+      case 'number-input': {
+        // Ensure it's a valid number, use default if not
+        const numValue = Number(currentValue);
+        currentValue = isNaN(numValue) ? (option.currentValue as number) : numValue;
+        break;
+      }
+      case 'dropdown':
+      case 'layout-selector':
+      case 'color-picker':
+        currentValue = String(currentValue || option.currentValue);
+        break;
+      default:
+        // Keep as-is for other types
+        break;
+    }
+
+    // Create a unique key to prevent React from reusing components
+    const uniqueKey = `${element.id}-${option.id}-${option.type}`;
+
+    // Use the dynamic UI generator service with reset callback
+    return uiGeneratorService.renderDynamicControl(
+      element,
+      option,
+      currentValue,
+      value => updatePreference(element.id, option.id, value),
+      resetPreference,
+      uniqueKey
     );
   };
 
@@ -196,38 +317,68 @@ export const VisualPreferencesView: React.FC = () => {
 
           {elements.length > 0 && (
             <>
-              {/* Action Buttons */}
+              {/* Prompt Customization */}
               <div className="flex items-center justify-center gap-3 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={resetPreferences}
-                  disabled={isLoading || !hasUnsavedChanges}
-                  className="shadow-sm"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Reset
-                </Button>
-                <Button
-                  onClick={applyChanges}
-                  disabled={isLoading || !hasUnsavedChanges}
-                  className="shadow-sm"
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                  )}
-                  {isLoading ? 'Saving...' : 'Save to CSS Editor'}
-                </Button>
-              </div>
+                <Dialog open={isPromptDialogOpen} onOpenChange={handlePromptDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="shadow-sm">
+                      <Settings className="h-4 w-4 mr-2" />
+                      Customize Prompt
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Customize Analysis Prompt</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Modify the prompt used to analyze your page and generate UI preferences.
+                        This allows you to guide the AI towards specific types of customizations.
+                      </p>
 
-              {/* Status Indicator */}
-              {hasUnsavedChanges && (
-                <div className="inline-flex items-center gap-2 bg-orange-50 text-orange-700 px-3 py-1 rounded-full text-sm">
-                  <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
-                  Unsaved changes
-                </div>
-              )}
+                      {defaultPrompt && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">
+                            Default Prompt (for reference)
+                          </label>
+                          <Textarea
+                            value={defaultPrompt}
+                            readOnly
+                            className="min-h-[200px] font-mono text-xs bg-muted"
+                          />
+                        </div>
+                      )}
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium">Your Custom Prompt</label>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setCustomPrompt('')}
+                            className="h-6 text-xs"
+                          >
+                            <RotateCcw className="h-3 w-3 mr-1" />
+                            Clear Custom
+                          </Button>
+                        </div>
+                        <Textarea
+                          value={customPrompt}
+                          onChange={e => setCustomPrompt(e.target.value)}
+                          placeholder="Enter your custom prompt here, or leave empty to use the default prompt shown above..."
+                          className="min-h-[200px] font-mono text-sm"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setIsPromptDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button onClick={() => setIsPromptDialogOpen(false)}>Apply Changes</Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </>
           )}
         </div>
@@ -243,7 +394,8 @@ export const VisualPreferencesView: React.FC = () => {
                 <div className="space-y-2">
                   <h3 className="text-xl font-semibold">Ready to Analyze</h3>
                   <p className="text-muted-foreground">
-                    Click the button below to analyze your page and generate customization options.
+                    Click the button below to analyze your page and generate comprehensive
+                    customization options including colors, layout, typography, images, and more.
                   </p>
                 </div>
               </div>
@@ -269,9 +421,9 @@ export const VisualPreferencesView: React.FC = () => {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {/* Re-analyze button for when preferences are already loaded */}
-            <div className="flex justify-center pb-4">
+            <div className="flex justify-center pb-4 border-b">
               <Button
                 variant="outline"
                 onClick={analyzeCurrentPage}
@@ -292,16 +444,33 @@ export const VisualPreferencesView: React.FC = () => {
               </Button>
             </div>
 
-            {elements.map(element => (
-              <div key={element.id} className="border rounded-lg p-4 bg-card">
-                <h3 className="font-medium text-base mb-3">{element.description}</h3>
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                  {element.availablePreferences.map(option =>
-                    renderPreferenceControl(element, option)
-                  )}
-                </div>
-              </div>
-            ))}
+            {/* Organized preference sections */}
+            <div className="space-y-6">
+              {elements.map(element => (
+                <Card key={element.id} className="overflow-hidden">
+                  <CardContent className="p-6">
+                    <div className="space-y-4">
+                      {/* Section Header */}
+                      <div className="space-y-2 pb-4 border-b border-border/50">
+                        <h3 className="text-lg font-semibold text-foreground">
+                          {element.description}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          Customize the appearance and behavior of this section
+                        </p>
+                      </div>
+
+                      {/* Flat Preferences Grid */}
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                        {element.availablePreferences.map(option =>
+                          renderPreferenceControl(element, option)
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         )}
       </div>

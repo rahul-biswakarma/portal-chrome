@@ -40,7 +40,16 @@ export interface PreferenceOption {
     cssOnTrue?: string;
     cssOnFalse?: string;
     cssOptions?: Record<string, string>;
+    cssTemplate?: string; // For dynamic values: '.class { property: ${value}px; }'
     targetClasses?: string[];
+    // For sliders and number inputs
+    range?: { min: number; max: number; step: number; unit?: string };
+    unit?: string; // 'px', '%', 'em', etc.
+    // For text inputs
+    placeholder?: string;
+    maxLength?: number;
+    // For dropdowns
+    options?: string[];
   };
 }
 
@@ -50,11 +59,18 @@ export type PreferenceType =
   | 'radio'
   | 'slider'
   | 'color-picker'
+  | 'number-input'
   | 'layout-selector';
 
 export type PreferenceValue = boolean | string | number | Record<string, unknown>;
 
-export type PreferenceCategory = 'visibility' | 'layout' | 'styling' | 'position' | 'behavior';
+export type PreferenceCategory =
+  | 'visibility'
+  | 'layout'
+  | 'styling'
+  | 'position'
+  | 'behavior'
+  | 'content';
 
 export interface UserPreferences {
   [elementId: string]: {

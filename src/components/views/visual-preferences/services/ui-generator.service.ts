@@ -3,21 +3,26 @@ import type { DetectedElement, UserPreferences, PreferenceValue } from '../types
 import { PreferenceToggle } from '../components/preference-toggle';
 import { PreferenceDropdown } from '../components/preference-dropdown';
 import { LayoutSelector } from '../components/layout-selector';
+import { PreferenceColorPicker } from '../components/preference-color-picker';
+import { PreferenceSlider } from '../components/preference-slider';
+import { PreferenceNumberInput } from '../components/preference-number-input';
 import { cssGenerationService } from './css-generation.service';
 import { cssApplicationService } from '../../pilot-mode/services/css-application.service';
 
 interface UIPreference {
   id: string;
-  type: 'toggle' | 'dropdown' | 'slider' | 'color-picker' | 'layout-selector';
+  type: 'toggle' | 'dropdown' | 'slider' | 'color-picker' | 'layout-selector' | 'number-input';
   label: string;
   description: string;
   category: 'visibility' | 'layout' | 'styling' | 'position' | 'behavior';
   defaultValue: string | number | boolean;
   options?: string[];
-  range?: { min: number; max: number; step: number };
+  range?: { min: number; max: number; step: number; unit?: string };
   cssOnTrue?: string;
   cssOnFalse?: string;
   cssOptions?: Record<string, string>;
+  cssTemplate?: string;
+  unit?: string;
   targetClasses: string[];
 }
 
@@ -54,7 +59,18 @@ export class UIGeneratorService {
           cssOnTrue: pref.cssOnTrue,
           cssOnFalse: pref.cssOnFalse,
           cssOptions: pref.cssOptions,
+          cssTemplate: pref.cssTemplate,
           targetClasses: pref.targetClasses,
+          range: pref.range
+            ? {
+                min: Number(pref.range.min) || 0,
+                max: Number(pref.range.max) || 100,
+                step: Number(pref.range.step) || 1,
+                unit: pref.range.unit || '',
+              }
+            : undefined,
+          unit: pref.unit,
+          options: pref.options,
         },
       }));
 
@@ -79,49 +95,173 @@ export class UIGeneratorService {
    * Dynamically render a UI control based on preference metadata
    */
   renderDynamicControl(
-    _element: DetectedElement,
+    element: DetectedElement,
     preference: DetectedElement['availablePreferences'][0],
     currentValue: PreferenceValue,
-    onChange: (value: PreferenceValue) => void
+    onChange: (value: PreferenceValue) => void,
+    onReset?: (elementId: string, preferenceId: string) => void,
+    uniqueKey?: string
   ): React.ReactElement | null {
+    // Validate IDs first
+    if (!element.id || !preference.id) {
+      console.error('❌ Missing element or preference ID:', {
+        elementId: element.id,
+        preferenceId: preference.id,
+        element,
+        preference,
+      });
+      return null;
+    }
+
     const props = {
-      key: preference.id,
+      key: uniqueKey || `${element.id}-${preference.id}`,
       option: preference,
-      value: currentValue,
-      onChange,
+      onReset: onReset ? () => onReset(element.id, preference.id) : undefined,
     };
 
+    // Debug logging
+    console.log(`🔧 Creating control for ${element.id}:${preference.id}`, {
+      type: preference.type,
+      currentValue,
+      defaultValue: preference.currentValue,
+      valueType: typeof currentValue,
+      uniqueKey: uniqueKey || 'none',
+    });
+
     switch (preference.type) {
-      case 'toggle':
+      case 'toggle': {
+        // Ensure boolean type for toggles
+        const boolValue =
+          currentValue === undefined || currentValue === null
+            ? Boolean(preference.currentValue)
+            : Boolean(currentValue);
+
         return React.createElement(PreferenceToggle, {
           ...props,
-          value: currentValue as boolean,
-          onChange: onChange as (value: boolean) => void,
+          value: boolValue,
+          uniqueKey: uniqueKey,
+          onChange: (value: boolean) => {
+            console.log(`✅ Toggle changed for ${preference.id}:`, value);
+            onChange(value);
+          },
         });
+      }
 
-      case 'dropdown':
+      case 'dropdown': {
+        // Ensure string type for dropdowns
+        const dropdownValue =
+          currentValue === undefined || currentValue === null
+            ? String(preference.currentValue || '')
+            : String(currentValue);
+
         return React.createElement(PreferenceDropdown, {
           ...props,
-          value: String(currentValue),
-          onChange: onChange as (value: string) => void,
+          value: dropdownValue,
+          onChange: (value: string) => {
+            console.log(`✅ Dropdown changed for ${preference.id}:`, value);
+            onChange(value);
+          },
         });
+      }
 
-      case 'layout-selector':
+      case 'layout-selector': {
+        // Ensure string type for layout selectors
+        const layoutValue =
+          currentValue === undefined || currentValue === null
+            ? String(preference.currentValue || '')
+            : String(currentValue);
+
         return React.createElement(LayoutSelector, {
           ...props,
-          value: String(currentValue),
-          onChange: onChange as (value: string) => void,
+          value: layoutValue,
+          onChange: (value: string) => {
+            console.log(`✅ Layout selector changed for ${preference.id}:`, value);
+            onChange(value);
+          },
         });
+      }
 
-      case 'slider':
-        // TODO: Create slider component if needed
-        console.warn('Slider component not implemented yet');
-        return null;
+      case 'color-picker': {
+        // Ensure string type for color pickers
+        const colorValue =
+          currentValue === undefined || currentValue === null
+            ? String(preference.currentValue || '#ffffff')
+            : String(currentValue);
 
-      case 'color-picker':
-        // TODO: Create color picker component if needed
-        console.warn('Color picker component not implemented yet');
-        return null;
+        return React.createElement(PreferenceColorPicker, {
+          ...props,
+          value: colorValue,
+          uniqueKey: uniqueKey,
+          onChange: (value: string) => {
+            console.log(`✅ Color picker changed for ${preference.id}:`, value);
+            onChange(value);
+          },
+        });
+      }
+
+      case 'slider': {
+        // Ensure number type for sliders with proper range validation
+        let sliderValue: number;
+        if (currentValue === undefined || currentValue === null) {
+          sliderValue = Number(preference.currentValue) || 0;
+        } else {
+          sliderValue = Number(currentValue);
+          if (isNaN(sliderValue)) {
+            sliderValue = Number(preference.currentValue) || 0;
+          }
+        }
+
+        // Apply range constraints if available
+        const range = preference.metadata?.range;
+        if (range) {
+          sliderValue = Math.max(range.min, Math.min(range.max, sliderValue));
+        }
+
+        return React.createElement(PreferenceSlider, {
+          ...props,
+          value: sliderValue,
+          onChange: (value: number) => {
+            console.log(
+              `✅ Slider changed for ${preference.id}:`,
+              value,
+              `(range: ${range?.min}-${range?.max})`
+            );
+            onChange(value);
+          },
+        });
+      }
+
+      case 'number-input': {
+        // Ensure number type for number inputs with proper range validation
+        let numberValue: number;
+        if (currentValue === undefined || currentValue === null) {
+          numberValue = Number(preference.currentValue) || 0;
+        } else {
+          numberValue = Number(currentValue);
+          if (isNaN(numberValue)) {
+            numberValue = Number(preference.currentValue) || 0;
+          }
+        }
+
+        // Apply range constraints if available
+        const numberRange = preference.metadata?.range;
+        if (numberRange) {
+          numberValue = Math.max(numberRange.min, Math.min(numberRange.max, numberValue));
+        }
+
+        return React.createElement(PreferenceNumberInput, {
+          ...props,
+          value: numberValue,
+          onChange: (value: number) => {
+            console.log(
+              `✅ Number input changed for ${preference.id}:`,
+              value,
+              `(range: ${numberRange?.min}-${numberRange?.max})`
+            );
+            onChange(value);
+          },
+        });
+      }
 
       default:
         console.warn(`Unknown preference type: ${preference.type}`);

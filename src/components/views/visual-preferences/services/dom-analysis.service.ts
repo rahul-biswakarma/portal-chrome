@@ -7,16 +7,17 @@ import type { DetectedElement, DOMAnalysisResult, PreferenceOption, ElementType 
 // Types for LLM-generated UI preferences
 interface UIPreference {
   id: string;
-  type: 'toggle' | 'dropdown' | 'slider' | 'color-picker';
+  type: 'toggle' | 'dropdown' | 'slider' | 'color-picker' | 'number-input';
   label: string;
   description: string;
   category: 'visibility' | 'layout' | 'styling' | 'position' | 'behavior';
   defaultValue: string | number | boolean;
   options?: string[]; // For dropdowns
-  range?: { min: number; max: number; step: number }; // For sliders
+  range?: { min: number; max: number; step: number; unit: string }; // For sliders and number inputs
   cssOnTrue?: string; // For toggles - CSS when toggled ON
   cssOnFalse?: string; // For toggles - CSS when toggled OFF
   cssOptions?: Record<string, string>; // For dropdowns - CSS for each option
+  cssTemplate?: string; // For dynamic values: '.class { property: ${value}px; }'
   targetClasses: string[]; // Which portal classes this affects
 }
 
@@ -36,11 +37,33 @@ interface PortalElement {
   portalClasses: string[];
   tailwindClasses: string[];
   text?: string;
+  styleInfo?: {
+    display: string;
+    position: string;
+    backgroundColor: string;
+    color: string;
+    fontSize: string;
+    padding: string;
+    margin: string;
+    width: string;
+    height: string;
+    visibility: string;
+  };
+  layoutInfo?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    visible: boolean;
+  };
+  semanticRole?: string;
+  hasBackgroundImage?: boolean;
+  hasInteractiveElements?: boolean;
   children: PortalElement[];
 }
 
 export class DOMAnalysisService {
-  async analyzeDOM(): Promise<DOMAnalysisResult> {
+  async analyzeDOM(customPrompt?: string): Promise<DOMAnalysisResult> {
     try {
       const tab = await getActiveTab();
       if (!tab.id) {
@@ -59,7 +82,11 @@ export class DOMAnalysisService {
       }
 
       // Generate UI preferences using LLM
-      const llmPreferences = await this.generateUIPreferences(portalElements, computedStyles);
+      const llmPreferences = await this.generateUIPreferences(
+        portalElements,
+        computedStyles,
+        customPrompt
+      );
 
       // Convert LLM response to our DetectedElement format
       const elements = this.convertLLMResponseToElements(llmPreferences);
@@ -105,24 +132,91 @@ export class DOMAnalysisService {
               if (!hasPortalDescendants) return null;
             }
 
+            // Get computed style information for better context
+            const computedStyle = window.getComputedStyle(element);
+            const styleInfo = {
+              display: computedStyle.display,
+              position: computedStyle.position,
+              backgroundColor: computedStyle.backgroundColor,
+              color: computedStyle.color,
+              fontSize: computedStyle.fontSize,
+              padding: computedStyle.padding,
+              margin: computedStyle.margin,
+              width: computedStyle.width,
+              height: computedStyle.height,
+              visibility: computedStyle.visibility,
+            };
+
+            // Get element position and size for layout context
+            const rect = element.getBoundingClientRect();
+            const layoutInfo = {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+              visible: rect.width > 0 && rect.height > 0 && computedStyle.visibility !== 'hidden',
+            };
+
+            // Extract semantic meaning from classes and content
+            const inferSemanticRole = (element: Element, portalClasses: string[]): string => {
+              const tagName = element.tagName.toLowerCase();
+              const textContent = element.textContent?.toLowerCase() || '';
+
+              // Infer from portal class names
+              if (portalClasses.some(cls => cls.includes('header'))) return 'header';
+              if (portalClasses.some(cls => cls.includes('nav'))) return 'navigation';
+              if (portalClasses.some(cls => cls.includes('footer'))) return 'footer';
+              if (portalClasses.some(cls => cls.includes('sidebar'))) return 'sidebar';
+              if (portalClasses.some(cls => cls.includes('logo'))) return 'logo';
+              if (portalClasses.some(cls => cls.includes('tab'))) return 'tabs';
+              if (portalClasses.some(cls => cls.includes('card'))) return 'card';
+              if (portalClasses.some(cls => cls.includes('button'))) return 'button';
+              if (portalClasses.some(cls => cls.includes('menu'))) return 'menu';
+
+              // Infer from HTML tag
+              if (
+                ['header', 'nav', 'footer', 'aside', 'main', 'section', 'article'].includes(tagName)
+              ) {
+                return tagName;
+              }
+
+              // Infer from content patterns
+              if (textContent.includes('welcome')) return 'welcome-message';
+              if (textContent.includes('search')) return 'search';
+              if (element.querySelector('input[type="search"]')) return 'search';
+              if (element.querySelector('img')) return 'image-container';
+
+              return 'content';
+            };
+
+            const semanticRole = inferSemanticRole(element, portalClasses);
+
+            // Get all visible text content (more comprehensive)
+            const textContent = element.textContent?.trim().slice(0, 200);
+
+            // Check if element has background image
+            const hasBackgroundImage = computedStyle.backgroundImage !== 'none';
+
+            // Check if element contains interactive elements
+            const hasInteractiveElements =
+              element.querySelector('button, a, input, select, textarea') !== null;
+
             const children: PortalElement[] = [];
             Array.from(element.children).forEach(child => {
               const childData = extractElementData(child);
               if (childData) children.push(childData);
             });
 
-            const textContent = Array.from(element.childNodes)
-              .filter(node => node.nodeType === Node.TEXT_NODE)
-              .map(node => node.textContent?.trim())
-              .filter(Boolean)
-              .join(' ')
-              .slice(0, 100);
-
             return {
               tagName: element.tagName.toLowerCase(),
               portalClasses,
               tailwindClasses,
               text: textContent || undefined,
+              styleInfo,
+              layoutInfo,
+              semanticRole,
+              hasBackgroundImage,
+              hasInteractiveElements,
               children,
             };
           };
@@ -240,7 +334,8 @@ export class DOMAnalysisService {
 
   private async generateUIPreferences(
     portalElements: PortalElement[],
-    computedStyles: Record<string, Record<string, string>>
+    computedStyles: Record<string, Record<string, string>>,
+    customPrompt?: string
   ): Promise<LLMUIPreferencesResponse> {
     try {
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
@@ -249,7 +344,7 @@ export class DOMAnalysisService {
         return this.generateFallbackUIPreferences(portalElements);
       }
 
-      const prompt = this.createUIPreferencesPrompt(portalElements, computedStyles);
+      const prompt = customPrompt || this.createUIPreferencesPrompt(portalElements, computedStyles);
 
       // Get tab for screenshot
       const tab = await getActiveTab();
@@ -288,79 +383,108 @@ export class DOMAnalysisService {
   ): string {
     const portalClasses = this.getAllPortalClasses(portalElements);
     const portalTree = this.formatPortalTree(portalElements);
-
-    // Format existing styles for LLM context
     const existingStylesSection = this.formatExistingStyles(portalClasses, computedStyles);
 
-    return `You are creating a user preferences interface for a portal website. Your goal is to analyze the available portal elements and generate intuitive customization options that users would actually want to change.
+    return `Generate UI customization preferences for this portal page. Analyze the screenshot to understand what elements exist and create practical customization options.
 
-USE CASE: Users visit a portal website and want to customize how it looks and behaves. They should be able to:
-- Show/hide interface elements they don't need
-- Adjust spacing and layout density for their preference  
-- Change visual styles to match their workflow
-- Toggle features on/off based on their usage patterns
-
-AVAILABLE PORTAL ELEMENTS:
+AVAILABLE PORTAL CLASSES:
 ${portalClasses.map(cls => `- .${cls}`).join('\n')}
 
 PAGE STRUCTURE:
 ${portalTree}
 
-EXISTING COMPUTED STYLES:
+CURRENT STYLES:
 ${existingStylesSection}
 
-CRITICAL CSS GENERATION RULES:
-- ALWAYS base CSS changes on the existing computed styles above
-- If an element uses "display: block", don't generate flexbox CSS for it
-- If an element uses "display: flex", you can modify flex properties
-- For layout changes, work WITH the existing display type, not against it
-- For visibility toggles, use the current display value vs "none"
-- For spacing, adjust existing margin/padding values proportionally
+PREFERENCE TYPE SCHEMAS:
 
-ANALYSIS APPROACH:
-1. Look at the portal element names and infer what they represent (headers, navigation, cards, buttons, etc.)
-2. Check the EXISTING COMPUTED STYLES to understand current layout methods
-3. For each element type, think: "What would users want to customize about this?"
-4. Group related elements together logically
-5. Create user-friendly controls that make intuitive sense
-6. Generate CSS that works with the existing styling approach
+**toggle**: Show/hide or enable/disable options
+{
+  "type": "toggle",
+  "label": "Show Element",
+  "description": "Display or hide this element",
+  "category": "visibility",
+  "defaultValue": true,
+  "cssOnTrue": ".portal-class { display: block; }",
+  "cssOnFalse": ".portal-class { display: none; }",
+  "targetClasses": ["portal-class"]
+}
 
-PREFERENCE GUIDELINES:
-- Use "toggle" for binary choices (show/hide, on/off)
-- Use "dropdown" for multiple style/layout options (typically 2-4 choices)
-- Focus on high-impact changes (visibility, spacing, layout, basic styling)
-- Avoid technical jargon - use simple, clear labels
-- Each preference should solve a real user need
-- CSS must be compatible with existing computed styles
+**color-picker**: Color customization
+{
+  "type": "color-picker", 
+  "label": "Background Color",
+  "description": "Choose background color",
+  "category": "styling",
+  "defaultValue": "#ffffff",
+  "cssTemplate": ".portal-class { background-color: \${value}; }",
+  "targetClasses": ["portal-class"]
+}
 
-JSON STRUCTURE REQUIRED:
+**dropdown**: Predefined option selection
+{
+  "type": "dropdown",
+  "label": "Layout Style", 
+  "description": "Choose layout appearance",
+  "category": "layout",
+  "defaultValue": "default",
+  "options": ["minimal", "default", "full"],
+  "cssOptions": {
+    "minimal": ".portal-class { padding: 0.5rem; }",
+    "default": ".portal-class { padding: 1rem; }",
+    "full": ".portal-class { padding: 2rem; }"
+  },
+  "targetClasses": ["portal-class"]
+}
+
+**slider**: Numeric values with ranges
+{
+  "type": "slider",
+  "label": "Element Width",
+  "description": "Adjust element width",
+  "category": "layout", 
+  "defaultValue": 200,
+  "range": { "min": 100, "max": 500, "step": 10, "unit": "px" },
+  "cssTemplate": ".portal-class { width: \${value}; }",
+  "targetClasses": ["portal-class"]
+}
+
+**number-input**: Precise numeric input
+{
+  "type": "number-input",
+  "label": "Font Size",
+  "description": "Set exact font size", 
+  "category": "styling",
+  "defaultValue": 16,
+  "range": { "min": 12, "max": 24, "step": 1, "unit": "px" },
+  "cssTemplate": ".portal-class { font-size: \${value}; }",
+  "targetClasses": ["portal-class"]
+}
+
+REQUIREMENTS:
+- Create element groups based on what you see in the screenshot and available portal classes
+- Generate preferences that make sense for each element group
+- Use meaningful labels users would understand
+- Include realistic default values and ranges
+- Ensure targetClasses contain actual portal classes from the list above
+- Units should be: px (pixels), rem (relative), % (percentage), or vh/vw (viewport)
+
+RESPONSE FORMAT:
 {
   "elements": [
     {
-      "id": "unique-group-id",
-      "name": "User-Friendly Group Name", 
-      "description": "Brief description of what this controls",
-      "portalClasses": ["list", "of", "portal-classes", "this", "group", "affects"],
-      "preferences": [
-        {
-          "id": "unique-pref-id",
-          "type": "toggle" | "dropdown",
-          "label": "Simple User Label",
-          "description": "What this preference does",
-          "category": "visibility" | "layout" | "styling",
-          "defaultValue": true | "option-name",
-          "cssOnTrue": "CSS for toggle ON" (toggle only),
-          "cssOnFalse": "CSS for toggle OFF" (toggle only),
-          "options": ["option1", "option2", "option3"] (dropdown only),
-          "cssOptions": {"option1": "CSS", "option2": "CSS"} (dropdown only),
-          "targetClasses": ["portal-classes", "to", "apply", "css", "to"]
-        }
-      ]
+      "id": "unique-id",
+      "name": "Element Group Name",
+      "description": "What this group controls",
+      "portalClasses": ["portal-class-1", "portal-class-2"],
+      "preferences": [/* preference objects using schemas above */]
     }
   ]
 }
 
-Create logical groupings based on what you see in the available elements. Return ONLY the JSON.`;
+NOTE: make preferences such that user feels like they have been provided with native control panel with options like u can hide or show actions, change layouts, change colors, change font and text size, etc.
+REMEMBER: make sure the preferences you are generating should be css compatible, means if you are giving option to change layout make sure that element has properties like flex or grid or something as without that layout css change u gave wont work.
+Generate practical customization options based on the screenshot and portal classes. Return only JSON.`;
   }
 
   private generateFallbackUIPreferences(
@@ -377,26 +501,45 @@ Create logical groupings based on what you see in the available elements. Return
   private convertLLMResponseToElements(llmResponse: LLMUIPreferencesResponse): DetectedElement[] {
     const elements: DetectedElement[] = [];
 
-    llmResponse.elements.forEach(elementGroup => {
-      const preferences: PreferenceOption[] = elementGroup.preferences.map(pref => ({
-        id: pref.id,
-        type: pref.type as PreferenceOption['type'],
-        label: pref.label,
-        description: pref.description,
-        currentValue: pref.defaultValue,
-        availableValues: pref.options || [], // Fix: map options to availableValues
-        category: pref.category,
-        // Store CSS data for later use
-        metadata: {
-          cssOnTrue: pref.cssOnTrue,
-          cssOnFalse: pref.cssOnFalse,
-          cssOptions: pref.cssOptions,
-          targetClasses: pref.targetClasses,
-        },
-      }));
+    llmResponse.elements.forEach((elementGroup, elementIndex) => {
+      // Ensure element has a proper ID
+      const elementId = elementGroup.id || `element-${elementIndex}`;
+
+      const preferences: PreferenceOption[] = elementGroup.preferences.map((pref, prefIndex) => {
+        // Generate proper IDs when missing or undefined
+        const preferenceId =
+          pref.id && pref.id !== 'undefined' ? pref.id : `${pref.type}-${prefIndex}`;
+
+        console.log(`🔧 Processing preference for ${elementId}:`, {
+          originalId: pref.id,
+          generatedId: preferenceId,
+          type: pref.type,
+          label: pref.label,
+        });
+
+        return {
+          id: preferenceId,
+          type: pref.type as PreferenceOption['type'],
+          label: pref.label,
+          description: pref.description,
+          currentValue: pref.defaultValue,
+          availableValues: pref.options || [], // Fix: map options to availableValues
+          category: pref.category,
+          // Store CSS data for later use
+          metadata: {
+            cssOnTrue: pref.cssOnTrue,
+            cssOnFalse: pref.cssOnFalse,
+            cssOptions: pref.cssOptions,
+            cssTemplate: pref.cssTemplate,
+            targetClasses: pref.targetClasses,
+            range: pref.range,
+            unit: pref.range?.unit || 'px', // Default unit for sliders
+          },
+        };
+      });
 
       elements.push({
-        id: elementGroup.id,
+        id: elementId,
         selector: `.${elementGroup.portalClasses[0]}`,
         type: this.inferElementType(elementGroup.name),
         description: elementGroup.description,
@@ -408,6 +551,15 @@ Create logical groupings based on what you see in the available elements. Return
         availablePreferences: preferences,
       });
     });
+
+    console.log(
+      '🔍 Converted elements:',
+      elements.map(el => ({
+        id: el.id,
+        preferenceCount: el.availablePreferences.length,
+        preferenceIds: el.availablePreferences.map(p => p.id),
+      }))
+    );
 
     return elements;
   }
@@ -464,6 +616,24 @@ Create logical groupings based on what you see in the available elements. Return
     };
     elements.forEach(extractClasses);
     return [...new Set(classes)];
+  }
+
+  getDefaultPrompt(): string {
+    // Return a sample default prompt for display purposes
+    const samplePortalClasses = ['portal-header', 'portal-nav', 'portal-content', 'portal-sidebar'];
+
+    return this.createUIPreferencesPrompt(
+      [
+        {
+          tagName: 'div',
+          portalClasses: samplePortalClasses,
+          tailwindClasses: ['flex', 'bg-white', 'p-4'],
+          text: 'Sample portal content',
+          children: [],
+        },
+      ],
+      { 'portal-header': { display: 'flex', 'background-color': 'rgb(255, 255, 255)' } }
+    );
   }
 
   private formatPortalTree(elements: PortalElement[], indent = 0): string {

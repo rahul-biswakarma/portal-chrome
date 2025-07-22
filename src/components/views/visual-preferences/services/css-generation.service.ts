@@ -42,7 +42,10 @@ export class CSSGenerationService {
     currentCSSContent: string
   ): Promise<string> {
     const preference = element.availablePreferences.find(p => p.id === preferenceId);
-    if (!preference || !preference.metadata) return currentCSSContent;
+    if (!preference || !preference.metadata) {
+      console.warn(`Preference not found or missing metadata: ${elementId}:${preferenceId}`);
+      return currentCSSContent;
+    }
 
     // Create unique identifier for this preference
     const prefId = `${elementId}:${preferenceId}`;
@@ -57,10 +60,11 @@ export class CSSGenerationService {
     const defaultValue = preference.currentValue;
 
     // Debug: Show exact comparison values and types
-    console.log(`🔍 Default comparison for ${prefId}:`);
+    console.log(`🔍 CSS Update for ${prefId}:`);
     console.log('  userValue:', userValue, '(type:', typeof userValue, ')');
     console.log('  defaultValue:', defaultValue, '(type:', typeof defaultValue, ')');
     console.log('  are equal?', userValue === defaultValue);
+    console.log('  existing CSS block found?', startIndex !== -1 && endIndex !== -1);
 
     if (userValue === defaultValue) {
       if (startIndex !== -1 && endIndex !== -1) {
@@ -83,7 +87,10 @@ export class CSSGenerationService {
       respectExistingStyles: true,
     });
 
+    console.log(`📝 Generated CSS for ${prefId}:`, css.trim());
+
     if (!css.trim()) {
+      console.warn(`⚠️ No CSS generated for ${prefId}, treating as default`);
       // If no CSS generated, treat as default and remove block
       if (startIndex !== -1 && endIndex !== -1) {
         const beforeCSS = currentCSSContent.substring(0, startIndex);
@@ -95,13 +102,13 @@ export class CSSGenerationService {
 
     if (startIndex !== -1 && endIndex !== -1) {
       // Replace existing preference CSS
-      console.log(`Updating CSS block for ${prefId} (${defaultValue} → ${userValue})`);
+      console.log(`🔄 Updating existing CSS block for ${prefId}`);
       const beforeCSS = currentCSSContent.substring(0, startIndex);
       const afterCSS = currentCSSContent.substring(endIndex + endComment.length);
       return `${beforeCSS}${startComment}\n${css}\n${endComment}${afterCSS}`;
     } else {
       // Add new preference CSS
-      console.log(`Adding new CSS block for ${prefId} (${defaultValue} → ${userValue})`);
+      console.log(`➕ Adding new CSS block for ${prefId}`);
       const newSection = `\n\n${startComment}\n${css}\n${endComment}`;
       return currentCSSContent + newSection;
     }
@@ -157,27 +164,66 @@ export class CSSGenerationService {
         break;
 
       case 'dropdown':
+      case 'layout-selector':
         // For dropdowns, use cssOptions based on the selected value
         if (typeof userValue === 'string' && metadata.cssOptions) {
           css = metadata.cssOptions[userValue] || '';
         }
         break;
 
-      case 'layout-selector':
-        // Same as dropdown for layout selectors
-        if (typeof userValue === 'string' && metadata.cssOptions) {
-          css = metadata.cssOptions[userValue] || '';
+      case 'color-picker':
+        // For color pickers, use cssTemplate with color value interpolation
+        if (typeof userValue === 'string' && metadata.cssTemplate) {
+          // Validate and fix hex colors
+          let colorValue = userValue;
+          if (colorValue.startsWith('#')) {
+            // Ensure hex colors are 6 characters (plus #)
+            if (colorValue.length === 4) {
+              // Convert #abc to #aabbcc
+              colorValue = `#${colorValue[1]}${colorValue[1]}${colorValue[2]}${colorValue[2]}${colorValue[3]}${colorValue[3]}`;
+            } else if (colorValue.length < 7) {
+              // Pad incomplete hex colors
+              colorValue = colorValue.padEnd(7, colorValue[colorValue.length - 1]);
+            }
+          }
+          css = metadata.cssTemplate.replace(/\$\{value\}/g, colorValue);
         }
         break;
 
       case 'slider':
-        // For sliders, we might need to interpolate CSS values
-        // This would need custom handling per preference
-        break;
+      case 'number-input':
+        // For sliders and number inputs, use cssTemplate with numeric value interpolation
+        if (typeof userValue === 'number' && metadata.cssTemplate) {
+          const unit = metadata.range?.unit || metadata.unit || '';
 
-      case 'color-picker':
-        // For color pickers, we'd replace color values in the CSS template
-        // This would need custom handling per preference
+          console.log(`🎛️ Processing ${preference.type} CSS:`, {
+            preferenceId: preference.id,
+            userValue,
+            unit,
+            template: metadata.cssTemplate,
+            range: metadata.range,
+          });
+
+          // Check if the template already includes the unit to avoid double units
+          const templateHasUnit =
+            metadata.cssTemplate.includes(`\${value}${unit}`) ||
+            metadata.cssTemplate.includes('${value}px') ||
+            metadata.cssTemplate.includes('${value}%') ||
+            metadata.cssTemplate.includes('${value}em') ||
+            metadata.cssTemplate.includes('${value}rem') ||
+            metadata.cssTemplate.includes('${value}vh') ||
+            metadata.cssTemplate.includes('${value}vw');
+
+          if (templateHasUnit) {
+            // Template already has units, just replace the value
+            css = metadata.cssTemplate.replace(/\$\{value\}/g, String(userValue));
+          } else {
+            // Template doesn't have units, add them
+            css = metadata.cssTemplate.replace(/\$\{value\}/g, `${userValue}${unit}`);
+          }
+
+          console.log(`📝 Generated ${preference.type} CSS:`, css);
+        }
         break;
 
       default:

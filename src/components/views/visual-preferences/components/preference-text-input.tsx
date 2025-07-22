@@ -1,33 +1,29 @@
 import React from 'react';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
 import type { DetectedElement } from '../types';
 
-interface PreferenceDropdownProps {
+interface PreferenceTextInputProps {
   option: DetectedElement['availablePreferences'][0];
   value: string;
   onChange: (value: string) => void;
   onReset?: () => void;
 }
 
-export const PreferenceDropdown: React.FC<PreferenceDropdownProps> = ({
+export const PreferenceTextInput: React.FC<PreferenceTextInputProps> = ({
   option,
   value,
   onChange,
   onReset,
 }) => {
-  const availableValues = option.availableValues || [];
+  const currentValue = value || (option.currentValue as string) || '';
+  const placeholder = option.metadata?.placeholder || `Enter ${option.label.toLowerCase()}...`;
+  const maxLength = option.metadata?.maxLength || 100;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 p-3 rounded-lg border bg-card">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <Label htmlFor={option.id} className="text-sm font-medium">
@@ -49,18 +45,23 @@ export const PreferenceDropdown: React.FC<PreferenceDropdownProps> = ({
           </Button>
         )}
       </div>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id={option.id}>
-          <SelectValue placeholder={`Select ${option.label.toLowerCase()}`} />
-        </SelectTrigger>
-        <SelectContent>
-          {availableValues.map(optionValue => (
-            <SelectItem key={String(optionValue)} value={String(optionValue)}>
-              {String(optionValue)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+
+      <div className="space-y-1">
+        <Input
+          id={option.id}
+          type="text"
+          value={currentValue}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          maxLength={maxLength}
+          className="w-full"
+        />
+        {maxLength && (
+          <p className="text-xs text-muted-foreground text-right">
+            {currentValue.length}/{maxLength}
+          </p>
+        )}
+      </div>
     </div>
   );
 };
