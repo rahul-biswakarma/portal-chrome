@@ -41,6 +41,7 @@ export const PreferenceColorPicker: React.FC<PreferenceColorPickerProps> = ({
   };
 
   const currentValue = validateAndFixColor(value || (option.currentValue as string) || '#ffffff');
+  const colorInputId = `color-${uniqueKey || option.id}`;
 
   console.log(`🎨 Color picker ${uniqueKey || option.id} render:`, {
     propValue: value,
@@ -53,7 +54,7 @@ export const PreferenceColorPicker: React.FC<PreferenceColorPickerProps> = ({
     <div className="space-y-2" key={uniqueKey}>
       <div className="flex items-center justify-between">
         <div className="space-y-0.5 flex-1 min-w-0">
-          <Label htmlFor={`${uniqueKey || option.id}-color`} className="text-sm font-medium">
+          <Label htmlFor={`${uniqueKey || option.id}-text`} className="text-sm font-medium">
             {option.label}
           </Label>
           {option.description && (
@@ -62,12 +63,30 @@ export const PreferenceColorPicker: React.FC<PreferenceColorPickerProps> = ({
         </div>
         <div className="flex items-center gap-3 ml-3">
           <div className="flex items-center gap-2">
-            <div
-              className="w-8 h-8 rounded border border-border/50 cursor-pointer hover:border-border transition-colors"
+            {/* Color swatch as label for hidden color input */}
+            <label
+              htmlFor={colorInputId}
+              className="w-8 h-8 rounded border border-border/50 cursor-pointer hover:border-border transition-colors shadow-sm block relative"
               style={{ backgroundColor: currentValue }}
-              onClick={() => document.getElementById(`${uniqueKey || option.id}-color`)?.click()}
-            />
+              title="Click to open color picker"
+            >
+              <input
+                id={colorInputId}
+                type="color"
+                value={currentValue}
+                onChange={e => {
+                  const newValue = e.target.value;
+                  console.log(`🎨 Color picker ${uniqueKey || option.id} changed:`, newValue);
+                  onChange(newValue);
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                style={{
+                  transform: 'translateX(-50px)', // Shift the actual input to the left to influence picker placement
+                }}
+              />
+            </label>
             <input
+              id={`${uniqueKey || option.id}-text`}
               type="text"
               value={currentValue}
               onChange={e => {
@@ -84,7 +103,7 @@ export const PreferenceColorPicker: React.FC<PreferenceColorPickerProps> = ({
                   onChange(fixedValue);
                 }
               }}
-              className="w-18 h-7 px-2 text-xs font-mono border border-border/50 rounded bg-background focus:border-ring focus:outline-none"
+              className="w-16 h-7 px-2 text-xs font-mono border border-border/50 rounded bg-background focus:border-ring focus:outline-none"
               placeholder="#ffffff"
               maxLength={7}
             />
@@ -102,19 +121,6 @@ export const PreferenceColorPicker: React.FC<PreferenceColorPickerProps> = ({
           )}
         </div>
       </div>
-
-      {/* Hidden color input */}
-      <input
-        id={`${uniqueKey || option.id}-color`}
-        type="color"
-        value={currentValue}
-        onChange={e => {
-          const newValue = e.target.value;
-          console.log(`🎨 Color picker ${uniqueKey || option.id} changed:`, newValue);
-          onChange(newValue);
-        }}
-        className="sr-only"
-      />
     </div>
   );
 };

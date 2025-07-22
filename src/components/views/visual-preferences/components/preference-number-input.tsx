@@ -63,7 +63,19 @@ export const PreferenceNumberInput: React.FC<PreferenceNumberInputProps> = ({
           )}
         </div>
         <div className="flex items-center gap-3 ml-3">
-          {unit && <div className="text-sm text-muted-foreground">{unit}</div>}
+          <div className="flex items-center gap-2">
+            <Input
+              id={option.id}
+              type="number"
+              value={currentValue}
+              onChange={handleChange}
+              min={range.min}
+              max={range.max}
+              step={range.step}
+              className="w-16 h-7 px-2 text-xs font-mono text-center border border-border/50 rounded bg-background focus:border-ring focus:outline-none"
+            />
+            {unit && <span className="text-xs text-muted-foreground min-w-[20px]">{unit}</span>}
+          </div>
           {onReset && (
             <Button
               variant="ghost"
@@ -78,21 +90,9 @@ export const PreferenceNumberInput: React.FC<PreferenceNumberInputProps> = ({
         </div>
       </div>
 
-      <div className="space-y-1">
-        <Input
-          id={option.id}
-          type="number"
-          value={currentValue}
-          onChange={handleChange}
-          min={range.min}
-          max={range.max}
-          step={range.step}
-          className="h-7 font-mono"
-        />
-        <div className="flex justify-between text-xs text-muted-foreground">
-          <span>Min: {range.min}</span>
-          <span>Max: {range.max}</span>
-        </div>
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span>Min: {range.min}</span>
+        <span>Max: {range.max}</span>
       </div>
     </div>
   );

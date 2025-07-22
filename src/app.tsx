@@ -133,7 +133,7 @@ function App() {
   return (
     <AppProvider>
       <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
-        <div className="h-full overflow-hidden">
+        <div className="h-full overflow-y-hidden overflow-x-hidden">
           <ViewTabs config={views} activeTab={activeTab} setActiveTab={setActiveTab} />
         </div>
       </div>
