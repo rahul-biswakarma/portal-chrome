@@ -483,7 +483,7 @@ RESPONSE FORMAT:
 }
 
 NOTE: make preferences such that user feels like they have been provided with native control panel with options like u can hide or show actions, change layouts, change colors, change font and text size, etc.
-REMEMBER: make sure the preferences you are generating should be css compatible, means if you are giving option to change layout make sure that element has properties like flex or grid or something as without that layout css change u gave wont work.
+REMEMBER: make sure the preferences you are generating should be css compatible, means if you are giving option to change layout make sure that element has properties like flex or grid or something as without that layout css change u gave wont work. Also try to good amount of granular hide/show options. so that user can hide/show any element they want, like a useful CTA or a heading or description or some text for a component 
 Generate practical customization options based on the screenshot and portal classes. Return only JSON.`;
   }
 

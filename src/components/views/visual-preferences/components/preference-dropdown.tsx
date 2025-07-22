@@ -28,13 +28,13 @@ export const PreferenceDropdown: React.FC<PreferenceDropdownProps> = ({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <div className="space-y-0.5 flex-1 min-w-0">
           <Label htmlFor={option.id} className="text-sm font-medium">
             {option.label}
           </Label>
           {option.description && (
-            <p className="text-xs text-muted-foreground">{option.description}</p>
+            <p className="text-xs text-muted-foreground truncate">{option.description}</p>
           )}
         </div>
         {onReset && (
@@ -42,7 +42,7 @@ export const PreferenceDropdown: React.FC<PreferenceDropdownProps> = ({
             variant="ghost"
             size="sm"
             onClick={onReset}
-            className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
+            className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive rounded-md ml-3"
             title="Reset to default"
           >
             <X className="h-3 w-3" />
@@ -50,7 +50,7 @@ export const PreferenceDropdown: React.FC<PreferenceDropdownProps> = ({
         )}
       </div>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger id={option.id}>
+        <SelectTrigger id={option.id} className="h-7">
           <SelectValue placeholder={`Select ${option.label.toLowerCase()}`} />
         </SelectTrigger>
         <SelectContent>

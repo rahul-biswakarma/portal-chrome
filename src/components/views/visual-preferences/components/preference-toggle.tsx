@@ -27,27 +27,16 @@ export const PreferenceToggle: React.FC<PreferenceToggleProps> = ({
   });
 
   return (
-    <div className="flex items-center justify-between space-x-2" key={uniqueKey}>
-      <div className="space-y-0.5">
+    <div className="flex items-center justify-between space-x-3" key={uniqueKey}>
+      <div className="space-y-0.5 flex-1 min-w-0">
         <Label htmlFor={`${uniqueKey || option.id}-toggle`} className="text-sm font-medium">
           {option.label}
         </Label>
         {option.description && (
-          <p className="text-xs text-muted-foreground">{option.description}</p>
+          <p className="text-xs text-muted-foreground truncate">{option.description}</p>
         )}
       </div>
-      <div className="flex items-center gap-2">
-        {onReset && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onReset}
-            className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
-            title="Reset to default"
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        )}
+      <div className="flex items-center gap-3">
         <Switch
           id={`${uniqueKey || option.id}-toggle`}
           checked={value}
@@ -59,6 +48,17 @@ export const PreferenceToggle: React.FC<PreferenceToggleProps> = ({
             option.description ? `${uniqueKey || option.id}-description` : undefined
           }
         />
+        {onReset && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onReset}
+            className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive rounded-md"
+            title="Reset to default"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        )}
       </div>
     </div>
   );

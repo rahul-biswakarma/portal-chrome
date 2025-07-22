@@ -50,75 +50,71 @@ export const PreferenceColorPicker: React.FC<PreferenceColorPickerProps> = ({
   });
 
   return (
-    <div className="space-y-2 p-3 rounded-lg border bg-card" key={uniqueKey}>
+    <div className="space-y-2" key={uniqueKey}>
       <div className="flex items-center justify-between">
-        <div className="space-y-1">
+        <div className="space-y-0.5 flex-1 min-w-0">
           <Label htmlFor={`${uniqueKey || option.id}-color`} className="text-sm font-medium">
             {option.label}
           </Label>
           {option.description && (
-            <p className="text-xs text-muted-foreground">{option.description}</p>
+            <p className="text-xs text-muted-foreground truncate">{option.description}</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 ml-3">
+          <div className="flex items-center gap-2">
+            <div
+              className="w-8 h-8 rounded border border-border/50 cursor-pointer hover:border-border transition-colors"
+              style={{ backgroundColor: currentValue }}
+              onClick={() => document.getElementById(`${uniqueKey || option.id}-color`)?.click()}
+            />
+            <input
+              type="text"
+              value={currentValue}
+              onChange={e => {
+                const newValue = e.target.value;
+                if (newValue === '' || /^#[0-9A-Fa-f]*$/.test(newValue)) {
+                  console.log(`🎨 Color picker ${uniqueKey || option.id} hex changed:`, newValue);
+                  onChange(newValue);
+                }
+              }}
+              onBlur={e => {
+                const fixedValue = validateAndFixColor(e.target.value);
+                if (fixedValue !== e.target.value) {
+                  console.log(`🎨 Color picker ${uniqueKey || option.id} fixed:`, fixedValue);
+                  onChange(fixedValue);
+                }
+              }}
+              className="w-18 h-7 px-2 text-xs font-mono border border-border/50 rounded bg-background focus:border-ring focus:outline-none"
+              placeholder="#ffffff"
+              maxLength={7}
+            />
+          </div>
           {onReset && (
             <Button
               variant="ghost"
               size="sm"
               onClick={onReset}
-              className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
+              className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive rounded-md"
               title="Reset to default"
             >
               <X className="h-3 w-3" />
             </Button>
           )}
-          <div
-            className="w-8 h-8 rounded-md border-2 border-border shadow-sm"
-            style={{ backgroundColor: currentValue }}
-          />
         </div>
       </div>
 
-      <div className="space-y-2">
-        {/* Color input */}
-        <input
-          id={`${uniqueKey || option.id}-color`}
-          type="color"
-          value={currentValue}
-          onChange={e => {
-            const newValue = e.target.value;
-            console.log(`🎨 Color picker ${uniqueKey || option.id} changed:`, newValue);
-            onChange(newValue);
-          }}
-          className="w-full h-8 rounded border cursor-pointer"
-          style={{ colorScheme: 'light' }}
-        />
-
-        {/* Hex input for manual entry */}
-        <input
-          type="text"
-          value={currentValue}
-          onChange={e => {
-            const newValue = e.target.value;
-            if (newValue === '' || /^#[0-9A-Fa-f]*$/.test(newValue)) {
-              // Allow partial hex values while typing
-              console.log(`🎨 Color picker ${uniqueKey || option.id} hex changed:`, newValue);
-              onChange(newValue);
-            }
-          }}
-          onBlur={e => {
-            // Validate and fix on blur
-            const fixedValue = validateAndFixColor(e.target.value);
-            if (fixedValue !== e.target.value) {
-              console.log(`🎨 Color picker ${uniqueKey || option.id} fixed:`, fixedValue);
-              onChange(fixedValue);
-            }
-          }}
-          placeholder="#ffffff"
-          className="w-full px-2 py-1 text-xs border rounded font-mono bg-background"
-          maxLength={7}
-        />
-      </div>
+      {/* Hidden color input */}
+      <input
+        id={`${uniqueKey || option.id}-color`}
+        type="color"
+        value={currentValue}
+        onChange={e => {
+          const newValue = e.target.value;
+          console.log(`🎨 Color picker ${uniqueKey || option.id} changed:`, newValue);
+          onChange(newValue);
+        }}
+        className="sr-only"
+      />
     </div>
   );
 };

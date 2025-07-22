@@ -129,6 +129,7 @@ export const VisualPreferencesView: React.FC = () => {
       },
     };
 
+    console.log('📊 Updated preferences state:', newPreferences);
     setPreferences(newPreferences);
 
     // Find the element for this preference
@@ -139,19 +140,21 @@ export const VisualPreferencesView: React.FC = () => {
 
     // Find the specific preference to debug its metadata
     const preference = element.availablePreferences.find(p => p.id === preferenceId);
-    if (preference && preference.type === 'toggle') {
-      console.log('🎚️ Toggle preference metadata:', {
+    if (preference) {
+      console.log('🎚️ Preference metadata:', {
         id: preference.id,
+        type: preference.type,
         currentValue: preference.currentValue,
         newValue: value,
-        cssOnTrue: preference.metadata?.cssOnTrue,
-        cssOnFalse: preference.metadata?.cssOnFalse,
-        targetClasses: preference.metadata?.targetClasses,
+        metadata: preference.metadata,
       });
     }
 
     // Use the new comment-based CSS update system
     try {
+      console.log('🎨 Starting CSS generation for:', { elementId, preferenceId, value });
+      console.log('🎨 Current CSS content length:', cssContent?.length || 0);
+
       const updatedCSS = await cssGenerationService.updatePreferenceCSS(
         elementId,
         preferenceId,
@@ -160,12 +163,12 @@ export const VisualPreferencesView: React.FC = () => {
         cssContent || ''
       );
 
-      // Debug: CSS update successful
-      console.log('✅ Updated CSS with comment wrapper (length):', updatedCSS.length);
-      console.log('📝 New CSS content preview:', updatedCSS.slice(-200)); // Last 200 chars
+      console.log('✅ CSS generation completed. New length:', updatedCSS.length);
+      console.log('📝 CSS preview (last 300 chars):', updatedCSS.slice(-300));
 
       // Set updated CSS in editor (the editor has auto-apply functionality)
       setCssContent(updatedCSS);
+      console.log('✅ CSS content updated in state');
     } catch (error) {
       console.error('❌ Error updating preference CSS:', error);
     }
@@ -305,125 +308,80 @@ export const VisualPreferencesView: React.FC = () => {
 
   return (
     <div className="min-h-full">
-      <div className="max-w-4xl mx-auto p-6 space-y-8">
+      <div className="p-6 space-y-8">
         {/* Header Section */}
-        <div className="text-center space-y-4">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold">UI Editor</h1>
+        <div className="space-y-4">
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-bold">Visual Customizer</h1>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Click below to analyze your page and generate customization options.
+              Analyze your page to generate contextual customization options.
             </p>
           </div>
 
           {elements.length > 0 && (
-            <>
+            <div className="flex items-center justify-between">
               {/* Prompt Customization */}
-              <div className="flex items-center justify-center gap-3 pt-4">
-                <Dialog open={isPromptDialogOpen} onOpenChange={handlePromptDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="shadow-sm">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Customize Prompt
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                    <DialogHeader>
-                      <DialogTitle>Customize Analysis Prompt</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <p className="text-sm text-muted-foreground">
-                        Modify the prompt used to analyze your page and generate UI preferences.
-                        This allows you to guide the AI towards specific types of customizations.
-                      </p>
+              <Dialog open={isPromptDialogOpen} onOpenChange={handlePromptDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="shadow-sm">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Customize Prompt
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Customize Analysis Prompt</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Modify the prompt used to analyze your page and generate UI preferences. This
+                      allows you to guide the AI towards specific types of customizations.
+                    </p>
 
-                      {defaultPrompt && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">
-                            Default Prompt (for reference)
-                          </label>
-                          <Textarea
-                            value={defaultPrompt}
-                            readOnly
-                            className="min-h-[200px] font-mono text-xs bg-muted"
-                          />
-                        </div>
-                      )}
-
+                    {defaultPrompt && (
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-sm font-medium">Your Custom Prompt</label>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setCustomPrompt('')}
-                            className="h-6 text-xs"
-                          >
-                            <RotateCcw className="h-3 w-3 mr-1" />
-                            Clear Custom
-                          </Button>
-                        </div>
+                        <label className="text-sm font-medium">
+                          Default Prompt (for reference)
+                        </label>
                         <Textarea
-                          value={customPrompt}
-                          onChange={e => setCustomPrompt(e.target.value)}
-                          placeholder="Enter your custom prompt here, or leave empty to use the default prompt shown above..."
-                          className="min-h-[200px] font-mono text-sm"
+                          value={defaultPrompt}
+                          readOnly
+                          className="min-h-[200px] font-mono text-xs bg-muted"
                         />
                       </div>
-                      <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setIsPromptDialogOpen(false)}>
-                          Cancel
+                    )}
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium">Your Custom Prompt</label>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setCustomPrompt('')}
+                          className="h-6 text-xs"
+                        >
+                          <RotateCcw className="h-3 w-3 mr-1" />
+                          Clear Custom
                         </Button>
-                        <Button onClick={() => setIsPromptDialogOpen(false)}>Apply Changes</Button>
                       </div>
+                      <Textarea
+                        value={customPrompt}
+                        onChange={e => setCustomPrompt(e.target.value)}
+                        placeholder="Enter your custom prompt here, or leave empty to use the default prompt shown above..."
+                        className="min-h-[200px] font-mono text-sm"
+                      />
                     </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </>
-          )}
-        </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setIsPromptDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={() => setIsPromptDialogOpen(false)}>Apply Changes</Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
 
-        {/* Content */}
-        {elements.length === 0 ? (
-          <Card className="mx-auto max-w-lg">
-            <CardContent className="py-16 text-center space-y-6">
-              <div className="space-y-4">
-                <div className="mx-auto w-20 h-20 bg-muted rounded-full flex items-center justify-center">
-                  <Wand2 className="h-8 w-8 text-muted-foreground" />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-xl font-semibold">Ready to Analyze</h3>
-                  <p className="text-muted-foreground">
-                    Click the button below to analyze your page and generate comprehensive
-                    customization options including colors, layout, typography, images, and more.
-                  </p>
-                </div>
-              </div>
-
-              <Button
-                variant="default"
-                onClick={analyzeCurrentPage}
-                className="shadow-sm"
-                disabled={isAnalyzing}
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Analyzing Page...
-                  </>
-                ) : (
-                  <>
-                    <Search className="h-4 w-4 mr-2" />
-                    Analyze Page
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-6">
-            {/* Re-analyze button for when preferences are already loaded */}
-            <div className="flex justify-center pb-4 border-b">
+              {/* Re-analyze button */}
               <Button
                 variant="outline"
                 onClick={analyzeCurrentPage}
@@ -443,16 +401,58 @@ export const VisualPreferencesView: React.FC = () => {
                 )}
               </Button>
             </div>
+          )}
+        </div>
 
+        {/* Content */}
+        {elements.length === 0 ? (
+          <div className="flex items-center justify-center min-h-[500px]">
+            <div className="text-center space-y-6 max-w-lg">
+              <div className="space-y-4">
+                <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center">
+                  <Wand2 className="h-7 w-7 text-muted-foreground" />
+                </div>
+                <div className="space-y-3">
+                  <h3 className="text-xl font-semibold">Ready to Analyze</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    Click the button below to analyze your page and generate comprehensive
+                    customization options including colors, layout, typography, and more.
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                variant="default"
+                onClick={analyzeCurrentPage}
+                className="shadow-sm px-6 py-2"
+                disabled={isAnalyzing}
+                size="lg"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Analyzing Page...
+                  </>
+                ) : (
+                  <>
+                    <Search className="h-4 w-4 mr-2" />
+                    Analyze Page
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6 max-w-4xl mx-auto">
             {/* Organized preference sections */}
             <div className="space-y-6">
               {elements.map(element => (
-                <Card key={element.id} className="overflow-hidden">
-                  <CardContent className="p-6">
+                <Card key={element.id} className="border-border/50">
+                  <CardContent className="p-4">
                     <div className="space-y-4">
                       {/* Section Header */}
-                      <div className="space-y-2 pb-4 border-b border-border/50">
-                        <h3 className="text-lg font-semibold text-foreground">
+                      <div className="space-y-1 pb-3 border-b border-border/30">
+                        <h3 className="text-base font-semibold text-foreground">
                           {element.description}
                         </h3>
                         <p className="text-sm text-muted-foreground">
@@ -460,8 +460,8 @@ export const VisualPreferencesView: React.FC = () => {
                         </p>
                       </div>
 
-                      {/* Flat Preferences Grid */}
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {/* Compact Preferences Grid */}
+                      <div className="space-y-4">
                         {element.availablePreferences.map(option =>
                           renderPreferenceControl(element, option)
                         )}

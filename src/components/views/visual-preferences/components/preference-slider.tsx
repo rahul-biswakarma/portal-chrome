@@ -43,32 +43,32 @@ export const PreferenceSlider: React.FC<PreferenceSliderProps> = ({
   });
 
   return (
-    <div className="space-y-3 p-3 rounded-lg border bg-card">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <div className="space-y-1">
+        <div className="space-y-0.5 flex-1 min-w-0">
           <Label htmlFor={option.id} className="text-sm font-medium">
             {option.label}
           </Label>
           {option.description && (
-            <p className="text-xs text-muted-foreground">{option.description}</p>
+            <p className="text-xs text-muted-foreground truncate">{option.description}</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 ml-3">
+          <div className="text-sm font-mono bg-muted px-2 py-1 rounded text-center min-w-[60px]">
+            {currentValue}
+            {unit}
+          </div>
           {onReset && (
             <Button
               variant="ghost"
               size="sm"
               onClick={onReset}
-              className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
+              className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive rounded-md"
               title="Reset to default"
             >
               <X className="h-3 w-3" />
             </Button>
           )}
-          <div className="text-sm font-mono bg-muted px-2 py-1 rounded">
-            {currentValue}
-            {unit}
-          </div>
         </div>
       </div>
 
