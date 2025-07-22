@@ -85,12 +85,18 @@ export const CssEditor = () => {
               styleEl = document.createElement('style');
               styleEl.id = 'portal-generated-css';
 
+              // Add data attributes for better identification and cleanup
+              styleEl.setAttribute('data-portal-customizer', 'true');
+              styleEl.setAttribute('data-generated-by', 'Visual Customizer');
+              styleEl.setAttribute('data-generated-at', new Date().toISOString());
+
               // Insert at the bottom of head for higher specificity (natural CSS cascade)
               // This allows overriding existing styles without !important
               document.head.appendChild(styleEl);
             }
 
             styleEl.textContent = cssCode;
+            console.log('🎨 Applied CSS to page:', { length: cssCode.length });
           },
           args: [cleanedCSS],
         },
@@ -122,9 +128,20 @@ export const CssEditor = () => {
 
   // Auto-apply and auto-save CSS when editor content changes
   useEffect(() => {
+    console.log('🎨 CSS Editor: Content changed, checking auto-apply...', {
+      currentEditorContent,
+      length: currentEditorContent?.length || 0,
+      isInitialPlaceholder: currentEditorContent === '/* CSS will appear here when generated */',
+    });
+
     // Always apply CSS content changes, including empty content
     if (currentEditorContent !== '/* CSS will appear here when generated */') {
       const timer = setTimeout(() => {
+        console.log('🎨 CSS Editor: Auto-applying CSS...', {
+          contentLength: currentEditorContent?.length || 0,
+          isEmpty: !currentEditorContent || currentEditorContent.trim() === '',
+        });
+
         // Apply CSS to the page (including empty CSS to remove styles)
         applyCSS(currentEditorContent || '');
 
@@ -134,12 +151,16 @@ export const CssEditor = () => {
         // Log different messages for empty vs non-empty CSS
         if (currentEditorContent && currentEditorContent.trim() !== '') {
           addLog('CSS auto-applied and auto-saved', 'success');
+          console.log('✅ CSS Editor: Auto-applied non-empty CSS');
         } else {
           addLog('CSS cleared from page and auto-saved', 'success');
+          console.log('✅ CSS Editor: Auto-applied empty CSS (cleared styles)');
         }
       }, 500); // Delay to avoid excessive updates while typing
 
       return () => clearTimeout(timer);
+    } else {
+      console.log('⚠️ CSS Editor: Skipping auto-apply (initial placeholder)');
     }
   }, [currentEditorContent]);
 
@@ -383,6 +404,10 @@ export const CssEditor = () => {
             insert: cleanedContent,
           },
         });
+
+        // IMPORTANT: Update currentEditorContent to trigger auto-apply
+        // This ensures that when CSS is updated programmatically (like from visual preferences),
+        // it also gets applied to the page automatically
         setCurrentEditorContent(cleanedContent);
       }
     }
