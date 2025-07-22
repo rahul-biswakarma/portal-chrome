@@ -1,16 +1,16 @@
 import './globals.css';
 
 import { ViewTabs } from './components/view-tabs';
-import { PilotModeView } from './components/views/pilot-mode';
-import { HierarchyView } from './components/views/hierarchy-view/hierarchy-view';
-import { Settings } from './components/views/settings/settings';
-import { CssEditorView } from './components/views/css-editor-view/css-editor-view';
 import { ChatCustomizationView } from './components/views/chat-customization';
+import { CssEditorView } from './components/views/css-editor-view/css-editor-view';
+import { HierarchyView } from './components/views/hierarchy-view/hierarchy-view';
+import { PilotModeView } from './components/views/pilot-mode';
+import { Settings } from './components/views/settings/settings';
 import { VisualPreferencesView } from './components/views/visual-preferences';
 
-import type { ViewTabsSchema } from './types';
-import { AppProvider } from './contexts/app-context';
 import { useState } from 'react';
+import { AppProvider } from './contexts/app-context';
+import type { ViewTabsSchema } from './types';
 
 const views: ViewTabsSchema[] = [
   {
@@ -25,30 +25,7 @@ const views: ViewTabsSchema[] = [
   },
   {
     id: 'visual-preferences',
-    trigger: (
-      <div className="flex items-center gap-2">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 2v6.5" />
-          <path d="M12 8.5V22" />
-          <path d="M8 8a4 4 0 108 0" />
-          <path d="M3 12h3.5" />
-          <path d="M17.5 12H21" />
-          <path d="M8 20a2 2 0 104 0" />
-          <circle cx="12" cy="8" r="2" />
-        </svg>
-        Customizer
-      </div>
-    ),
+    trigger: 'Customizer',
     content: <VisualPreferencesView />,
   },
   {
@@ -85,7 +62,7 @@ const views: ViewTabsSchema[] = [
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          stroke-width="1.5"
+          stroke-width="2"
           stroke-linecap="round"
           stroke-linejoin="round"
           className="icon icon-tabler icons-tabler-outline icon-tabler-sitemap"
@@ -112,7 +89,7 @@ const views: ViewTabsSchema[] = [
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          stroke-width="1.5"
+          stroke-width="2"
           stroke-linecap="round"
           stroke-linejoin="round"
           className="icon icon-tabler icons-tabler-outline icon-tabler-settings"

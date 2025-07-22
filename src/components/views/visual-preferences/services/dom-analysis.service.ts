@@ -63,7 +63,7 @@ interface PortalElement {
 }
 
 export class DOMAnalysisService {
-  async analyzeDOM(customPrompt?: string): Promise<DOMAnalysisResult> {
+  async analyzeDOM(customPrompt?: string, currentCSS?: string): Promise<DOMAnalysisResult> {
     try {
       const tab = await getActiveTab();
       if (!tab.id) {
@@ -85,7 +85,8 @@ export class DOMAnalysisService {
       const llmPreferences = await this.generateUIPreferences(
         portalElements,
         computedStyles,
-        customPrompt
+        customPrompt,
+        currentCSS // Pass current CSS to LLM
       );
 
       // Convert LLM response to our DetectedElement format
@@ -335,7 +336,8 @@ export class DOMAnalysisService {
   private async generateUIPreferences(
     portalElements: PortalElement[],
     computedStyles: Record<string, Record<string, string>>,
-    customPrompt?: string
+    customPrompt?: string,
+    currentCSS?: string
   ): Promise<LLMUIPreferencesResponse> {
     try {
       const apiKey = await getEnvVariable('GEMINI_API_KEY');
@@ -344,7 +346,8 @@ export class DOMAnalysisService {
         return this.generateFallbackUIPreferences(portalElements);
       }
 
-      const prompt = customPrompt || this.createUIPreferencesPrompt(portalElements, computedStyles);
+      const prompt =
+        customPrompt || this.createUIPreferencesPrompt(portalElements, computedStyles, currentCSS);
 
       // Get tab for screenshot
       const tab = await getActiveTab();
@@ -357,7 +360,7 @@ export class DOMAnalysisService {
         prompt,
         this.createTreeFromElements(portalElements),
         this.createTailwindData(portalElements),
-        '', // No existing CSS needed
+        currentCSS || '', // Pass current CSS to Gemini
         undefined, // No reference image
         screenshot,
         computedStyles,
@@ -379,11 +382,18 @@ export class DOMAnalysisService {
 
   private createUIPreferencesPrompt(
     portalElements: PortalElement[],
-    computedStyles: Record<string, Record<string, string>>
+    computedStyles: Record<string, Record<string, string>>,
+    currentCSS?: string
   ): string {
     const portalClasses = this.getAllPortalClasses(portalElements);
     const portalTree = this.formatPortalTree(portalElements);
     const existingStylesSection = this.formatExistingStyles(portalClasses, computedStyles);
+
+    // Format current CSS section if available
+    const currentCSSSection =
+      currentCSS && currentCSS.trim()
+        ? `\nEXISTING CUSTOM CSS:\n${currentCSS.trim()}\n\nIMPORTANT: The above CSS shows what customizations are already applied. When generating preferences, please:\n- Include controls for settings that are already applied (so users can modify/reset them)\n- Look for comment blocks that show element IDs and preference IDs (/* Element: some-id, Preference: some-pref */)\n- Generate new preferences that complement existing ones\n- Ensure preference IDs are unique and don't conflict with existing ones\n`
+        : '\nNOTE: No existing customizations found. Generate fresh preferences based on the page structure.\n';
 
     return `Generate UI customization preferences for this portal page. Analyze the screenshot to understand what elements exist and create practical customization options.
 
@@ -394,7 +404,7 @@ PAGE STRUCTURE:
 ${portalTree}
 
 CURRENT STYLES:
-${existingStylesSection}
+${existingStylesSection}${currentCSSSection}
 
 PREFERENCE TYPE SCHEMAS:
 
@@ -618,7 +628,7 @@ Generate practical customization options based on the screenshot and portal clas
     return [...new Set(classes)];
   }
 
-  getDefaultPrompt(): string {
+  getDefaultPrompt(currentCSS?: string): string {
     // Return a sample default prompt for display purposes
     const samplePortalClasses = ['portal-header', 'portal-nav', 'portal-content', 'portal-sidebar'];
 
@@ -632,7 +642,8 @@ Generate practical customization options based on the screenshot and portal clas
           children: [],
         },
       ],
-      { 'portal-header': { display: 'flex', 'background-color': 'rgb(255, 255, 255)' } }
+      { 'portal-header': { display: 'flex', 'background-color': 'rgb(255, 255, 255)' } },
+      currentCSS
     );
   }
 
