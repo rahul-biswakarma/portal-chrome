@@ -1,7 +1,7 @@
-import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Square, Sparkles, Loader2 } from 'lucide-react';
+import { Loader2, Sparkles, Square } from 'lucide-react';
+import React from 'react';
 import type { ProcessingStageProps } from '../types';
 
 export const ProcessingStage: React.FC<ProcessingStageProps> = ({
@@ -31,7 +31,7 @@ export const ProcessingStage: React.FC<ProcessingStageProps> = ({
   const isComplete = progress.stage === 'complete';
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+    <div className="h-full flex items-center justify-center p-6">
       <div className="w-full max-w-md space-y-8">
         {/* Header */}
         <div className="text-center space-y-4">

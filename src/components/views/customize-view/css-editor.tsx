@@ -1,6 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ErrorModal } from '@/components/ui/error-modal';
+import { useAppContext } from '@/contexts/app-context';
+import { useLogger } from '@/services/logger';
+import { getActiveTab } from '@/utils/chrome-utils';
 import {
   defaultKeymap,
   history,
@@ -8,265 +18,226 @@ import {
   insertNewlineAndIndent,
 } from '@codemirror/commands';
 import { css } from '@codemirror/lang-css';
+import { EditorState } from '@codemirror/state';
+import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { vscodeDark } from '@uiw/codemirror-theme-vscode';
-import { AppContext } from '@/contexts/app-context';
-import { useContext } from 'react';
-import { Button } from '@/components/ui/button';
-import { getActiveTab } from '@/utils/chrome-utils';
-import { Play, RotateCcw, RotateCw, Copy, CheckIcon, Download, Save, X } from 'lucide-react';
-import { useLogger } from '@/services/logger';
-import { FetchCssModal } from './fetch-css-modal';
-import { ErrorModal } from '@/components/ui/error-modal';
+import { CheckIcon, Copy, Play, RotateCcw, RotateCw, Save, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 export const CssEditor = () => {
   const editorRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const [currentEditorContent, setCurrentEditorContent] = useState<string>('');
+
   const [isCopied, setIsCopied] = useState(false);
-  const [showFetchModal, setShowFetchModal] = useState(false);
-  const [isFetching, setIsFetching] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [errorModal, setErrorModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    error: string | Error;
-    details?: string;
-  }>({
+  const [currentEditorContent, setCurrentEditorContent] = useState('');
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [errorModal, setErrorModal] = useState({
     isOpen: false,
     title: '',
-    error: '',
-    details: undefined,
+    error: new Error(''),
+    details: undefined as string | undefined,
   });
-  const appContext = useContext(AppContext);
+
+  const { cssContent, setCssContent, generationStage, devRevCssStage } = useAppContext();
+
   const { addLog } = useLogger();
 
-  if (!appContext) {
-    throw new Error('CssEditor must be used within an AppProvider');
-  }
+  // Auto-save debounced CSS content
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const { cssContent, setCssContent, generationStage, devRevCssStage, fetchCssFromDevRev } =
-    appContext;
+  useEffect(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
 
-  // Function to clean CSS response (remove markdown)
+    timeoutRef.current = setTimeout(() => {
+      if (currentEditorContent !== cssContent) {
+        setCssContent(currentEditorContent);
+      }
+    }, 500);
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [currentEditorContent, setCssContent, cssContent]);
+
+  // Auto-apply debounced CSS
+  const applyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (applyTimeoutRef.current) {
+      clearTimeout(applyTimeoutRef.current);
+    }
+
+    // Only auto-apply if content is not empty and different from what's saved
+    if (currentEditorContent && currentEditorContent.trim()) {
+      applyTimeoutRef.current = setTimeout(async () => {
+        try {
+          const tab = await getActiveTab();
+          if (!tab?.id) return;
+
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (cssContent: string) => {
+              let styleEl = document.getElementById('portal-custom-styles') as HTMLStyleElement;
+
+              if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'portal-custom-styles';
+                document.head.appendChild(styleEl);
+              }
+
+              styleEl.textContent = cssContent;
+            },
+            args: [currentEditorContent],
+          });
+
+          addLog('CSS auto-applied successfully', 'success');
+        } catch (error) {
+          addLog('Auto-apply failed', 'error');
+        }
+      }, 500);
+    }
+
+    return () => {
+      if (applyTimeoutRef.current) {
+        clearTimeout(applyTimeoutRef.current);
+      }
+    };
+  }, [currentEditorContent, addLog]);
+
+  const handleApplyCss = async () => {
+    if (!currentEditorContent) return;
+
+    try {
+      const tab = await getActiveTab();
+      if (!tab?.id) {
+        addLog('No active tab found', 'error');
+        return;
+      }
+
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (cssContent: string) => {
+          let styleEl = document.getElementById('portal-custom-styles') as HTMLStyleElement;
+
+          if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'portal-custom-styles';
+            document.head.appendChild(styleEl);
+          }
+
+          styleEl.textContent = cssContent;
+        },
+        args: [currentEditorContent],
+      });
+
+      addLog('CSS applied successfully', 'success');
+    } catch (error) {
+      addLog(
+        `Error applying CSS: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'error'
+      );
+    }
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      setCssContent(currentEditorContent);
+      addLog('CSS saved successfully', 'success');
+    } catch (error) {
+      addLog('Failed to save CSS', 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClearCss = () => {
+    setShowClearDialog(true);
+  };
+
+  const handleConfirmClear = async () => {
+    // Clear the editor
+    if (viewRef.current) {
+      const currentContent = viewRef.current.state.doc.toString();
+      viewRef.current.dispatch({
+        changes: {
+          from: 0,
+          to: currentContent.length,
+          insert: '',
+        },
+      });
+      setCurrentEditorContent('');
+      setCssContent('');
+    }
+
+    // Also remove styles from the DOM
+    try {
+      const tab = await getActiveTab();
+      if (tab?.id) {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const styleEl = document.getElementById('portal-custom-styles');
+            if (styleEl) {
+              styleEl.remove();
+            }
+          },
+        });
+        addLog('CSS editor cleared and styles removed from page', 'success');
+      } else {
+        addLog('CSS editor cleared', 'info');
+      }
+    } catch (error) {
+      addLog('CSS editor cleared, but failed to remove styles from page', 'warning');
+    }
+
+    setShowClearDialog(false);
+  };
+
+  // Clean CSS response from API
   const cleanCSSResponse = (css: string): string => {
     return css
       .replace(/```css\s*/g, '')
-      .replace(/```\s*$/g, '')
-      .replace(/```/g, '')
+      .replace(/```\s*/g, '')
+      .replace(/^\s*CSS:\s*/gm, '')
       .trim();
   };
 
-  // Function to apply CSS to the page
-  const applyCSS = async (css: string): Promise<void> => {
-    const tab = await getActiveTab();
-    if (!tab.id) {
-      console.error('No active tab found');
-      return;
-    }
-
-    // Clean CSS before applying
-    const cleanedCSS = cleanCSSResponse(css);
-
-    return new Promise(resolve => {
-      chrome.scripting.executeScript(
-        {
-          target: { tabId: tab.id as number },
-          func: (cssCode: string) => {
-            let styleEl = document.getElementById('portal-generated-css');
-
-            if (cssCode.trim() === '') {
-              if (styleEl) {
-                styleEl.remove();
-              }
-              return;
-            }
-
-            if (!styleEl) {
-              styleEl = document.createElement('style');
-              styleEl.id = 'portal-generated-css';
-
-              // Add data attributes for better identification and cleanup
-              styleEl.setAttribute('data-portal-customizer', 'true');
-              styleEl.setAttribute('data-generated-by', 'Visual Customizer');
-              styleEl.setAttribute('data-generated-at', new Date().toISOString());
-
-              // Insert at the bottom of head for higher specificity (natural CSS cascade)
-              // This allows overriding existing styles without !important
-              document.head.appendChild(styleEl);
-            }
-
-            styleEl.textContent = cssCode;
-            console.log('🎨 Applied CSS to page:', { length: cssCode.length });
-          },
-          args: [cleanedCSS],
-        },
-        () => {
-          resolve();
-        }
-      );
-    });
-  };
-
-  const handleApplyCss = async () => {
-    if (viewRef.current) {
-      const content = viewRef.current.state.doc.toString();
-
-      if (
-        !content ||
-        content.trim() === '' ||
-        content.trim() === '/* CSS will appear here when generated */'
-      ) {
-        addLog('No CSS content to apply', 'error');
-        return;
-      }
-
-      addLog('Applying CSS...', 'info');
-      await applyCSS(content);
-      addLog('CSS applied successfully', 'success');
-    }
-  };
-
-  // Auto-apply and auto-save CSS when editor content changes
+  // Update editor content when cssContent changes
   useEffect(() => {
-    console.log('🎨 CSS Editor: Content changed, checking auto-apply...', {
-      currentEditorContent,
-      length: currentEditorContent?.length || 0,
-      isInitialPlaceholder: currentEditorContent === '/* CSS will appear here when generated */',
-    });
+    if (viewRef.current && cssContent !== currentEditorContent) {
+      const cleanedContent = cleanCSSResponse(cssContent || '');
 
-    // Always apply CSS content changes, including empty content
-    if (currentEditorContent !== '/* CSS will appear here when generated */') {
-      const timer = setTimeout(() => {
-        console.log('🎨 CSS Editor: Auto-applying CSS...', {
-          contentLength: currentEditorContent?.length || 0,
-          isEmpty: !currentEditorContent || currentEditorContent.trim() === '',
+      if (cleanedContent !== currentEditorContent) {
+        const currentContent = viewRef.current.state.doc.toString();
+
+        viewRef.current.dispatch({
+          changes: {
+            from: 0,
+            to: currentContent.length,
+            insert: cleanedContent,
+          },
         });
 
-        // Apply CSS to the page (including empty CSS to remove styles)
-        applyCSS(currentEditorContent || '');
-
-        // Auto-save to context (same as clicking Save button)
-        setCssContent(currentEditorContent || '');
-
-        // Log different messages for empty vs non-empty CSS
-        if (currentEditorContent && currentEditorContent.trim() !== '') {
-          addLog('CSS auto-applied and auto-saved', 'success');
-          console.log('✅ CSS Editor: Auto-applied non-empty CSS');
-        } else {
-          addLog('CSS cleared from page and auto-saved', 'success');
-          console.log('✅ CSS Editor: Auto-applied empty CSS (cleared styles)');
-        }
-      }, 500); // Delay to avoid excessive updates while typing
-
-      return () => clearTimeout(timer);
-    } else {
-      console.log('⚠️ CSS Editor: Skipping auto-apply (initial placeholder)');
-    }
-  }, [currentEditorContent]);
-
-  const handleSave = async () => {
-    if (viewRef.current) {
-      const content = viewRef.current.state.doc.toString();
-
-      if (
-        !content ||
-        content.trim() === '' ||
-        content.trim() === '/* CSS will appear here when generated */'
-      ) {
-        addLog('No CSS content to save', 'error');
-        return;
-      }
-
-      setIsSaving(true);
-      try {
-        // Update the context with current editor content (same as auto-save)
-        setCssContent(content);
-        addLog('CSS saved manually (auto-save is also active)', 'success');
-      } catch (error) {
-        addLog('Failed to save CSS', 'error');
-      } finally {
-        setIsSaving(false);
+        // IMPORTANT: Update currentEditorContent to trigger auto-apply
+        // This ensures that when CSS is updated programmatically (like from visual preferences),
+        // it also gets applied to the page automatically
+        setCurrentEditorContent(cleanedContent);
       }
     }
-  };
+  }, [cssContent]);
 
-  const handleRemoveStyles = async () => {
-    const tab = await getActiveTab();
-    if (!tab.id) {
-      console.error('No active tab found');
-      return;
-    }
+  // Determine if buttons should be disabled
+  const isLoading = generationStage === 'generating' || devRevCssStage === 'loading';
 
-    chrome.scripting.executeScript(
-      {
-        target: { tabId: tab.id as number },
-        func: () => {
-          // Remove the applied style element
-          const existingStyle = document.getElementById('portal-generated-css');
-          if (existingStyle) {
-            existingStyle.remove();
-          }
-        },
-      },
-      () => {
-        addLog('Applied styles removed from page', 'success');
-      }
-    );
-  };
-
-  const handleFetchFromDevRev = async () => {
-    setShowFetchModal(true);
-  };
-
-  const handleConfirmFetch = async () => {
-    try {
-      setIsFetching(true);
-      addLog('Fetching CSS from DevRev...', 'info');
-
-      const css = await fetchCssFromDevRev();
-
-      if (css) {
-        // Update the context first
-        setCssContent(css);
-
-        // Force update the editor directly (in case content is the same and useEffect doesn't trigger)
-        if (viewRef.current) {
-          const cleanedContent = cleanCSSResponse(css);
-          const currentContent = viewRef.current.state.doc.toString();
-
-          // Always update the editor, even if content appears the same
-          viewRef.current.dispatch({
-            changes: {
-              from: 0,
-              to: currentContent.length,
-              insert: cleanedContent,
-            },
-          });
-          setCurrentEditorContent(cleanedContent);
-        }
-
-        addLog('CSS fetched from DevRev successfully', 'success');
-      } else {
-        addLog('No CSS content returned from DevRev', 'warning');
-      }
-    } catch (error) {
-      addLog(
-        `Error fetching CSS from DevRev: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'error'
-      );
-
-      // Show error modal with details
-      setErrorModal({
-        isOpen: true,
-        title: 'DevRev CSS Fetch Error',
-        error: error instanceof Error ? error : new Error(String(error)),
-        details: error instanceof Error ? error.stack : undefined,
-      });
-    } finally {
-      setIsFetching(false);
-      setShowFetchModal(false);
-    }
-  };
+  const isEditorEmpty = !currentEditorContent;
 
   const handleUndo = () => {
     if (viewRef.current) {
@@ -309,7 +280,7 @@ export const CssEditor = () => {
 
   useEffect(() => {
     if (editorRef.current && !viewRef.current) {
-      const startingDoc = '/* CSS will appear here when generated */';
+      const startingDoc = '/* CSS will appear here when generated or fetched */';
 
       const state = EditorState.create({
         doc: startingDoc,
@@ -375,48 +346,10 @@ export const CssEditor = () => {
         state,
         parent: editorRef.current,
       });
-    }
 
-    return () => {
-      if (viewRef.current) {
-        viewRef.current.destroy();
-        viewRef.current = null;
-      }
-    };
+      setCurrentEditorContent(startingDoc);
+    }
   }, []);
-
-  // Update editor content when cssContent changes
-  useEffect(() => {
-    if (viewRef.current) {
-      // Handle both empty and non-empty CSS content
-      const cleanedContent = cssContent ? cleanCSSResponse(cssContent) : '';
-      const currentContent = viewRef.current.state.doc.toString();
-
-      // Skip if it's just the initial placeholder text
-      const isInitialPlaceholder = currentContent === '/* CSS will appear here when generated */';
-      const shouldUpdate = isInitialPlaceholder || currentContent !== cleanedContent;
-
-      if (shouldUpdate) {
-        viewRef.current.dispatch({
-          changes: {
-            from: 0,
-            to: currentContent.length,
-            insert: cleanedContent,
-          },
-        });
-
-        // IMPORTANT: Update currentEditorContent to trigger auto-apply
-        // This ensures that when CSS is updated programmatically (like from visual preferences),
-        // it also gets applied to the page automatically
-        setCurrentEditorContent(cleanedContent);
-      }
-    }
-  }, [cssContent]);
-
-  // Determine if buttons should be disabled
-  const isLoading = generationStage === 'generating' || devRevCssStage === 'loading' || isFetching;
-
-  const isEditorEmpty = !currentEditorContent;
 
   return (
     <div className="flex flex-col w-full h-full gap-4">
@@ -461,21 +394,11 @@ export const CssEditor = () => {
             size="icon"
             variant="outline"
             className="flex items-center gap-1.5 h-9 w-9"
-            onClick={handleFetchFromDevRev}
-            title="Fetch CSS from DevRev"
+            onClick={handleClearCss}
+            title="Clear CSS editor and remove styles from page"
             disabled={isLoading}
           >
-            <Download size={15} />
-          </Button>
-          <Button
-            size="icon"
-            variant="outline"
-            className="flex items-center gap-1.5 h-9 w-9"
-            onClick={handleRemoveStyles}
-            title="Remove applied styles"
-            disabled={isLoading}
-          >
-            <X size={15} />
+            <Trash2 size={15} />
           </Button>
         </div>
         <div className="flex gap-2">
@@ -488,7 +411,7 @@ export const CssEditor = () => {
             title="Auto-save is active (500ms debounce)"
           >
             <Save size={14} className="mr-1" />
-            {isSaving ? 'Saving...' : 'Save (Auto)'}
+            {isSaving ? 'Saving...' : 'Save'}
           </Button>
           <Button
             size="sm"
@@ -498,18 +421,37 @@ export const CssEditor = () => {
             title="Auto-apply is active (500ms debounce)"
           >
             <Play size={14} className="mr-1" />
-            Apply CSS (Auto)
+            Apply
           </Button>
         </div>
       </div>
 
-      {/* Modal for fetching CSS from DevRev */}
-      <FetchCssModal
-        isOpen={showFetchModal}
-        onClose={() => setShowFetchModal(false)}
-        onConfirm={handleConfirmFetch}
-        isLoading={isFetching}
-      />
+      {/* Clear CSS Confirmation Dialog */}
+      <Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clear CSS Editor?</DialogTitle>
+            <DialogDescription>
+              This will:
+              <br />
+              • Remove all content from the CSS editor
+              <br />
+              • Remove all applied styles from the current page
+              <br />
+              <br />
+              <strong>This action cannot be undone.</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClearDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmClear}>
+              Clear All
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Error Modal */}
       <ErrorModal

@@ -1,6 +1,6 @@
-import React from 'react';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, RotateCcw, Sparkles } from 'lucide-react';
+import React from 'react';
 import type { CompleteStageProps } from '../types';
 
 export const CompleteStage: React.FC<CompleteStageProps> = ({
@@ -17,7 +17,7 @@ export const CompleteStage: React.FC<CompleteStageProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+    <div className="h-full flex items-center justify-center p-6">
       <div className="w-full max-w-md space-y-8 text-center">
         {/* Success Animation */}
         <div className="space-y-4">

@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Upload, Sparkles, Image, RotateCcw } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Image, RotateCcw, Sparkles, Upload } from 'lucide-react';
+import React, { useState } from 'react';
 import type { SetupStageProps } from '../types';
 
 export const SetupStage: React.FC<SetupStageProps> = ({
@@ -63,7 +63,7 @@ export const SetupStage: React.FC<SetupStageProps> = ({
   const isValid = config.referenceImages.length > 0;
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+    <div className="h-full flex items-center justify-center p-6">
       <div className="w-full max-w-md space-y-8">
         {/* Header */}
         <div className="text-center space-y-2">
